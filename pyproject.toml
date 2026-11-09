@@ -1,0 +1,28 @@
+[project]
+name = "denoisifier"
+version = "0.1.0"
+description = "Finds stripes in noisy camera intensity frames"
+readme = "README.md"
+authors = [
+    { name = "Ruslan Ivanov", email = "ruslan.ivanov@ir-nova.se" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.4.6",
+    "scipy>=1.17.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.16,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[project.scripts]
+denoisifier = "denoisifier.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

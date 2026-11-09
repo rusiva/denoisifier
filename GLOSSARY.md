@@ -40,6 +40,14 @@ _Avoid_: outlier, glitch, hot spot
 
 ### Stripe structure
 
+**Period**:
+The spacing between neighbouring stripes, in sensor pixels, measured across the stripes.
+_Avoid_: wavelength, pitch, spacing
+
+**Angle**:
+The tilt of the stripes from vertical, in degrees. Row 0 of the frame is the top. Positive means the top of each stripe leans right (moving down the frame, a stripe shifts left).
+_Avoid_: orientation, rotation, tilt angle
+
 **Striped Region**:
 The part of a frame where stripes are present. It may cover only part of the envelope.
 _Avoid_: stripe area, patch
