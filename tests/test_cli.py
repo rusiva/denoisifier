@@ -5,17 +5,24 @@ import sys
 
 import numpy as np
 
-from denoisifier.synthetic import generate, write_frame_csv
+from denoisifier.frame_io import write_frame_csv
+from denoisifier.synthetic import generate
+from truth_match import assert_matches_truth
 
 
 def _run(*args, cmd=(sys.executable, "-m", "denoisifier")):
     return subprocess.run([*cmd, *map(str, args)], capture_output=True, text=True)
 
 
-def _assert_clean_failure(result):
+def _assert_clean_failure(result, *details):
+    """Exit 1 with one ``denoisifier: error:`` line naming the cause."""
     assert result.returncode == 1
-    assert result.stderr.strip()
     assert "Traceback" not in result.stderr
+    lines = result.stderr.splitlines()
+    assert len(lines) == 1, result.stderr
+    assert lines[0].startswith("denoisifier: error: "), result.stderr
+    for detail in details:
+        assert detail in lines[0], result.stderr
 
 
 def test_cli_writes_json_report_for_striped_csv(tmp_path):
@@ -27,8 +34,7 @@ def test_cli_writes_json_report_for_striped_csv(tmp_path):
     assert result.returncode == 0, result.stderr
     report = json.loads(out.read_text())
     assert report["striped"] is True
-    assert abs(report["period_px"] - s.truth.period) <= 0.05 * s.truth.period
-    assert abs(report["angle_deg"] - s.truth.angle_deg) <= 1.0
+    assert_matches_truth(report["period_px"], report["angle_deg"], s.truth)
 
 
 def test_cli_prints_json_to_stdout_without_output_flag(tmp_path):
@@ -41,21 +47,30 @@ def test_cli_prints_json_to_stdout_without_output_flag(tmp_path):
 
 
 def test_cli_fails_cleanly_on_missing_file(tmp_path):
-    _assert_clean_failure(_run(tmp_path / "missing.csv"))
+    missing = tmp_path / "missing.csv"
+    _assert_clean_failure(_run(missing), str(missing))
 
 
 def test_cli_fails_cleanly_on_frame_with_no_positive_light(tmp_path):
     frame_path = tmp_path / "frame.csv"
     out = tmp_path / "report.json"
     write_frame_csv(np.zeros((64, 64)), frame_path)
-    _assert_clean_failure(_run(frame_path, "-o", out))
+    _assert_clean_failure(_run(frame_path, "-o", out), "no positive light")
     assert not out.exists()
 
 
 def test_cli_fails_cleanly_when_output_dir_missing(tmp_path):
     frame_path = tmp_path / "frame.csv"
     write_frame_csv(generate(seed=3).frame, frame_path)
-    _assert_clean_failure(_run(frame_path, "-o", tmp_path / "nope" / "r.json"))
+    out = tmp_path / "nope" / "r.json"
+    _assert_clean_failure(_run(frame_path, "-o", out), str(out))
+
+
+def test_cli_without_arguments_is_a_usage_error():
+    result = _run()
+    assert result.returncode == 2
+    assert "usage: denoisifier" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def test_console_script_is_installed():

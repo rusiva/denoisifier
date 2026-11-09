@@ -1,4 +1,4 @@
-"""Reading frames from disk."""
+"""Frames on disk: the plain comma-separated grid format."""
 
 from __future__ import annotations
 
@@ -28,3 +28,8 @@ def read_frame(path: str | os.PathLike) -> FrameFile:
     """
     frame = np.loadtxt(path, delimiter=",", dtype=float, ndmin=2)
     return FrameFile(frame=frame)
+
+
+def write_frame_csv(frame: np.ndarray, path: str | os.PathLike) -> None:
+    """Write a frame as a plain comma-separated grid, no header: the format ``read_frame`` reads."""
+    np.savetxt(path, np.asarray(frame, dtype=float), delimiter=",", fmt="%.9g")

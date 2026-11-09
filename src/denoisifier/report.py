@@ -11,11 +11,9 @@ class Report:
     """What ``analyse`` found in one frame.
 
     ``striped`` is decided by ``score > threshold``. ``period_px`` is the
-    stripe period in sensor pixels, measured across the stripes.
-    ``angle_deg`` is the tilt of the stripes from vertical, in degrees: row 0
-    is the top of the frame, and positive means the top of each stripe leans
-    right (moving down the frame, a stripe shifts left). Both are ``None``
-    when the frame is not striped.
+    Period in sensor pixels; ``angle_deg`` is the Angle in degrees, with the
+    sign convention in GLOSSARY.md. Both are ``None`` when the frame is not
+    striped.
     """
 
     striped: bool
@@ -34,6 +32,6 @@ class Report:
             "angle_deg": None if self.angle_deg is None else float(self.angle_deg),
         }
 
-    def to_json(self, indent: int | None = 2) -> str:
+    def to_json(self) -> str:
         # allow_nan=False: a NaN can never become invalid JSON.
-        return json.dumps(self.to_dict(), indent=indent, allow_nan=False)
+        return json.dumps(self.to_dict(), indent=2, allow_nan=False)

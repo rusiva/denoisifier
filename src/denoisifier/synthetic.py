@@ -12,7 +12,6 @@ Later tickets add mottle (``* mottle``) and swap the noise stage.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -22,9 +21,8 @@ import numpy as np
 class GroundTruth:
     """What the generator put into a frame.
 
-    ``angle_deg`` is the tilt of the stripes from vertical, in degrees. Row 0
-    is the top of the frame. Positive means the top of each stripe leans right
-    (moving down the frame, a stripe shifts left).
+    ``period`` is the Period in pixels; ``angle_deg`` is the Angle in degrees,
+    with the sign convention in GLOSSARY.md.
     """
 
     period: float
@@ -50,10 +48,9 @@ def generate(
 ) -> Synthetic:
     """Generate one frame: profile times full-frame stripes, plus noise.
 
-    ``period`` is in pixels, measured across the stripes. ``angle_deg`` is
-    degrees from vertical, ``t`` in ``phase = 2*pi/period * (x cos t + y sin t)``
-    with ``x`` the column and ``y`` the row (increasing downward); positive
-    means the top of each stripe leans right. ``noise`` is the additive
+    ``period`` and ``angle_deg`` are the Period and Angle (GLOSSARY.md);
+    ``angle_deg`` is ``t`` in ``phase = 2*pi/period * (x cos t + y sin t)``
+    with ``x`` the column and ``y`` the row (increasing downward). ``noise`` is the additive
     Gaussian standard deviation as a fraction of ``peak``, the profile peak.
     ``modulation_depth=0`` gives a profile-only frame.
     """
@@ -102,7 +99,3 @@ def _profile(rng, rows, cols, x, y):
     sigma_u = np.where(u >= 0, sigma_major * 1.15, sigma_major)
     return np.exp(-0.5 * ((u / sigma_u) ** 2 + (v / sigma_minor) ** 2))
 
-
-def write_frame_csv(frame: np.ndarray, path: str | os.PathLike) -> None:
-    """Write a frame as a plain comma-separated grid, no header."""
-    np.savetxt(path, np.asarray(frame, dtype=float), delimiter=",", fmt="%.9g")

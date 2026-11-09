@@ -5,14 +5,9 @@ import pytest
 
 from denoisifier import Report, analyse
 from denoisifier.synthetic import generate
+from truth_match import assert_matches_truth
 
 SHAPE = (256, 256)
-
-
-def _assert_matches_truth(report, truth):
-    assert report.striped is True
-    assert abs(report.period_px - truth.period) <= 0.05 * truth.period
-    assert abs(report.angle_deg - truth.angle_deg) <= 1.0
 
 
 @pytest.mark.parametrize("noise", [0.0, 0.01])
@@ -39,7 +34,8 @@ def test_clear_full_frame_stripes_are_found_and_measured(seed, period, angle_deg
     )
     report = analyse(s.frame)
     assert isinstance(report, Report)
-    _assert_matches_truth(report, s.truth)
+    assert report.striped is True
+    assert_matches_truth(report.period_px, report.angle_deg, s.truth)
 
 
 @pytest.mark.parametrize("noise", [0.0, 0.001, 0.01])

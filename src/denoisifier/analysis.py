@@ -91,8 +91,8 @@ def analyse(frame: np.ndarray) -> Report:
     band_power = power[band]
     i = int(np.argmax(band_power))
     p_peak = band_power[i]
-    amp_floor = (A0 * w_sum / 2.0) ** 2
-    score = float(p_peak / max(float(np.median(band_power)), amp_floor))
+    depth_floor = (A0 * w_sum / 2.0) ** 2
+    score = float(p_peak / max(float(np.median(band_power)), depth_floor))
 
     striped = score > THRESHOLD
     if not striped:

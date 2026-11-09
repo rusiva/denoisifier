@@ -1,6 +1,8 @@
 import numpy as np
 
 from denoisifier import read_frame
+from denoisifier.frame_io import write_frame_csv
+from denoisifier.synthetic import generate
 
 
 def _write(tmp_path, text):
@@ -26,3 +28,14 @@ def test_every_column_is_kept_even_when_first_counts_up(tmp_path):
     result = read_frame(_write(tmp_path, "0,5,5\n1,5,5\n2,5,5\n"))
     assert result.frame.shape == (3, 3)
     assert np.array_equal(result.frame[:, 0], [0, 1, 2])
+
+
+def test_written_csv_reads_back_as_the_same_frame(tmp_path):
+    s = generate(seed=5, shape=(40, 50))
+    path = tmp_path / "frame.csv"
+    write_frame_csv(s.frame, path)
+    lines = path.read_text().splitlines()
+    assert len(lines) == 40
+    assert lines[0].count(",") == 49
+    float(lines[0].split(",")[0])  # no header: the first line is numbers
+    assert np.allclose(read_frame(path).frame, s.frame, rtol=1e-8, atol=0)
