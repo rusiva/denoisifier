@@ -59,3 +59,25 @@ _Avoid_: fault, discontinuity, glitch
 **Fork**:
 A point where one stripe splits into two, or where a stripe ends.
 _Avoid_: dislocation, defect, branch
+
+### The verdict
+
+**Stripe-free**:
+True of a frame that really contains no stripes (modulation depth 0 everywhere). A fact about the frame, not a call made by the detector.
+_Avoid_: clean, not striped, negative
+
+**Stripe Score**:
+A continuous, unbounded measure of how strongly a frame shows stripes; higher means more stripe-like. It is not a probability.
+_Avoid_: confidence, probability, likelihood, SNR
+
+**Threshold**:
+The stripe score above which the verdict is Striped, set so that about 1% of stripe-free frames are false alarms.
+_Avoid_: cutoff, limit
+
+**Verdict**:
+The detector's yes/no call on a frame: **Striped** if it finds at least one striped region anywhere, however small, otherwise **Not Striped**.
+_Avoid_: detection, result, classification
+
+**False Alarm**:
+A stripe-free frame whose verdict is Striped.
+_Avoid_: false positive, misdetection

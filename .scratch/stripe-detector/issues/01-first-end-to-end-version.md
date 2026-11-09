@@ -4,12 +4,16 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Project installs and tests run with `uv run pytest`.
-- [ ] The generator is seeded (same seed gives the same frame), returns frame plus ground truth, and can write a frame as a plain CSV grid.
-- [ ] Reading a plain comma-separated grid of floats with no header gives a 2D array of the right shape.
-- [ ] `analyse(frame)` returns a Report with `striped`, `score`, and one global period (in pixels) and angle (degrees from vertical).
-- [ ] On generated frames with clear full-frame stripes (m about 0.6, low noise), the report is striped and its period and angle match the ground truth within tolerance (spec, Further Notes). A frame with only the profile is not striped.
-- [ ] The Report converts to JSON. The CLI reads a CSV frame and writes the JSON report.
-- [ ] Tests exist at all three seams: `analyse`, reading a frame, and the CLI end to end.
+- [x] Project installs and tests run with `uv run pytest`.
+- [x] The generator is seeded (same seed gives the same frame), returns frame plus ground truth, and can write a frame as a plain CSV grid.
+- [x] Reading a plain comma-separated grid of floats with no header gives a 2D array of the right shape.
+- [x] `analyse(frame)` returns a Report with `striped`, `score`, and one global period (in pixels) and angle (degrees from vertical).
+- [x] On generated frames with clear full-frame stripes (m about 0.6, low noise), the report is striped and its period and angle match the ground truth within tolerance (spec, Further Notes). A frame with only the profile is not striped.
+- [x] The Report converts to JSON. The CLI reads a CSV frame and writes the JSON report.
+- [x] Tests exist at all three seams: `analyse`, reading a frame, and the CLI end to end.
+
+## Comments
+
+Done in `7fe505b` (first end-to-end version) and `07e28af` (code-review fixes); 67 tests pass. Glossary gained the verdict terms (Stripe-free, Stripe Score, Threshold, Verdict, False Alarm). Still open for the owner: check the Angle sign against one real Solis view.
