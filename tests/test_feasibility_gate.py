@@ -117,7 +117,8 @@ def test_weak_stripes_are_detected_at_least_90_percent(measurement):
     gate = measurement["gate"]
     assert gate["striped_n"] == len(feasibility.GATE.striped)
     assert gate["detected"] / gate["striped_n"] >= 0.90, (
-        f"{gate['detected']}/{gate['striped_n']} detected, exact 95% CI {gate['detection_interval']}"
+        f"{gate['detected']}/{gate['striped_n']} detected,"
+        f" exact 95% CI {gate['detection_interval']}"
     )
 
 

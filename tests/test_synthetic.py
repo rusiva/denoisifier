@@ -23,7 +23,7 @@ def test_returns_frame_and_ground_truth():
 
 
 @pytest.mark.parametrize(
-    "kind, strength, expected",
+    ("kind", "strength", "expected"),
     [("scorched", None, 0.4), ("multiscale", None, 0.35), ("scorched", 0.2, 0.2)],
 )
 def test_mottle_has_the_requested_strength(kind, strength, expected):
@@ -96,7 +96,7 @@ def test_stripe_free_frame_has_no_stripe_peak(mottle, seed):
     assert band_peak(s.frame).vertical_to_horizontal < 10
 
 
-@pytest.mark.parametrize("period, angle_deg", [(3, 10), (20, -10), (7.3, 4)])
+@pytest.mark.parametrize(("period", "angle_deg"), [(3, 10), (20, -10), (7.3, 4)])
 def test_clean_stripes_put_the_spectral_peak_at_the_true_period_and_angle(period, angle_deg):
     s = generate(
         seed=0, mottle="none", noise=0.0, modulation_depth=0.5, period=period, angle_deg=angle_deg

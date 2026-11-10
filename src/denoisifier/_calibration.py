@@ -52,7 +52,8 @@ def threshold_rank(n: int, rate: float) -> int:
     k = math.floor(rate * (n + 1) + 1e-9)
     if k < 1:
         raise ValueError(
-            f"{n} scores are too few for a false-alarm rate of {rate}: need at least {math.ceil(1 / rate) - 1}"
+            f"{n} scores are too few for a false-alarm rate of {rate}: "
+            f"need at least {math.ceil(1 / rate) - 1}"
         )
     return k
 

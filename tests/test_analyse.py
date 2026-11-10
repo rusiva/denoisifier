@@ -39,7 +39,7 @@ def test_clear_stripes_in_mottle_are_found_and_measured(seed):
 
 @pytest.mark.parametrize("noise", [0.0, 0.01])
 @pytest.mark.parametrize(
-    "seed, period, angle_deg",
+    ("seed", "period", "angle_deg"),
     [
         (0, 5, 0),
         (1, 8, 6),
@@ -210,7 +210,9 @@ def test_modulation_depth_is_relative_to_local_envelope(seed, noise):
 EXTREMES = [(3, -10), (3, 0), (3, 10), (20, -10), (20, 0), (20, 10), (3, 5), (20, -5)]
 
 
-@pytest.mark.parametrize("seed, period, angle_deg", [(i, *case) for i, case in enumerate(EXTREMES)])
+@pytest.mark.parametrize(
+    ("seed", "period", "angle_deg"), [(i, *case) for i, case in enumerate(EXTREMES)]
+)
 def test_period_and_angle_extremes_are_detected(seed, period, angle_deg):
     s = generate(
         seed=seed, shape=SHAPE, period=period, angle_deg=angle_deg, modulation_depth=0.5, **TYPICAL
@@ -232,7 +234,7 @@ def test_multiscale_mottle_is_handled(seed):
     assert_matches_truth(report.period_px, report.angle_deg, s.truth)
 
 
-@pytest.mark.parametrize("seed, period", BORDERLINE)
+@pytest.mark.parametrize(("seed", "period"), BORDERLINE)
 def test_borderline_striped_frame_has_finite_measurements(seed, period):
     report = analyse(borderline_frame(seed, period))
     assert report.threshold < report.score < 1.5 * report.threshold

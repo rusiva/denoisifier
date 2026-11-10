@@ -224,9 +224,10 @@ class RateResult:
         lines = [
             f"### {name} ({_shape_text(self.shape)})",
             "",
-            f"- Threshold {self.threshold:.2f} (k = {self.k} largest of {self.calibration_n} calibration scores)",
-            f"- Held-out False Alarms {self.false_alarms}/{self.free_n} = {self.false_alarm_rate:.3f}"
-            f" (tolerance {flo}-{fhi})",
+            f"- Threshold {self.threshold:.2f}"
+            f" (k = {self.k} largest of {self.calibration_n} calibration scores)",
+            f"- Held-out False Alarms {self.false_alarms}/{self.free_n}"
+            f" = {self.false_alarm_rate:.3f} (tolerance {flo}-{fhi})",
             f"- m = {DEPTH} detected {self.detected}/{self.striped_n} = {self.detection_rate:.3f},"
             f" exact 95% CI ({lo:.3f}, {hi:.3f})",
             "",
@@ -234,7 +235,8 @@ class RateResult:
             "|---|---|---|---|---|",
         ]
         lines += [
-            f"| {c.period} | {c.angle_deg} | {c.detected}/{c.n} | {c.min_score:.1f} | {c.min_over_threshold:.2f} |"
+            f"| {c.period} | {c.angle_deg} | {c.detected}/{c.n}"
+            f" | {c.min_score:.1f} | {c.min_over_threshold:.2f} |"
             for c in self.cases
         ]
         return "\n".join(lines)

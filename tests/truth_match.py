@@ -1,4 +1,5 @@
-"""How close a measured Period, Angle and Modulation Depth must be to the generator's ground truth."""
+"""How close a measured Period, Angle and Modulation Depth must be to the generator's ground
+truth."""
 
 PERIOD_REL_TOL = 0.05
 ANGLE_TOL_DEG = 1.0
