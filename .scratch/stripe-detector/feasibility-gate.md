@@ -6,10 +6,10 @@
 |---|---|---|---|
 | Detection, m = 0.2, 256×256 | ≥ 0.90 (point estimate) | 490/500 = **0.980**, exact 95% CI (0.964, 0.990) | PASS |
 | Held-out False Alarms, 256×256 | 3-18 of 1000 | **7/1000** = 0.7%, exact 95% CI (0.3%, 1.4%) | PASS |
-| Time for one 400×1600 frame | ≤ 10 s (median of 3) | **6.31 s** (6.50, 6.31, 5.70) | PASS |
+| Time for one 400×1600 frame | ≤ 10 s (median of 3) | **7.56 s** (7.72, 7.56, 7.14) | PASS |
 | Full-frame probe, m = 0.2, 400×1600 | ≥ 0.95 (plan B3) | 100/100 = **1.000**, exact 95% CI (0.964, 1.000) | PASS |
 
-The detector was measured as it is at `c0d99ab` (no tuning); the measuring code is at `22ee548`. Raw numbers: [`feasibility-gate.json`](feasibility-gate.json).
+The detector was measured as it is at `c0d99ab` (no tuning); the measuring code is at `f0c8f6c`. Raw numbers: [`feasibility-gate.json`](feasibility-gate.json).
 
 ## Setup
 
@@ -18,7 +18,7 @@ The detector was measured as it is at `c0d99ab` (no tuning); the measuring code 
 - Period and Angle come from `CASES[seed % 10]` in `tests/cases.py`: (3, 10°), (5, 0°), (8, 6°), (12, −8°), (20, −10°), (4, −4°), (16, 10°), (6, −10°), (10, 3°), (14, −6°). Stripe-free frames (m = 0) take a case too; it does not change them.
 - Threshold rule: with n Stripe-free calibration scores, k = floor(0.01 · (n + 1)), and the Threshold is the k-th largest score. A new Stripe-free frame then exceeds it with probability k / (n + 1) ≈ 1%.
 - The Threshold is set on the calibration seeds alone. The held-out sets are scored only afterwards, against that fixed Threshold.
-- Run info: commit `22ee548` (clean for `src`, `tests`, `pyproject.toml`, `uv.lock`); AMD Ryzen AI 7 PRO 360 (8 cores, 16 threads), WSL2; Python 3.11.15, NumPy 2.4.6, SciPy 1.17.1; 8 worker processes, single-threaded BLAS/OpenMP in each.
+- Run info: commit `f0c8f6c` (clean for `src`, `tests`, `pyproject.toml`, `uv.lock`); AMD Ryzen AI 7 PRO 360 (8 cores, 16 threads), WSL2; Python 3.11.15, NumPy 2.4.6, SciPy 1.17.1; 8 worker processes, single-threaded BLAS/OpenMP in each.
 
 ## Seeds
 
@@ -78,7 +78,7 @@ These ranges are disjoint from each other and from every seed used before: 0-199
 
 ## Timing
 
-- `analyse` on one 400×1600 frame, single process, no pool running, generation and a 256×256 warm-up not timed: **6.50, 6.31, 5.70 s, median 6.31 s**. P1 measured 5.2-6.4 s on the same laptop.
+- `analyse` on one 400×1600 frame, single process, no pool running, generation and a 256×256 warm-up not timed: **7.72, 7.56, 7.14 s, median 7.56 s**. P1 measured 5.2-6.4 s on the same laptop.
 - The 10 s gate is met. Spec user story 39 asks for "under about 5 seconds"; that is not met and belongs to ticket 13 (speed budget).
 
 ## Weak spots (for ticket 07)
@@ -95,8 +95,8 @@ These ranges are disjoint from each other and from every seed used before: 0-199
 
 ## Re-run
 
-- `uv run python tests/feasibility.py` (about 35 min on this laptop; `--skip-probe` for the timing and 256×256 gate only; `--workers N`; `--out PATH`). It rewrites `feasibility-gate.json`.
-- `uv run pytest -W error -m slow tests/test_feasibility_gate.py` runs the same measurement as tests (slow tests are skipped by default). At `22ee548` all 4 slow tests passed (39.6 min); the default suite passed 194 tests with `-W error`.
+- `uv run python tests/feasibility.py` (about 39 min on this laptop; `--skip-probe` for the timing and 256×256 gate only; `--workers N`; `--out PATH`). It rewrites `feasibility-gate.json`.
+- `uv run pytest -W error -m slow tests/test_feasibility_gate.py` runs the same measurement as tests (slow tests are skipped by default). At `ffffbed` (12 worker processes) all 4 slow tests passed (37.2 min); the default suite passed 203 tests with `-W error`.
 
 ## Evidence
 
