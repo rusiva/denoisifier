@@ -19,6 +19,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
+    "pytest-timeout>=2.4.0",
 ]
 
 [project.scripts]
@@ -26,7 +27,21 @@ denoisifier = "denoisifier.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not slow'"
+# The slow tier is `make check-slow` (-m slow). Narrowing this selection is a weakening move (CLAUDE.md).
+addopts = ["-m", "not slow"]
 markers = [
-    "slow: long measurement runs (feasibility gate); run with -m slow",
+    "slow: long measurement runs (feasibility gate); `make check-slow`",
 ]
+# A misspelt marker or config key, or an xfail that passes, fails the run.
+strict_markers = true
+strict_config = true
+strict_xfail = true
+filterwarnings = ["error"]
+# Operating setting, agent-chosen from measured slowest steps (1.28 s idle, 7.07 s at 2x CPU
+# oversubscription; ticket agent-gates/01 Comments). Thread method: a hung native call never
+# returns to Python for a signal handler; the thread dumps stacks and ends the run.
+# Known risk, accepted: this CPython lacks sem_clockwait, so the timer waits on CLOCK_REALTIME
+# and a VM resume can fire it early. That is a false red, never a false green; port cadmesh's
+# monotonic-clock conftest if it is ever seen.
+timeout = 60
+timeout_method = "thread"
