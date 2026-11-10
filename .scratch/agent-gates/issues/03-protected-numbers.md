@@ -4,11 +4,33 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] Test-side numbers live in one test module: Period, Angle and Modulation Depth tolerances, the spectral band, the borderline score window, the slow tier's acceptance limits (false-alarm rate, minimum detection rate, timing limit) and the named seed ranges. Tests import them from there.
-- [ ] A check in `make check` compares the live values of the detector's settings (at least `THRESHOLD`, `_A0`, `MIN_SIDE`, `_PAD`, `_MIN_PAIRS`) and every number in that module against a checked-in lockfile. It names each mismatch.
-- [ ] A new module-level number in either place that is not in the lockfile also fails the check, so a new setting can't bypass it.
-- [ ] The lockfile says at the top that editing it is a weakening move needing owner approval, and CLAUDE.md lists it among the protected surfaces.
-- [ ] Proof: a planted change to one tolerance, and separately to `THRESHOLD`, turns `make check` red, naming the number and the lockfile. The plants are not committed.
-- [ ] `make check` and `make check-slow` stay green, and the values match the current committed ones exactly. This ticket moves numbers; it never retunes them.
+- [x] Test-side numbers live in one test module: Period, Angle and Modulation Depth tolerances, the spectral band, the borderline score window, the slow tier's acceptance limits (false-alarm rate, minimum detection rate, timing limit) and the named seed ranges. Tests import them from there.
+- [x] A check in `make check` compares the live values of the detector's settings (at least `THRESHOLD`, `_A0`, `MIN_SIDE`, `_PAD`, `_MIN_PAIRS`) and every number in that module against a checked-in lockfile. It names each mismatch.
+- [x] A new module-level number in either place that is not in the lockfile also fails the check, so a new setting can't bypass it.
+- [x] The lockfile says at the top that editing it is a weakening move needing owner approval, and CLAUDE.md lists it among the protected surfaces.
+- [x] Proof: a planted change to one tolerance, and separately to `THRESHOLD`, turns `make check` red, naming the number and the lockfile. The plants are not committed.
+- [x] `make check` and `make check-slow` stay green, and the values match the current committed ones exactly. This ticket moves numbers; it never retunes them.
+
+## Comments
+
+**Design (implementer, 2026-11-10).** Commits `e775bf4` (numbers, lockfile, check) and `388c712` (CLAUDE.md).
+
+- **Test module:** `tests/protected.py` holds the Period, Angle and Modulation Depth tolerances (`PERIOD_REL_TOL`, `ANGLE_TOL_DEG`, `DEPTH_TOL`), `SPECTRAL_BAND_DEG`, `BORDERLINE_SCORE_WINDOW`, the slow tier's limits (`FALSE_ALARM_RATE`, `FALSE_ALARM_TOLERANCE`, `MIN_DETECTION_RATE`, `PROBE_MIN_DETECTION_RATE`, `TIMING_LIMIT_S`), the measurement plan that sets the gate's difficulty (`WEAK_DEPTH`, `GATE_SHAPE`, `PROBE_SHAPE`, `TIMING_CASE`), the named seed ranges (`GATE_*_SEEDS`, `PROBE_*_SEEDS`, `TIMING_SEED`) and `USED_SEEDS`. `truth_match.py`, `spectrum.py`, `test_analyse.py`, `test_cli.py`, `feasibility.py` and `test_feasibility_gate.py` import them. Ticket 04's registry can live here.
+- **Check:** `tests/test_protected_numbers.py::test_protected_numbers_match_the_lockfile`, a pytest test, so it runs in `make check` (and `make test-fast`) with no Makefile, conftest or pyproject edit: no gate-config change, so no approval was needed. `tests/protected_lock.py` finds every name bound at module level, or in a top-level class body, of every importable `denoisifier` module (found by `pkgutil.walk_packages`, so a new module is covered) and of `tests/protected.py`; it reads each name's **live** value and keeps those holding an int, float, complex, NumPy number or range anywhere inside. It compares their canonical text (shortest round-trip float repr; containers, NamedTuples, dataclasses and arrays element by element) exactly with `tests/protected_numbers.lock`, and names each changed value, each number missing from the lockfile, and each lockfile line whose number is gone. Names a module imports are checked in the module that defines them.
+- **Scope beyond the ticket's minimum (strengthening):** the whole package, not just the five named settings, so `_ENVELOPE_SIGMA`, `_MASK_FRACTION`, `_PERIOD_SPREAD`, `_PERIODS`, `_STRIPE_ANGLES_DEG`, `_ACROSS`, `_ALONG`, the generator's `_TYPICAL_MOTTLE_STRENGTH` and the `Emccd` defaults (which `feasibility.NOISE = Emccd()` uses) are pinned too. 41 entries.
+- **Values unchanged:** each lockfile value was compared with the literal at `5564697` (the moved test-side numbers and the package's settings); all equal. The checker's own tests (`test_protected_numbers.py`, 9 more) cover a changed value (also through an expression), a new module- and class-level number, a removed or non-numeric entry, imported names, malformed and duplicate lockfile lines, and the canonical text.
+- **Known holes:** numbers written inline in a test (for example `abs(depths[0] - depths[1]) <= 0.05` in `test_analyse.py`, `vertical_to_horizontal < 10` in `test_synthetic.py`, the generator-oracle tolerances in `test_synthetic.py`, `test_calibration.py`'s `1e-3` and `4 * sd`), module-level numbers in test modules other than `protected.py` (`cases.CASES`, `borderline.BORDERLINE`, `test_analyse.SHAPE`/`SEEDS`/`EXTREMES`), function default arguments (`generate(period=8.0, peak=1000.0, noise=0.01, ...)`) and `denoisifier.__main__` (importing it runs the CLI) are not checked. A uv.lock bump of NumPy could change `_PERIODS` in its last digit: a loud red, never a silent pass.
+
+**Plant proofs (implementer, 2026-11-10, HEAD `5564697-dirty`: this ticket's uncommitted work plus the `.scratch` Markdown changes listed under ticket 02).** One at a time, each through `make check` (make exit 2, `make: *** [Makefile:...] Error 2`), each reverted; `git status --porcelain -- src` was empty afterwards and `tests/protected.py` byte-identical to its backup. No plant is committed.
+
+- `DEPTH_TOL = 0.12` in `tests/protected.py` → `AssertionError: protected_numbers.lock: 1 protected number(s) differ from the lockfile:` / `protected :: DEPTH_TOL changed: lockfile 0.1, live 0.12` / `A protected number changed. Editing protected_numbers.lock is a weakening move that needs the owner's approval first (CLAUDE.md); otherwise restore the number.`, `1 failed, 217 passed, 4 deselected in 98.83s (0:01:38)`.
+- `THRESHOLD = 155.0` in `src/denoisifier/analysis.py` → `denoisifier.analysis :: THRESHOLD changed: lockfile 154.0, live 155.0`, `1 failed, 217 passed, 4 deselected in 95.83s (0:01:35)`. No other test caught it.
+- `_NEW_SETTING = 3` after `_MIN_PAIRS` in `analysis.py` → `denoisifier.analysis :: _NEW_SETTING = 3 is a number that is not in the lockfile`, `1 failed, 217 passed, 4 deselected in 90.01s (0:01:30)`.
+
+**Gate runs (implementer, 2026-11-10).**
+
+- `make check` on the uncommitted work (HEAD `5564697-dirty`, as above) → exit 0, `218 passed, 4 deselected in 104.83s (0:01:44)`.
+- `make check` at HEAD `388c712` → exit 0, `218 passed, 4 deselected in 86.56s (0:01:26)`. The tree's only uncommitted changes were the `.scratch` Markdown listed under ticket 02 (outside every gate's scope), so no `-dirty` applies to what the gate ran.
+- `make check-slow` (background, log `.scratch/agent-gates/handoffs/03-check-slow.log`) at HEAD `388c712` → exit 0, `4 passed, 218 deselected in 2850.97s (0:47:30)`. Started 22:57:58 with `/proc/loadavg` `1.74 2.17 2.32`, ended 23:42:45; nothing else ran meanwhile. Required because `tests/feasibility.py` changed; the 10 s timing test passed.
