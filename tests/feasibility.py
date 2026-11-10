@@ -318,14 +318,9 @@ def run_info(workers: int) -> dict:
     }
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
-    parser.add_argument("--skip-probe", action="store_true", help="skip the full-frame probe")
-    parser.add_argument("--workers", type=int, default=None, help="worker processes (default: three quarters of the CPUs)")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="JSON result path")
-    args = parser.parse_args(argv)
-
-    workers = resolve_workers(args.workers)
+def measure_all(workers: int | None = None, probe: bool = True) -> dict:
+    """Run info, timing, the gate and (optionally) the probe: the dict main() saves."""
+    workers = resolve_workers(workers)
     out: dict = {"run_info": run_info(workers)}
     # Timing first, before any worker pool has run.
     times = time_full_frame()
@@ -339,11 +334,21 @@ def main(argv: list[str] | None = None) -> int:
     gate = measure_gate(workers)
     out["gate"] = gate.to_dict()
     print(gate.table("Gate"), flush=True)
-    if not args.skip_probe:
-        probe = measure_probe(workers)
-        out["probe"] = probe.to_dict()
-        print(probe.table("Full-frame probe"), flush=True)
+    if probe:
+        probe_result = measure_probe(workers)
+        out["probe"] = probe_result.to_dict()
+        print(probe_result.table("Full-frame probe"), flush=True)
+    return out
 
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
+    parser.add_argument("--skip-probe", action="store_true", help="skip the full-frame probe")
+    parser.add_argument("--workers", type=int, default=None, help="worker processes (default: three quarters of the CPUs)")
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="JSON result path")
+    args = parser.parse_args(argv)
+
+    out = measure_all(args.workers, probe=not args.skip_probe)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(out, indent=2) + "\n")
     print(f"wrote {args.out}")
