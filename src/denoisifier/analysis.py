@@ -1,6 +1,6 @@
 """``analyse``: decide whether a frame is striped and measure the stripes.
 
-Method: local periodicity plus near-vertical orientation, not feature size
+Method: local periodicity plus a near-vertical Angle, not feature size
 (ADR 0001); the filter bank lives in ``_local_stripes``.
 """
 
@@ -9,21 +9,27 @@ from __future__ import annotations
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-from denoisifier._local_stripes import LocalStripes, estimate_local_stripes, gabor_at
+from denoisifier._local_stripes import _A0, _PAD, LocalStripes, estimate_local_stripes, gabor_at
 from denoisifier.report import Report
 
 # Provisional verdict threshold (ticket 07 replaces it with a calibrated value).
-# Measured on calibration seeds outside the test seeds, 256x256 frames,
-# ~100 photons at the peak, EMCCD: highest stripe-free score 83.7 (scorched,
-# seeds 100-199; multiscale 100-149: 55.7); lowest m = 0.5 score 363
-# (scorched and multiscale, seeds 100-119, Periods 3-20, Angles +-10).
-# 150 leaves 1.8x above the stripe-free maximum and 2.4x below m = 0.5 (the
-# log-midpoint would be ~174). m = 0.2 scores 80-205: ticket 03's problem.
-THRESHOLD = 150.0
+# The log-midpoint of two scores measured on calibration seeds 100-199 (outside
+# the test seeds), 256x256 frames, ~100 photons at the peak, EMCCD, scorched
+# and multiscale Mottle: highest stripe-free score 83.7 (scorched, seed 114)
+# and lowest m = 0.5 score 284.8 (multiscale, seed 195, Period 4, Angle -4;
+# Periods 3-20 and Angles +-10 cycled over seeds). sqrt(83.7 * 284.8) = 154.4:
+# 1.8x margin on each side. m = 0.2 scores 71-810 (scorched, seeds 100-119,
+# Periods 3/5/8/20): ticket 03's problem.
+# With the ratio floor _A0 = 3e-3, noise-free stripes shallower than about
+# _A0 * sqrt(THRESHOLD) ~ 0.04 are never Striped.
+THRESHOLD = 154.0
 
 # Smallest side accepted: 2 x the longest period searched; the sigma = 10
 # envelope filter needs at least that.
 MIN_SIDE = 40
+# The filter bank reflect-pads every frame by _PAD px, valid only below the
+# shortest side.
+assert _PAD < MIN_SIDE
 
 _ENVELOPE_SIGMA = 10.0
 _MASK_FRACTION = 0.1
@@ -32,7 +38,7 @@ _MASK_FRACTION = 0.1
 _PERIOD_SPREAD = 1.25
 # Fewer horizontal or vertical neighbour pairs than this in the measured area
 # and the bank Period and Angle at the peak are reported instead.
-MIN_PAIRS = 8
+_MIN_PAIRS = 8
 
 
 def analyse(frame: np.ndarray) -> Report:
@@ -88,22 +94,22 @@ def _measure(frame: np.ndarray, local: LocalStripes) -> tuple[float, float, floa
     Ticket 05 replaces the measured area with real Striped Regions.
     """
     peak = np.unravel_index(np.argmax(local.ratio), local.ratio.shape)
-    p_star = float(local.period[peak])
-    hot = local.ratio > THRESHOLD
+    peak_period = float(local.period[peak])
+    above_threshold = local.ratio > THRESHOLD
     log_spread = np.zeros(local.ratio.shape)
-    np.log(local.period / p_star, out=log_spread, where=hot)
-    area = hot & (np.abs(log_spread) <= np.log(_PERIOD_SPREAD))
+    np.log(local.period / peak_period, out=log_spread, where=above_threshold)
+    area = above_threshold & (np.abs(log_spread) <= np.log(_PERIOD_SPREAD))
 
-    period_px, angle_deg = p_star, float(local.angle_deg[peak])
+    period_px, angle_deg = peak_period, float(local.angle_deg[peak])
     h_pairs = area[:, :-1] & area[:, 1:]
     v_pairs = area[:-1, :] & area[1:, :]
-    if h_pairs.sum() >= MIN_PAIRS and v_pairs.sum() >= MIN_PAIRS:
+    if h_pairs.sum() >= _MIN_PAIRS and v_pairs.sum() >= _MIN_PAIRS:
         # Local frequency from the phase step between neighbours. Not
         # np.gradient of the phase: central differences are biased at short
         # Periods.
-        g = local.response
-        cx = (g[:, 1:] * np.conj(g[:, :-1]))[h_pairs].sum()
-        cy = (g[1:, :] * np.conj(g[:-1, :]))[v_pairs].sum()
+        bank = local.response
+        cx = (bank[:, 1:] * np.conj(bank[:, :-1]))[h_pairs].sum()
+        cy = (bank[1:, :] * np.conj(bank[:-1, :]))[v_pairs].sum()
         fx, fy = np.angle(cx) / (2 * np.pi), np.angle(cy) / (2 * np.pi)
         f = np.hypot(fx, fy)
         if f > 0:
@@ -111,9 +117,9 @@ def _measure(frame: np.ndarray, local: LocalStripes) -> tuple[float, float, floa
 
     # Re-tune one filter to the measured Period and Angle: removes the bank's
     # grid-mismatch loss (up to ~15% low otherwise).
-    response, local_mean = gabor_at(frame, period_px, angle_deg)
-    lit = area & (local_mean > 0)
+    tuned, tuned_mean = gabor_at(frame, period_px, angle_deg)
+    lit = area & (tuned_mean > 0)
     if not lit.any():
         lit = area
-    depth = 2 * np.abs(response[lit]) / np.maximum(np.abs(local_mean[lit]), np.finfo(float).tiny)
+    depth = 2 * np.abs(tuned[lit]) / np.maximum(np.abs(tuned_mean[lit]), np.finfo(float).tiny)
     return period_px, angle_deg, float(np.median(depth))

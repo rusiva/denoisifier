@@ -22,7 +22,6 @@ def test_returns_frame_and_ground_truth():
     assert s.truth.modulation_depth == 0.3
 
 
-
 @pytest.mark.parametrize(
     "kind, strength, expected",
     [("scorched", None, 0.4), ("multiscale", None, 0.35), ("scorched", 0.2, 0.2)],

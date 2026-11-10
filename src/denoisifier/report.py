@@ -30,11 +30,15 @@ class Report:
             "striped": bool(self.striped),
             "score": float(self.score),
             "threshold": float(self.threshold),
-            "period_px": None if self.period_px is None else float(self.period_px),
-            "angle_deg": None if self.angle_deg is None else float(self.angle_deg),
-            "modulation_depth": None if self.modulation_depth is None else float(self.modulation_depth),
+            "period_px": _float_or_none(self.period_px),
+            "angle_deg": _float_or_none(self.angle_deg),
+            "modulation_depth": _float_or_none(self.modulation_depth),
         }
 
     def to_json(self) -> str:
         # allow_nan=False: a NaN can never become invalid JSON.
         return json.dumps(self.to_dict(), indent=2, allow_nan=False)
+
+
+def _float_or_none(value: float | None) -> float | None:
+    return None if value is None else float(value)

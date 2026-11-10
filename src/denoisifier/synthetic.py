@@ -149,28 +149,28 @@ def generate(
     )
 
 
-def _check_emccd(e: Emccd) -> None:
-    if not e.photons_peak > 0:
-        raise ValueError(f"photons_peak must be > 0, got {e.photons_peak!r}")
-    if not e.em_gain >= 1:
-        raise ValueError(f"em_gain must be >= 1, got {e.em_gain!r}")
-    if not e.read_noise_e >= 0:
-        raise ValueError(f"read_noise_e must be >= 0, got {e.read_noise_e!r}")
-    if not e.cic >= 0:
-        raise ValueError(f"cic must be >= 0, got {e.cic!r}")
+def _check_emccd(emccd: Emccd) -> None:
+    if not emccd.photons_peak > 0:
+        raise ValueError(f"photons_peak must be > 0, got {emccd.photons_peak!r}")
+    if not emccd.em_gain >= 1:
+        raise ValueError(f"em_gain must be >= 1, got {emccd.em_gain!r}")
+    if not emccd.read_noise_e >= 0:
+        raise ValueError(f"read_noise_e must be >= 0, got {emccd.read_noise_e!r}")
+    if not emccd.cic >= 0:
+        raise ValueError(f"cic must be >= 0, got {emccd.cic!r}")
 
 
-def _emccd(rng, clean, e: Emccd):
+def _emccd(rng, clean, emccd: Emccd):
     """Photons + spurious charge -> Poisson -> EM gain (Gamma) -> read noise."""
-    n = rng.poisson(clean + e.cic)
-    if e.em_gain > 1:
+    n = rng.poisson(clean + emccd.cic)
+    if emccd.em_gain > 1:
         electrons = np.zeros(clean.shape)
         lit = n > 0
-        electrons[lit] = rng.gamma(n[lit], e.em_gain)
+        electrons[lit] = rng.gamma(n[lit], emccd.em_gain)
     else:
         electrons = n.astype(float)
-    electrons = electrons + rng.normal(0.0, e.read_noise_e, size=clean.shape)
-    return electrons / e.em_gain
+    electrons = electrons + rng.normal(0.0, emccd.read_noise_e, size=clean.shape)
+    return electrons / emccd.em_gain
 
 
 def _profile(rng, rows, cols, x, y):
@@ -188,27 +188,27 @@ def _profile(rng, rows, cols, x, y):
     return np.exp(-0.5 * ((u / sigma_u) ** 2 + (v / sigma_minor) ** 2))
 
 
-
 def _mottle(rng, shape, kind, strength):
     """Log-normal Mottle, ``exp(strength * g)`` with ``g`` of unit std."""
     if kind == "scorched":
-        g = _norm(np.tanh(2.5 * _grf(rng, shape, 3.0)) + 0.4 * _grf(rng, shape, 1.5))
+        field = _standardise(np.tanh(2.5 * _grf(rng, shape, 3.0)) + 0.4 * _grf(rng, shape, 1.5))
     else:
-        g = _grf(rng, shape, 2.2)
-    return np.exp(strength * g)
+        field = _grf(rng, shape, 2.2)
+    return np.exp(strength * field)
 
 
 def _grf(rng, shape, beta):
     """Isotropic Gaussian random field with power ~ k^-beta, unit std."""
     ky = np.fft.fftfreq(shape[0])[:, None]
     kx = np.fft.fftfreq(shape[1])[None, :]
-    k = np.hypot(kx, ky)
-    k[0, 0] = 1.0
-    amp = k ** (-beta / 2)
+    freq = np.hypot(kx, ky)
+    freq[0, 0] = 1.0
+    amp = freq ** (-beta / 2)
     amp[0, 0] = 0.0
-    g = np.real(np.fft.ifft2(np.fft.fft2(rng.normal(size=shape)) * amp))
-    return _norm(g)
+    field = np.real(np.fft.ifft2(np.fft.fft2(rng.normal(size=shape)) * amp))
+    return _standardise(field)
 
 
-def _norm(a):
+def _standardise(a):
+    """Zero mean, unit std."""
     return (a - a.mean()) / a.std()

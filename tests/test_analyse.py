@@ -5,6 +5,7 @@ import pytest
 
 from denoisifier import Report, analyse
 from denoisifier.synthetic import Emccd, generate
+from borderline import BORDERLINE, borderline_frame
 from truth_match import assert_depth_matches, assert_matches_truth
 
 SHAPE = (256, 256)
@@ -210,17 +211,6 @@ def test_multiscale_mottle_is_handled(seed):
     report = analyse(s.frame)
     assert report.striped is True
     assert_matches_truth(report.period_px, report.angle_deg, s.truth)
-
-
-# m = 0.2 frames whose score lands just over THRESHOLD (picked from seeds
-# 0-19, Periods {3, 5, 8, 20}): the measured area is small. On (3, 5) and
-# (1, 5) it has too few neighbour pairs to measure local phase (3 pixels and
-# 14 pixels when picked).
-BORDERLINE = [(3, 5), (1, 5), (0, 20), (12, 20), (16, 8)]
-
-
-def borderline_frame(seed, period):
-    return generate(seed=seed, shape=SHAPE, period=period, angle_deg=0, modulation_depth=0.2, **TYPICAL).frame
 
 
 @pytest.mark.parametrize("seed, period", BORDERLINE)
