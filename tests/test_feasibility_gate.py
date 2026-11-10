@@ -1,8 +1,9 @@
 """Ticket 03 feasibility gate: weak stripes (m = 0.2) at 1% False Alarms.
 
 The limit tests check the saved measurement, feasibility-gate.json, and, in the
-slow tier (`make check-slow`, about 40 min), a fresh measurement. Re-measure and
-save with `uv run python tests/feasibility.py`. The written result is
+slow tier (`make check-slow`; its duration is noted at the `fresh` timeout
+below), a fresh measurement. Re-measure and save with
+`uv run python tests/feasibility.py`. The write-up is
 .scratch/stripe-detector/feasibility-gate.md.
 """
 
@@ -61,20 +62,15 @@ def saved():
 
 @pytest.fixture(
     scope="module",
-    params=[
-        "saved",
-        # The fresh measurement took about 39 min with 8 workers
-        # (feasibility-gate.md); 5400 s is about 2.3x that.
-        pytest.param("fresh", marks=[pytest.mark.slow, pytest.mark.timeout(5400)]),
-    ],
+    params=["saved", pytest.param("fresh", marks=pytest.mark.slow)],
 )
-def result(request):
+def measurement(request):
     if request.param == "fresh":
         return feasibility.measure_all()
     return request.getfixturevalue("saved")
 
 
-def test_saved_result_is_from_clean_code_and_the_current_seed_plan(saved):
+def test_saved_measurement_is_from_clean_code_and_the_current_seed_plan(saved):
     info = saved["run_info"]
     assert not info["commit"].endswith("-dirty"), "re-measure from a clean tree"
     assert tuple(info["gate_shape"]) == feasibility.GATE.shape
@@ -84,14 +80,24 @@ def test_saved_result_is_from_clean_code_and_the_current_seed_plan(saved):
     )
 
 
-def test_full_frame_is_analysed_within_10_s(result):
-    timing = result["timing"]
+# The module-scoped fresh measurement is paid for by the first test that uses it,
+# this one (first in the file; pytest keeps file order within a param). The fresh
+# measurement took about 39 min with 8 workers (feasibility-gate.md); 5400 s is
+# about 2.3x that. This is the one source for the slow tier's duration. Every
+# other test keeps the global 60 s limit.
+@pytest.mark.parametrize(
+    "measurement",
+    ["saved", pytest.param("fresh", marks=[pytest.mark.slow, pytest.mark.timeout(5400)])],
+    indirect=True,
+)
+def test_full_frame_is_analysed_within_10_s(measurement):
+    timing = measurement["timing"]
     assert len(timing["seconds"]) == 3
     assert timing["median_s"] <= feasibility.TIMING_LIMIT_S, f"analyse times {timing['seconds']} s"
 
 
-def test_held_out_false_alarm_rate_is_about_one_percent(result):
-    gate = result["gate"]
+def test_held_out_false_alarm_rate_is_about_one_percent(measurement):
+    gate = measurement["gate"]
     lo, hi = gate["false_alarm_tolerance"]
     assert (lo, hi) == (3, 18)
     assert gate["free_n"] == len(feasibility.GATE.free)
@@ -101,18 +107,18 @@ def test_held_out_false_alarm_rate_is_about_one_percent(result):
     )
 
 
-def test_weak_stripes_are_detected_at_least_90_percent(result):
-    gate = result["gate"]
+def test_weak_stripes_are_detected_at_least_90_percent(measurement):
+    gate = measurement["gate"]
     assert gate["striped_n"] == len(feasibility.GATE.striped)
     assert gate["detected"] / gate["striped_n"] >= 0.90, (
         f"{gate['detected']}/{gate['striped_n']} detected, exact 95% CI {gate['detection_interval']}"
     )
 
 
-def test_full_frame_probe_detects_at_least_95_percent(result):
-    # The probe's False Alarm count is recorded in the result doc, not asserted:
+def test_full_frame_probe_detects_at_least_95_percent(measurement):
+    # The probe's False Alarm count is recorded in the write-up, not asserted:
     # its tolerance includes 0, so it cannot show "about 1%" (plan B4).
-    probe = result["probe"]
+    probe = measurement["probe"]
     assert probe["striped_n"] == len(feasibility.PROBE.striped)
     assert probe["detected"] / probe["striped_n"] >= feasibility.PROBE_MIN_RATE, (
         f"{probe['detected']}/{probe['striped_n']} detected at full frame, exact 95% CI "

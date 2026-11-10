@@ -335,9 +335,9 @@ def measure_all(workers: int | None = None, probe: bool = True) -> dict:
     out["gate"] = gate.to_dict()
     print(gate.table("Gate"), flush=True)
     if probe:
-        probe_result = measure_probe(workers)
-        out["probe"] = probe_result.to_dict()
-        print(probe_result.table("Full-frame probe"), flush=True)
+        probe_measurement = measure_probe(workers)
+        out["probe"] = probe_measurement.to_dict()
+        print(probe_measurement.table("Full-frame probe"), flush=True)
     return out
 
 
@@ -345,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--skip-probe", action="store_true", help="skip the full-frame probe")
     parser.add_argument("--workers", type=int, default=None, help="worker processes (default: three quarters of the CPUs)")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="JSON result path")
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="JSON measurement path")
     args = parser.parse_args(argv)
 
     out = measure_all(args.workers, probe=not args.skip_probe)

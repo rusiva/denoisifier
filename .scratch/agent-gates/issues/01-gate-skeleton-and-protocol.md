@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] `make test-fast` (inner loop, stops at the first failure, reruns failures first), `make check` (gate: every non-slow test, whole), `make check-slow` (the `slow` tier) and `make fix` (the only target that changes files, empty until ticket 02) exist. Every target runs through the locked uv environment.
 - [x] pytest runs with strict markers, strict config, strict xfail, all warnings as errors, and a per-test timeout using the thread method. The timeout is an operating setting chosen from measured slowest-test times, and the evidence is recorded under `## Comments`.
@@ -35,3 +35,5 @@ Chosen `timeout = 60`, `timeout_method = "thread"`: about 8.5× the slowest step
   - `@pytest.mark.slwo` → ``'slwo' not found in `markers` configuration option``, `Interrupted: 1 error during collection`.
   - A failing plant: `make test-fast` stopped at `1 failed`; the next run printed `run-last-failure: rerun previous 1 failure first` and ran the plant first. A child process `warnings.warn` under pytest failed with `UserWarning: child` (conftest's `PYTHONWARNINGS=error`).
 - `make fix` → exit 0, prints the ticket 02 placeholder, tree unchanged.
+
+**Owner approval, code review (fixer, 2026-11-10).** The owner approved two slow-tier changes from the ticket 01 code review, asked before the change: S1, rename the `result` fixture and `probe_result` to measurement names (the glossary reserves "result" for Verdict); C1, narrow the 5400 s timeout from the whole `fresh` param to the one test that pays the module-scoped fixture setup, `test_full_frame_is_analysed_within_10_s[fresh]` (first in file order), so the other three `fresh` tests keep the global 60 s. The owner ruled both fixed and `make check-slow` re-run. Checked with `--collect-only` and a scratch plugin: only that item carries `timeout(5400)`, it is collected first in `-m slow`, and `measure_all` runs once for all four `fresh` tests. The slow tier's duration is now stated once, at that timeout's comment; the Makefile and CLAUDE.md point to it.
