@@ -26,3 +26,7 @@ denoisifier = "denoisifier.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "slow: long measurement runs (feasibility gate); run with -m slow",
+]

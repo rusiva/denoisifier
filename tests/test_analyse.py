@@ -6,13 +6,13 @@ import pytest
 from denoisifier import Report, analyse
 from denoisifier.synthetic import Emccd, generate
 from borderline import BORDERLINE, borderline_frame
+from cases import CASES
 from truth_match import assert_depth_matches, assert_matches_truth
 
 SHAPE = (256, 256)
 SEEDS = range(20)
 # About 100 photons at the peak, scorched mottle: the ticket 02 working point.
 TYPICAL = dict(mottle="scorched", noise=Emccd())
-CASES = [(3, 10), (5, 0), (8, 6), (12, -8), (20, -10), (4, -4), (16, 10), (6, -10), (10, 3), (14, -6)]
 
 
 @pytest.mark.parametrize("seed", SEEDS)
