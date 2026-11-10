@@ -23,6 +23,7 @@ Single-context: one root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md
   - adding `skip`, `skipif` or `xfail` (or `strict=False`);
   - suppressing a warning (`filterwarnings`, `warnings.catch_warnings`, `PYTHONWARNINGS`) or a lint (`noqa`, `type: ignore`);
   - narrowing the selected tests (`addopts`, `-m`, `-k`, `--deselect`, `testpaths`, the Makefile);
+  - editing the protected-number lockfile `tests/protected_numbers.lock` or its check (`tests/protected_lock.py`, `tests/test_protected_numbers.py`); the lockfile pins every module- and class-level number in `src/denoisifier` and every number in `tests/protected.py`, where test-side tolerances, acceptance limits and seed ranges live;
   - raising or disabling a timeout, including a per-test or per-param `pytest.mark.timeout(...)` mark;
   - editing gate config (the `Makefile`, `[tool.pytest.ini_options]`, `[tool.ruff]`, `[tool.mypy]`, `tests/conftest.py`, and the `pytest`/`pytest-timeout`/`ruff`/`mypy`/`scipy-stubs` pins and other `[dependency-groups].dev` gate tools).
 - **Handoffs quote the gate; they never claim it.** Paste the command, its exit status, pytest's final summary line (e.g. `208 passed, 4 deselected in 77.93s`) and `git rev-parse --short HEAD`, plus `-dirty` if the tree had changes. "Tests pass" without that quote does not count.
