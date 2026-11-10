@@ -6,10 +6,14 @@
 
 **Status:** ready-for-agent
 
-- [ ] The threshold is set only on calibration seeds; all rates are measured on held-out seeds that were never used for calibration.
-- [ ] The false-alarm rate on held-out stripe-free frames is about 1% (within binomial tolerance for the batch size used).
-- [ ] The detection rate for m = 0.2 at that threshold is reported, with batch size and confidence interval. **Gate:** at least 90%.
-- [ ] Time to analyse one 1600×400 frame on a laptop CPU is reported. **Gate:** 10 s or less.
-- [ ] Results are written down next to the spec (setup, seeds, numbers, pass or fail).
-- [ ] The measurement runs as a repeatable test or script (marked slow), not a one-off notebook.
-- [ ] If either gate fails: status set to `ready-for-human`, with the numbers and the most likely causes recorded.
+- [x] The threshold is set only on calibration seeds; all rates are measured on held-out seeds that were never used for calibration.
+- [x] The false-alarm rate on held-out stripe-free frames is about 1% (within binomial tolerance for the batch size used).
+- [x] The detection rate for m = 0.2 at that threshold is reported, with batch size and confidence interval. **Gate:** at least 90%.
+- [x] Time to analyse one 1600×400 frame on a laptop CPU is reported. **Gate:** 10 s or less.
+- [x] Results are written down next to the spec (setup, seeds, numbers, pass or fail).
+- [x] The measurement runs as a repeatable test or script (marked slow), not a one-off notebook.
+- [x] If either gate fails: status set to `ready-for-human`, with the numbers and the most likely causes recorded. (Not triggered: all gates passed.)
+
+## Comments
+
+Gate PASS, measured at `22ee548` with the detector unchanged from `c0d99ab`. At 256×256, the 1% Threshold set on 2000 calibration seeds is 74.12. On held-out seeds: 7/1000 False Alarms (tolerance 3-18), and m = 0.2 detected 490/500 = 0.980, exact 95% CI (0.964, 0.990). Full-frame probe at 400×1600: 100/100, CI (0.964, 1.000). One 400×1600 frame takes 6.31 s (median of 3). Period 3 is the weak case (42/50 at 256×256). Details: `.scratch/stripe-detector/feasibility-gate.md`.

@@ -1,0 +1,332 @@
+{
+  "run_info": {
+    "commit": "22ee548",
+    "cpu": "AMD Ryzen AI 7 PRO 360 w/ Radeon 880M",
+    "logical_cpus": 16,
+    "python": "3.11.15",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "rate": 0.01,
+    "modulation_depth": 0.2,
+    "mottle": "scorched",
+    "emccd": {
+      "photons_peak": 100.0,
+      "em_gain": 300.0,
+      "read_noise_e": 50.0,
+      "cic": 0.005
+    },
+    "cases": [
+      [
+        3,
+        10
+      ],
+      [
+        5,
+        0
+      ],
+      [
+        8,
+        6
+      ],
+      [
+        12,
+        -8
+      ],
+      [
+        20,
+        -10
+      ],
+      [
+        4,
+        -4
+      ],
+      [
+        16,
+        10
+      ],
+      [
+        6,
+        -10
+      ],
+      [
+        10,
+        3
+      ],
+      [
+        14,
+        -6
+      ]
+    ],
+    "gate_shape": [
+      256,
+      256
+    ],
+    "probe_shape": [
+      400,
+      1600
+    ],
+    "seeds": {
+      "calibration": [
+        10000,
+        11999
+      ],
+      "held_out_free": [
+        20000,
+        20999
+      ],
+      "held_out_striped": [
+        30000,
+        30499
+      ],
+      "probe_calibration": [
+        70000,
+        70299
+      ],
+      "probe_free": [
+        71000,
+        71199
+      ],
+      "probe_striped": [
+        72000,
+        72099
+      ],
+      "timing": [
+        40000,
+        40000
+      ]
+    }
+  },
+  "timing": {
+    "shape": [
+      400,
+      1600
+    ],
+    "seconds": [
+      6.497305905999383,
+      6.308991081998101,
+      5.695499656998436
+    ],
+    "median_s": 6.308991081998101,
+    "limit_s": 10.0
+  },
+  "gate": {
+    "shape": [
+      256,
+      256
+    ],
+    "threshold": 74.11851980928641,
+    "k": 20,
+    "calibration_n": 2000,
+    "calibration_above": 19,
+    "free_n": 1000,
+    "false_alarms": 7,
+    "false_alarm_interval": [
+      0.0028188587596180135,
+      0.014369194979269567
+    ],
+    "false_alarm_tolerance": [
+      3,
+      18
+    ],
+    "striped_n": 500,
+    "detected": 490,
+    "detection_interval": [
+      0.9635275917077902,
+      0.9903685704135666
+    ],
+    "cases": [
+      {
+        "period": 3,
+        "angle_deg": 10,
+        "detected": 42,
+        "n": 50,
+        "min_score": 66.37995940975306,
+        "min_over_threshold": 0.8955920811769398
+      },
+      {
+        "period": 5,
+        "angle_deg": 0,
+        "detected": 50,
+        "n": 50,
+        "min_score": 102.44075208377627,
+        "min_over_threshold": 1.3821208565330974
+      },
+      {
+        "period": 8,
+        "angle_deg": 6,
+        "detected": 50,
+        "n": 50,
+        "min_score": 98.13409332738088,
+        "min_over_threshold": 1.3240158273517697
+      },
+      {
+        "period": 12,
+        "angle_deg": -8,
+        "detected": 50,
+        "n": 50,
+        "min_score": 104.93240462789036,
+        "min_over_threshold": 1.4157379950097606
+      },
+      {
+        "period": 20,
+        "angle_deg": -10,
+        "detected": 48,
+        "n": 50,
+        "min_score": 67.41087967080198,
+        "min_over_threshold": 0.9095011590120283
+      },
+      {
+        "period": 4,
+        "angle_deg": -4,
+        "detected": 50,
+        "n": 50,
+        "min_score": 77.54722860341587,
+        "min_over_threshold": 1.0462598120274371
+      },
+      {
+        "period": 16,
+        "angle_deg": 10,
+        "detected": 50,
+        "n": 50,
+        "min_score": 116.71868966478759,
+        "min_over_threshold": 1.574757428576761
+      },
+      {
+        "period": 6,
+        "angle_deg": -10,
+        "detected": 50,
+        "n": 50,
+        "min_score": 108.86911031195874,
+        "min_over_threshold": 1.4688516526245896
+      },
+      {
+        "period": 10,
+        "angle_deg": 3,
+        "detected": 50,
+        "n": 50,
+        "min_score": 112.48436562151079,
+        "min_over_threshold": 1.5176283324456983
+      },
+      {
+        "period": 14,
+        "angle_deg": -6,
+        "detected": 50,
+        "n": 50,
+        "min_score": 114.85090346049003,
+        "min_over_threshold": 1.5495574352538568
+      }
+    ],
+    "false_alarm_rate": 0.007,
+    "detection_rate": 0.98
+  },
+  "probe": {
+    "shape": [
+      400,
+      1600
+    ],
+    "threshold": 105.80269099368302,
+    "k": 3,
+    "calibration_n": 300,
+    "calibration_above": 2,
+    "free_n": 200,
+    "false_alarms": 3,
+    "false_alarm_interval": [
+      0.003104107621555085,
+      0.043208281917709784
+    ],
+    "false_alarm_tolerance": [
+      0,
+      6
+    ],
+    "striped_n": 100,
+    "detected": 100,
+    "detection_interval": [
+      0.9637833073548094,
+      1.0
+    ],
+    "cases": [
+      {
+        "period": 3,
+        "angle_deg": 10,
+        "detected": 10,
+        "n": 10,
+        "min_score": 116.14515690566715,
+        "min_over_threshold": 1.0977523899897936
+      },
+      {
+        "period": 5,
+        "angle_deg": 0,
+        "detected": 10,
+        "n": 10,
+        "min_score": 185.80298035976122,
+        "min_over_threshold": 1.7561271704408223
+      },
+      {
+        "period": 8,
+        "angle_deg": 6,
+        "detected": 10,
+        "n": 10,
+        "min_score": 254.22432800018848,
+        "min_over_threshold": 2.4028153311844123
+      },
+      {
+        "period": 12,
+        "angle_deg": -8,
+        "detected": 10,
+        "n": 10,
+        "min_score": 232.2482647849084,
+        "min_over_threshold": 2.1951073512749772
+      },
+      {
+        "period": 20,
+        "angle_deg": -10,
+        "detected": 10,
+        "n": 10,
+        "min_score": 308.4043833213355,
+        "min_over_threshold": 2.9149011279850043
+      },
+      {
+        "period": 4,
+        "angle_deg": -4,
+        "detected": 10,
+        "n": 10,
+        "min_score": 151.62390822221565,
+        "min_over_threshold": 1.4330817751248728
+      },
+      {
+        "period": 16,
+        "angle_deg": 10,
+        "detected": 10,
+        "n": 10,
+        "min_score": 303.7009403700416,
+        "min_over_threshold": 2.8704462761554352
+      },
+      {
+        "period": 6,
+        "angle_deg": -10,
+        "detected": 10,
+        "n": 10,
+        "min_score": 191.40935811680404,
+        "min_over_threshold": 1.8091161606488082
+      },
+      {
+        "period": 10,
+        "angle_deg": 3,
+        "detected": 10,
+        "n": 10,
+        "min_score": 264.6835753881761,
+        "min_over_threshold": 2.5016714877694284
+      },
+      {
+        "period": 14,
+        "angle_deg": -6,
+        "detected": 10,
+        "n": 10,
+        "min_score": 297.646248078245,
+        "min_over_threshold": 2.8132200162660896
+      }
+    ],
+    "false_alarm_rate": 0.015,
+    "detection_rate": 1.0
+  }
+}
