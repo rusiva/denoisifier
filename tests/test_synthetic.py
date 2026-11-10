@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import pytest
 
@@ -72,20 +74,20 @@ def test_emccd_spurious_charge_adds_its_mean():
 
 
 @pytest.mark.parametrize(
-    "kwargs",
+    ("kwargs", "message"),
     [
-        dict(mottle="speckled"),
-        dict(mottle="none", mottle_strength=0.3),
-        dict(mottle="scorched", mottle_strength=-0.1),
-        dict(noise=-0.1),
-        dict(noise=Emccd(photons_peak=0)),
-        dict(noise=Emccd(em_gain=0.5)),
-        dict(noise=Emccd(read_noise_e=-1)),
-        dict(noise=Emccd(cic=-0.1)),
+        (dict(mottle="speckled"), "mottle must be 'none', 'scorched' or 'multiscale'"),
+        (dict(mottle="none", mottle_strength=0.3), "mottle_strength given with mottle='none'"),
+        (dict(mottle="scorched", mottle_strength=-0.1), "mottle_strength must be >= 0"),
+        (dict(noise=-0.1), "noise must be >= 0"),
+        (dict(noise=Emccd(photons_peak=0)), "photons_peak must be > 0"),
+        (dict(noise=Emccd(em_gain=0.5)), "em_gain must be >= 1"),
+        (dict(noise=Emccd(read_noise_e=-1)), "read_noise_e must be >= 0"),
+        (dict(noise=Emccd(cic=-0.1)), "cic must be >= 0"),
     ],
 )
-def test_rejects_invalid_settings(kwargs):
-    with pytest.raises(ValueError):
+def test_rejects_invalid_settings(kwargs, message):
+    with pytest.raises(ValueError, match="^" + re.escape(message)):
         generate(seed=0, **kwargs)
 
 

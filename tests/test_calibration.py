@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import pytest
 from scipy.stats import betabinom
@@ -8,6 +10,8 @@ from denoisifier._calibration import (
     threshold_for_false_alarm_rate,
     threshold_rank,
 )
+
+TOO_FEW = re.escape("50 scores are too few for a false-alarm rate of 0.01: need at least 99")
 
 
 def test_threshold_is_the_kth_largest_score():
@@ -23,20 +27,20 @@ def test_threshold_rank_is_floor_of_rate_times_n_plus_one():
 
 
 def test_threshold_rank_needs_enough_scores_for_the_rate():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=TOO_FEW):
         threshold_rank(50, 0.01)
 
 
 def test_threshold_needs_enough_scores_for_the_rate():
     # 50 scores at 1%: k = floor(0.51) = 0, no order statistic gives that rate.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=TOO_FEW):
         threshold_for_false_alarm_rate(np.arange(50.0), 0.01)
 
 
 def test_threshold_rejects_non_finite_scores():
     scores = np.arange(2000.0)
     scores[7] = np.nan
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=re.escape("scores must all be finite")):
         threshold_for_false_alarm_rate(scores, 0.01)
 
 

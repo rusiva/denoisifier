@@ -1,4 +1,5 @@
 import json
+import re
 
 import numpy as np
 import pytest
@@ -94,26 +95,26 @@ def test_constant_frame_is_not_striped_and_has_finite_score():
 
 @pytest.mark.parametrize("value", [0.0, -5.0])
 def test_frame_with_no_positive_light_is_rejected(value):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=re.escape("frame has no positive light")):
         analyse(np.full((64, 64), value))
 
 
 def test_rejects_frame_smaller_than_min_side():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=re.escape("frame is 39x64; both sides must be at least")):
         analyse(np.ones((39, 64)))
     report = analyse(generate(seed=0, shape=(40, 64), modulation_depth=0.0).frame)
     assert isinstance(report, Report)
 
 
 def test_rejects_non_2d_input():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=re.escape("frame must be 2D, got 1D")):
         analyse(np.ones(100))
 
 
 def test_rejects_non_finite_values():
     frame = generate(seed=0, shape=(64, 64)).frame
     frame[10, 10] = np.nan
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=re.escape("frame contains non-finite values")):
         analyse(frame)
 
 
