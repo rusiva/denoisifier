@@ -21,7 +21,7 @@ class FrameFile:
     notes: tuple[str, ...] = ()
 
 
-def read_frame(path: str | os.PathLike) -> FrameFile:
+def read_frame(path: str | os.PathLike[str]) -> FrameFile:
     """Read a plain comma-separated grid of floats with no header.
 
     Rows of the file are rows of the frame. Every column is kept.
@@ -30,6 +30,6 @@ def read_frame(path: str | os.PathLike) -> FrameFile:
     return FrameFile(frame=frame)
 
 
-def write_frame_csv(frame: np.ndarray, path: str | os.PathLike) -> None:
+def write_frame_csv(frame: np.ndarray, path: str | os.PathLike[str]) -> None:
     """Write a frame as a plain comma-separated grid, no header: the format ``read_frame`` reads."""
     np.savetxt(path, np.asarray(frame, dtype=float), delimiter=",", fmt="%.9g")

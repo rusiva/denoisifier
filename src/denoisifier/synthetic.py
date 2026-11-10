@@ -16,9 +16,12 @@ Gamma distribution, Gaussian read noise, divided back by the gain.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 import numpy as np
+from numpy.typing import NDArray
+
+_F64 = NDArray[np.float64]
 
 MottleKind = Literal["none", "scorched", "multiscale"]
 
@@ -159,7 +162,7 @@ def _check_emccd(emccd: Emccd) -> None:
         raise ValueError(f"cic must be >= 0, got {emccd.cic!r}")
 
 
-def _emccd(rng, clean, emccd: Emccd):
+def _emccd(rng: np.random.Generator, clean: _F64, emccd: Emccd) -> _F64:
     """Photons + spurious charge -> Poisson -> EM gain (Gamma) -> read noise."""
     n = rng.poisson(clean + emccd.cic)
     if emccd.em_gain > 1:
@@ -172,7 +175,7 @@ def _emccd(rng, clean, emccd: Emccd):
     return electrons / emccd.em_gain
 
 
-def _profile(rng, rows, cols, x, y):
+def _profile(rng: np.random.Generator, rows: int, cols: int, x: _F64, y: _F64) -> _F64:
     """Elliptical, rotated, mildly asymmetric Gaussian with peak 1."""
     cx = (cols - 1) / 2 + rng.uniform(-3, 3)
     cy = (rows - 1) / 2 + rng.uniform(-3, 3)
@@ -184,10 +187,12 @@ def _profile(rng, rows, cols, x, y):
     v = -dx * np.sin(rot) + dy * np.cos(rot)
     # Mild asymmetry: one side of the major axis is ~15% wider.
     sigma_u = np.where(u >= 0, sigma_major * 1.15, sigma_major)
-    return np.exp(-0.5 * ((u / sigma_u) ** 2 + (v / sigma_minor) ** 2))
+    return cast(_F64, np.exp(-0.5 * ((u / sigma_u) ** 2 + (v / sigma_minor) ** 2)))
 
 
-def _mottle(rng, shape, kind, strength):
+def _mottle(
+    rng: np.random.Generator, shape: tuple[int, int], kind: MottleKind, strength: float
+) -> _F64:
     """Log-normal Mottle, ``exp(strength * g)`` with ``g`` of unit std."""
     if kind == "scorched":
         field = _standardise(np.tanh(2.5 * _grf(rng, shape, 3.0)) + 0.4 * _grf(rng, shape, 1.5))
@@ -196,7 +201,7 @@ def _mottle(rng, shape, kind, strength):
     return np.exp(strength * field)
 
 
-def _grf(rng, shape, beta):
+def _grf(rng: np.random.Generator, shape: tuple[int, int], beta: float) -> _F64:
     """Isotropic Gaussian random field with power ~ k^-beta, unit std."""
     ky = np.fft.fftfreq(shape[0])[:, None]
     kx = np.fft.fftfreq(shape[1])[None, :]
@@ -208,6 +213,6 @@ def _grf(rng, shape, beta):
     return _standardise(field)
 
 
-def _standardise(a):
+def _standardise(a: _F64) -> _F64:
     """Zero mean, unit std."""
-    return (a - a.mean()) / a.std()
+    return cast(_F64, (a - a.mean()) / a.std())

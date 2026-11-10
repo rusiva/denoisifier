@@ -24,7 +24,7 @@ class Report:
     angle_deg: float | None
     modulation_depth: float | None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, bool | float | None]:
         """Plain Python types only, so ``json.dumps`` works."""
         return {
             "striped": bool(self.striped),

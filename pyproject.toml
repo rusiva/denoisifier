@@ -62,3 +62,10 @@ filterwarnings = ["error"]
 # monotonic-clock conftest if it is ever seen.
 timeout = 60
 timeout_method = "thread"
+
+# Type gate: strict, package only (test code out of scope until a later decision widens it).
+# Inline `# mypy:` suppressions are rejected by the Makefile's no-inline-mypy step.
+[tool.mypy]
+strict = true  # includes warn_unused_ignores
+files = ["src/denoisifier"]
+enable_error_code = ["ignore-without-code"]  # mypy's own rejection of a blanket type: ignore

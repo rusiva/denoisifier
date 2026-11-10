@@ -12,8 +12,10 @@ self-normalising across light level, EM gain and mottle strength.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy.ndimage import uniform_filter
 
 # Bank: 18 Periods geometric from 3 to 20 px (x1.12 apart), stripe filters at
@@ -68,8 +70,9 @@ class _Spectrum:
     def __init__(self, frame: np.ndarray):
         padded = np.pad(frame, _PAD, mode="reflect")
         self.f = np.fft.fft2(padded)
-        self.fy = np.fft.fftfreq(padded.shape[0])[:, None]
-        self.fx = np.fft.fftfreq(padded.shape[1])[None, :]
+        # fftfreq is float64 at runtime; numpy's stub says floating[Any].
+        self.fy = cast(NDArray[np.float64], np.fft.fftfreq(padded.shape[0])[:, None])
+        self.fx = cast(NDArray[np.float64], np.fft.fftfreq(padded.shape[1])[None, :])
 
     def filtered(self, kernel: np.ndarray) -> np.ndarray:
         return np.fft.ifft2(self.f * kernel)[_PAD:-_PAD, _PAD:-_PAD]
@@ -86,7 +89,9 @@ class _Spectrum:
         return np.real(self.filtered(_window(self.fx, self.fy, period)))
 
 
-def _window(across, along, period):
+def _window(
+    across: NDArray[np.float64], along: NDArray[np.float64], period: float
+) -> NDArray[np.float64]:
     sigma_across = 1.0 / (2 * np.pi * _ACROSS * period)
     sigma_along = 1.0 / (2 * np.pi * _ALONG * period)
     return np.exp(-0.5 * ((across / sigma_across) ** 2 + (along / sigma_along) ** 2))
