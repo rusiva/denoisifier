@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] ruff runs in the gate with a fixed rule set (start from polsigns/cadmesh's `E F W I UP B ARG PGH RUF`, plus `NPY` and `PT`), and with a format check. Narrowing the set is a weakening move under the CLAUDE.md protocol.
 - [x] mypy runs in strict mode over the package in the gate. Test code is out of scope unless a later decision widens it.
