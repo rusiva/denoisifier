@@ -1,0 +1,55 @@
+# Protected numbers (ticket agent-gates/03). EDITING THIS FILE IS A WEAKENING MOVE:
+# ask the owner and get explicit approval BEFORE the edit, and record it in the
+# ticket's Comments (CLAUDE.md). This applies to changing, adding or removing any line.
+#
+# Every number that decides a verdict or a pass, with its live value. The protected
+# places are every module- and class-level name in the denoisifier package and every
+# module-level name in tests/protected.py. tests/test_protected_numbers.py (in
+# `make check`) fails when a live value differs from its line here, when such a number
+# has no line here, or when a line names a number that no longer exists.
+#
+# Format: module :: name :: canonical live value (tests/protected_lock.py, `canonical`).
+# Floats are their shortest round-trip repr; the comparison is exact text.
+
+denoisifier._local_stripes :: _PERIODS :: ndarray[float64, (18,)]([3.0, 3.354180847509959, 3.750176385934209, 4.19292326949488, 4.687940975206189, 5.241400611097919, 5.860201847957213, 6.552058933653516, 7.325596862339051, 8.190458897412231, 9.157426788672549, 10.238555182346696, 11.447321899600375, 12.798795956973633, 14.309825423356287, 15.999247455410915, 17.888123129837247, 20.0])
+denoisifier._local_stripes :: _STRIPE_ANGLES_DEG :: (-10.0, -5.0, 0.0, 5.0, 10.0)
+denoisifier._local_stripes :: _ACROSS :: 1.0
+denoisifier._local_stripes :: _ALONG :: 1.5
+denoisifier._local_stripes :: _PAD :: 32
+denoisifier._local_stripes :: _A0 :: 0.003
+
+denoisifier.analysis :: THRESHOLD :: 154.0
+denoisifier.analysis :: MIN_SIDE :: 40
+denoisifier.analysis :: _ENVELOPE_SIGMA :: 10.0
+denoisifier.analysis :: _MASK_FRACTION :: 0.1
+denoisifier.analysis :: _PERIOD_SPREAD :: 1.25
+denoisifier.analysis :: _MIN_PAIRS :: 8
+
+denoisifier.synthetic :: _TYPICAL_MOTTLE_STRENGTH :: {'scorched': 0.4, 'multiscale': 0.35}
+denoisifier.synthetic :: Emccd.photons_peak :: 100.0
+denoisifier.synthetic :: Emccd.em_gain :: 300.0
+denoisifier.synthetic :: Emccd.read_noise_e :: 50.0
+denoisifier.synthetic :: Emccd.cic :: 0.005
+
+protected :: PERIOD_REL_TOL :: 0.05
+protected :: ANGLE_TOL_DEG :: 1.0
+protected :: DEPTH_TOL :: 0.1
+protected :: SPECTRAL_BAND_DEG :: 12.0
+protected :: BORDERLINE_SCORE_WINDOW :: 1.5
+protected :: FALSE_ALARM_RATE :: 0.01
+protected :: FALSE_ALARM_TOLERANCE :: (3, 18)
+protected :: MIN_DETECTION_RATE :: 0.9
+protected :: PROBE_MIN_DETECTION_RATE :: 0.95
+protected :: TIMING_LIMIT_S :: 10.0
+protected :: WEAK_DEPTH :: 0.2
+protected :: GATE_SHAPE :: (256, 256)
+protected :: PROBE_SHAPE :: (400, 1600)
+protected :: GATE_CALIBRATION_SEEDS :: range(10000, 12000)
+protected :: GATE_FREE_SEEDS :: range(20000, 21000)
+protected :: GATE_STRIPED_SEEDS :: range(30000, 30500)
+protected :: PROBE_CALIBRATION_SEEDS :: range(70000, 70300)
+protected :: PROBE_FREE_SEEDS :: range(71000, 71200)
+protected :: PROBE_STRIPED_SEEDS :: range(72000, 72100)
+protected :: TIMING_SEED :: 40000
+protected :: TIMING_CASE :: Case(period=8, angle_deg=0)
+protected :: USED_SEEDS :: [range(0, 200), range(1000, 1400), range(2000, 2032), range(50000, 50300), range(59999, 60100)]

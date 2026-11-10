@@ -1,9 +1,7 @@
 """How close a measured Period, Angle and Modulation Depth must be to the generator's ground
-truth."""
+truth. The tolerances are protected numbers (protected.py)."""
 
-PERIOD_REL_TOL = 0.05
-ANGLE_TOL_DEG = 1.0
-DEPTH_TOL = 0.1
+from protected import ANGLE_TOL_DEG, DEPTH_TOL, PERIOD_REL_TOL
 
 
 def assert_matches_truth(period_px, angle_deg, truth):

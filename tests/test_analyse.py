@@ -8,6 +8,7 @@ from borderline import BORDERLINE, borderline_frame
 from cases import CASES
 from denoisifier import Report, analyse
 from denoisifier.synthetic import Emccd, generate
+from protected import BORDERLINE_SCORE_WINDOW
 from truth_match import assert_depth_matches, assert_matches_truth
 
 SHAPE = (256, 256)
@@ -242,7 +243,7 @@ def test_multiscale_mottle_is_handled(seed):
 @pytest.mark.parametrize(("seed", "period"), BORDERLINE)
 def test_borderline_striped_frame_has_finite_measurements(seed, period):
     report = analyse(borderline_frame(seed, period))
-    assert report.threshold < report.score < 1.5 * report.threshold
+    assert report.threshold < report.score < BORDERLINE_SCORE_WINDOW * report.threshold
     assert report.striped is True
     for value in (report.period_px, report.angle_deg, report.modulation_depth):
         assert np.isfinite(value)

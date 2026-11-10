@@ -8,7 +8,8 @@ import numpy as np
 from borderline import BORDERLINE, borderline_frame
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import generate
-from truth_match import DEPTH_TOL, assert_matches_truth
+from protected import DEPTH_TOL
+from truth_match import assert_matches_truth
 
 
 def _run(*args, cmd=(sys.executable, "-m", "denoisifier")):

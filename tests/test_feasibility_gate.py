@@ -13,16 +13,13 @@ from itertools import combinations
 import pytest
 
 import feasibility
-
-# Seeds already used before ticket 03: tests and ticket 02 (0-199), the
-# planner's pre-measurement (1000-1399, 2000-2031) and prototype P1.
-USED_SEEDS = [
-    range(0, 200),
-    range(1000, 1400),
-    range(2000, 2032),
-    range(50_000, 50_300),
-    range(59_999, 60_100),
-]
+from protected import (
+    FALSE_ALARM_TOLERANCE,
+    MIN_DETECTION_RATE,
+    PROBE_MIN_DETECTION_RATE,
+    TIMING_LIMIT_S,
+    USED_SEEDS,
+)
 
 
 def test_seed_sets_are_disjoint_and_unused():
@@ -99,13 +96,13 @@ def test_saved_measurement_is_from_clean_code_and_the_current_seed_plan(saved):
 def test_full_frame_is_analysed_within_10_s(measurement):
     timing = measurement["timing"]
     assert len(timing["seconds"]) == 3
-    assert timing["median_s"] <= feasibility.TIMING_LIMIT_S, f"analyse times {timing['seconds']} s"
+    assert timing["median_s"] <= TIMING_LIMIT_S, f"analyse times {timing['seconds']} s"
 
 
 def test_held_out_false_alarm_rate_is_about_one_percent(measurement):
     gate = measurement["gate"]
     lo, hi = gate["false_alarm_tolerance"]
-    assert (lo, hi) == (3, 18)
+    assert (lo, hi) == FALSE_ALARM_TOLERANCE
     assert gate["free_n"] == len(feasibility.GATE.free)
     assert lo <= gate["false_alarms"] <= hi, (
         f"{gate['false_alarms']}/{gate['free_n']} held-out False Alarms at threshold "
@@ -116,7 +113,7 @@ def test_held_out_false_alarm_rate_is_about_one_percent(measurement):
 def test_weak_stripes_are_detected_at_least_90_percent(measurement):
     gate = measurement["gate"]
     assert gate["striped_n"] == len(feasibility.GATE.striped)
-    assert gate["detected"] / gate["striped_n"] >= 0.90, (
+    assert gate["detected"] / gate["striped_n"] >= MIN_DETECTION_RATE, (
         f"{gate['detected']}/{gate['striped_n']} detected,"
         f" exact 95% CI {gate['detection_interval']}"
     )
@@ -127,7 +124,7 @@ def test_full_frame_probe_detects_at_least_95_percent(measurement):
     # its tolerance includes 0, so it cannot show "about 1%" (plan B4).
     probe = measurement["probe"]
     assert probe["striped_n"] == len(feasibility.PROBE.striped)
-    assert probe["detected"] / probe["striped_n"] >= feasibility.PROBE_MIN_RATE, (
+    assert probe["detected"] / probe["striped_n"] >= PROBE_MIN_DETECTION_RATE, (
         f"{probe['detected']}/{probe['striped_n']} detected at full frame, exact 95% CI "
         f"{probe['detection_interval']}"
     )

@@ -2,9 +2,8 @@
 
 Independent of ``denoisifier.analysis``. The frame is flattened by its
 sigma-10 smoothed copy, Hann-windowed, and 4x zero-padded. The search ring is
-Periods 3-20 px; the vertical band is Angles within +-10 deg (stripes) plus a
-2 deg margin, so a peak at exactly +-10 deg is not cut off by the frequency
-grid; the horizontal band is the same ring rotated 90 deg.
+Periods 3-20 px; the vertical and horizontal bands are SPECTRAL_BAND_DEG wide
+(protected.py, which says why).
 """
 
 from dataclasses import dataclass
@@ -12,7 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-_BAND_DEG = 12.0
+from protected import SPECTRAL_BAND_DEG
 
 
 @dataclass(frozen=True)
@@ -32,8 +31,8 @@ def band_peak(frame):
     fmag = np.hypot(fx, fy)
     ang = np.degrees(np.arctan2(fy, fx))
     ring = (fmag >= 1 / 20) & (fmag <= 1 / 3)
-    vertical = ring & (fx > 0) & (np.abs(ang) <= _BAND_DEG)
-    horizontal = ring & (fy > 0) & (np.abs(ang - 90) <= _BAND_DEG)
+    vertical = ring & (fx > 0) & (np.abs(ang) <= SPECTRAL_BAND_DEG)
+    horizontal = ring & (fy > 0) & (np.abs(ang - 90) <= SPECTRAL_BAND_DEG)
     i = np.unravel_index(np.argmax(np.where(vertical, power, 0)), power.shape)
     return BandPeak(
         period=float(1 / fmag[i]),

@@ -43,15 +43,31 @@ from denoisifier._calibration import (  # noqa: E402
     threshold_rank,
 )
 from denoisifier.synthetic import Emccd, generate  # noqa: E402
+from protected import (  # noqa: E402
+    FALSE_ALARM_RATE,
+    GATE_CALIBRATION_SEEDS,
+    GATE_FREE_SEEDS,
+    GATE_SHAPE,
+    GATE_STRIPED_SEEDS,
+    PROBE_CALIBRATION_SEEDS,
+    PROBE_FREE_SEEDS,
+    PROBE_SHAPE,
+    PROBE_STRIPED_SEEDS,
+    TIMING_CASE,
+    TIMING_LIMIT_S,
+    TIMING_SEED,
+    WEAK_DEPTH,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = ROOT / ".scratch/stripe-detector/feasibility-gate.json"
 
-RATE = 0.01
+# The rate, depth, shapes, seeds and limits are protected numbers (protected.py).
+RATE = FALSE_ALARM_RATE
 # Scorched Mottle; about 100 photons at the peak, EM gain 300, read noise 50 e, CIC 0.005.
 MOTTLE: Literal["scorched"] = "scorched"
 NOISE = Emccd()
-DEPTH = 0.2
+DEPTH = WEAK_DEPTH
 
 
 class SeedPlan(NamedTuple):
@@ -67,26 +83,22 @@ class SeedPlan(NamedTuple):
 
 # Gate, judged at 256x256 (plan R3). Striped frames take CASES[seed % 10].
 GATE = SeedPlan(
-    shape=(256, 256),
-    calibration=range(10_000, 12_000),  # 2000
-    free=range(20_000, 21_000),  # 1000
-    striped=range(30_000, 30_500),  # 500: 50 per case
+    shape=GATE_SHAPE,
+    calibration=GATE_CALIBRATION_SEEDS,
+    free=GATE_FREE_SEEDS,
+    striped=GATE_STRIPED_SEEDS,
 )
 
-# Full-frame probe. Informs the result; below PROBE_MIN_RATE it fails the
-# gate (plan B3).
+# Full-frame probe. Informs the result; below PROBE_MIN_DETECTION_RATE it
+# fails the gate (plan B3).
 PROBE = SeedPlan(
-    shape=(400, 1600),
-    calibration=range(70_000, 70_300),  # 300 -> k = 3
-    free=range(71_000, 71_200),  # 200
-    striped=range(72_000, 72_100),  # 100: 10 per case
+    shape=PROBE_SHAPE,
+    calibration=PROBE_CALIBRATION_SEEDS,
+    free=PROBE_FREE_SEEDS,
+    striped=PROBE_STRIPED_SEEDS,
 )
-PROBE_MIN_RATE = 0.95
 
-# One full-frame (PROBE.shape) frame, m = DEPTH.
-TIMING_SEED = 40_000
-TIMING_CASE = Case(period=8, angle_deg=0)
-TIMING_LIMIT_S = 10.0
+# The timing frame is one full frame (PROBE.shape) at TIMING_SEED, m = DEPTH.
 
 # Every seed set, by the name the result JSON records it under.
 SEED_SETS: dict[str, range] = {
