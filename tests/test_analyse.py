@@ -3,10 +3,10 @@ import json
 import numpy as np
 import pytest
 
-from denoisifier import Report, analyse
-from denoisifier.synthetic import Emccd, generate
 from borderline import BORDERLINE, borderline_frame
 from cases import CASES
+from denoisifier import Report, analyse
+from denoisifier.synthetic import Emccd, generate
 from truth_match import assert_depth_matches, assert_matches_truth
 
 SHAPE = (256, 256)
@@ -28,7 +28,9 @@ def test_stripe_free_mottled_frames_are_not_striped(seed):
 @pytest.mark.parametrize("seed", SEEDS)
 def test_clear_stripes_in_mottle_are_found_and_measured(seed):
     period, angle_deg = CASES[seed % len(CASES)]
-    s = generate(seed=seed, shape=SHAPE, period=period, angle_deg=angle_deg, modulation_depth=0.5, **TYPICAL)
+    s = generate(
+        seed=seed, shape=SHAPE, period=period, angle_deg=angle_deg, modulation_depth=0.5, **TYPICAL
+    )
     report = analyse(s.frame)
     assert report.striped is True
     assert_matches_truth(report.period_px, report.angle_deg, s.truth)
@@ -126,7 +128,14 @@ def test_input_frame_is_not_modified():
 def test_report_converts_to_json(modulation_depth):
     report = analyse(generate(seed=1, shape=SHAPE, modulation_depth=modulation_depth).frame)
     data = json.loads(report.to_json())
-    assert list(data) == ["striped", "score", "threshold", "period_px", "angle_deg", "modulation_depth"]
+    assert list(data) == [
+        "striped",
+        "score",
+        "threshold",
+        "period_px",
+        "angle_deg",
+        "modulation_depth",
+    ]
     assert type(data["striped"]) is bool
     assert type(data["score"]) is float
     assert type(data["threshold"]) is float
@@ -145,7 +154,9 @@ def test_report_converts_to_json(modulation_depth):
 @pytest.mark.parametrize("seed", range(5))
 @pytest.mark.parametrize("period", [5, 12])
 def test_strong_stripes_are_measured(seed, period):
-    s = generate(seed=seed, shape=SHAPE, period=period, angle_deg=6, modulation_depth=0.8, **TYPICAL)
+    s = generate(
+        seed=seed, shape=SHAPE, period=period, angle_deg=6, modulation_depth=0.8, **TYPICAL
+    )
     report = analyse(s.frame)
     assert report.striped is True
     assert_matches_truth(report.period_px, report.angle_deg, s.truth)
@@ -172,7 +183,13 @@ def _crop_columns(profile, rows, width=128, step=8):
 def test_modulation_depth_is_relative_to_local_envelope(seed, noise):
     shape = (256, 640)
     s = generate(
-        seed=seed, shape=shape, period=8, angle_deg=4, modulation_depth=0.5, mottle="scorched", noise=noise
+        seed=seed,
+        shape=shape,
+        period=8,
+        angle_deg=4,
+        modulation_depth=0.5,
+        mottle="scorched",
+        noise=noise,
     )
     # Same seed and shape draw the same Profile, so this frame's clean is the Profile alone.
     profile = generate(seed=seed, shape=shape, modulation_depth=0.0, mottle="none", noise=0.0).clean
@@ -195,7 +212,9 @@ EXTREMES = [(3, -10), (3, 0), (3, 10), (20, -10), (20, 0), (20, 10), (3, 5), (20
 
 @pytest.mark.parametrize("seed, period, angle_deg", [(i, *case) for i, case in enumerate(EXTREMES)])
 def test_period_and_angle_extremes_are_detected(seed, period, angle_deg):
-    s = generate(seed=seed, shape=SHAPE, period=period, angle_deg=angle_deg, modulation_depth=0.5, **TYPICAL)
+    s = generate(
+        seed=seed, shape=SHAPE, period=period, angle_deg=angle_deg, modulation_depth=0.5, **TYPICAL
+    )
     report = analyse(s.frame)
     assert report.striped is True
     assert_matches_truth(report.period_px, report.angle_deg, s.truth)

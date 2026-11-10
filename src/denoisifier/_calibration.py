@@ -27,7 +27,9 @@ def threshold_for_false_alarm_rate(scores: ArrayLike, rate: float) -> float:
     return float(np.sort(a)[::-1][k - 1])
 
 
-def false_alarm_tolerance(n_calibration: int, n_held_out: int, rate: float, level: float = 0.95) -> tuple[int, int]:
+def false_alarm_tolerance(
+    n_calibration: int, n_held_out: int, rate: float, level: float = 0.95
+) -> tuple[int, int]:
     """Central interval of the held-out False Alarm count, given a threshold set
     from n_calibration scores by threshold_for_false_alarm_rate.
 
@@ -49,7 +51,9 @@ def threshold_rank(n: int, rate: float) -> int:
     """
     k = math.floor(rate * (n + 1) + 1e-9)
     if k < 1:
-        raise ValueError(f"{n} scores are too few for a false-alarm rate of {rate}: need at least {math.ceil(1 / rate) - 1}")
+        raise ValueError(
+            f"{n} scores are too few for a false-alarm rate of {rate}: need at least {math.ceil(1 / rate) - 1}"
+        )
     return k
 
 
@@ -62,4 +66,3 @@ def rate_interval(k: int, n: int, level: float = 0.95) -> tuple[float, float]:
 def _false_alarm_count(n_calibration: int, n_held_out: int, rate: float):
     k = threshold_rank(n_calibration, rate)
     return betabinom(n_held_out, k, n_calibration + 1 - k)
-

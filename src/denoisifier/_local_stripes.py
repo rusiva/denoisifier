@@ -113,7 +113,9 @@ def estimate_local_stripes(frame: np.ndarray, light: np.ndarray) -> LocalStripes
         stripe_energy = np.abs(stripe) ** 2
         angle_index = np.argmax(stripe_energy, axis=0)
         e_stripe = np.take_along_axis(stripe_energy, angle_index[None], axis=0)[0]
-        e_reference = np.max([np.abs(spec.gabor(p, a + 90.0)) ** 2 for a in _STRIPE_ANGLES_DEG], axis=0)
+        e_reference = np.max(
+            [np.abs(spec.gabor(p, a + 90.0)) ** 2 for a in _STRIPE_ANGLES_DEG], axis=0
+        )
         mean = spec.local_mean(p)
 
         box = (max(3, round(2 * p)), max(3, round(3 * p)))  # 2p tall, 3p wide

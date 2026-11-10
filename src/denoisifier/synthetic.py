@@ -20,7 +20,6 @@ from typing import Literal
 
 import numpy as np
 
-
 MottleKind = Literal["none", "scorched", "multiscale"]
 
 _TYPICAL_MOTTLE_STRENGTH = {"scorched": 0.4, "multiscale": 0.35}

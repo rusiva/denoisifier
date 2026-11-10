@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-from denoisifier._local_stripes import _A0, _PAD, LocalStripes, estimate_local_stripes, gabor_at
+from denoisifier._local_stripes import _PAD, LocalStripes, estimate_local_stripes, gabor_at
 from denoisifier.report import Report
 
 # Provisional verdict threshold (ticket 07 replaces it with a calibrated value).

@@ -25,6 +25,20 @@ dev = [
     "scipy-stubs>=1.17.1.5",
 ]
 
+# Lint and format gate (ticket agent-gates/02). Editing this or [tool.mypy] is a gate-config
+# change: owner approval (CLAUDE.md). Narrowing `select` or `include`, or adding `ignore`,
+# `per-file-ignores` or `extend-exclude` entries, is a weakening move.
+[tool.ruff]
+line-length = 100
+include = ["*.py", "*.pyi", "pyproject.toml"]  # code only; Markdown fences are not gated
+src = ["src", "tests"]  # test helpers (cases, borderline, truth_match) sort as first-party
+extend-exclude = [".scratch"]  # evidence records stay byte-identical (owner, 2026-11-10)
+
+[tool.ruff.lint]
+# polsigns/cadmesh's set minus S (the ticket's list), plus NPY and PT.
+# RUF100 rejects unused noqa; PGH003/PGH004 reject blanket type: ignore / noqa.
+select = ["E", "F", "W", "I", "UP", "B", "ARG", "PGH", "RUF", "NPY", "PT"]
+
 [project.scripts]
 denoisifier = "denoisifier.cli:main"
 

@@ -16,7 +16,13 @@ import feasibility
 
 # Seeds already used before ticket 03: tests and ticket 02 (0-199), the
 # planner's pre-measurement (1000-1399, 2000-2031) and prototype P1.
-USED_SEEDS = [range(0, 200), range(1000, 1400), range(2000, 2032), range(50_000, 50_300), range(59_999, 60_100)]
+USED_SEEDS = [
+    range(0, 200),
+    range(1000, 1400),
+    range(2000, 2032),
+    range(50_000, 50_300),
+    range(59_999, 60_100),
+]
 
 
 def test_seed_sets_are_disjoint_and_unused():

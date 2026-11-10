@@ -5,9 +5,9 @@ import sys
 
 import numpy as np
 
+from borderline import BORDERLINE, borderline_frame
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import generate
-from borderline import BORDERLINE, borderline_frame
 from truth_match import DEPTH_TOL, assert_matches_truth
 
 

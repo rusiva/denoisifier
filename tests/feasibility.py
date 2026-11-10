@@ -28,8 +28,8 @@ from collections.abc import Sequence  # noqa: E402
 from concurrent.futures import ProcessPoolExecutor  # noqa: E402
 from dataclasses import asdict, dataclass  # noqa: E402
 from pathlib import Path  # noqa: E402
-from typing import Literal, NamedTuple  # noqa: E402
 from statistics import median  # noqa: E402
+from typing import Literal, NamedTuple  # noqa: E402
 
 import numpy as np  # noqa: E402
 import scipy  # noqa: E402
@@ -52,7 +52,6 @@ RATE = 0.01
 MOTTLE: Literal["scorched"] = "scorched"
 NOISE = Emccd()
 DEPTH = 0.2
-
 
 
 class SeedPlan(NamedTuple):
@@ -153,11 +152,15 @@ def resolve_workers(workers: int | None = None) -> int:
     return max(1, n - n // 4)
 
 
-def score_batch(seeds: Sequence[int], depth: float, shape: tuple[int, int], workers: int | None = None) -> np.ndarray:
+def score_batch(
+    seeds: Sequence[int], depth: float, shape: tuple[int, int], workers: int | None = None
+) -> np.ndarray:
     """Stripe Scores of generated frames, in seed order whatever the worker count."""
     jobs = [(seed, depth, shape) for seed in seeds]
     # Spawned workers import NumPy fresh, so the thread variables set above apply.
-    with ProcessPoolExecutor(resolve_workers(workers), mp_context=multiprocessing.get_context("spawn")) as ex:
+    with ProcessPoolExecutor(
+        resolve_workers(workers), mp_context=multiprocessing.get_context("spawn")
+    ) as ex:
         return np.array(list(ex.map(_score_one, jobs, chunksize=4)), dtype=float)
 
 
@@ -202,12 +205,17 @@ class RateResult:
 
     def per_case_summary(self) -> str:
         return ", ".join(
-            f"{c.period}px/{c.angle_deg}deg {c.detected}/{c.n} (min {c.min_over_threshold:.2f}x)" for c in self.cases
+            f"{c.period}px/{c.angle_deg}deg {c.detected}/{c.n} (min {c.min_over_threshold:.2f}x)"
+            for c in self.cases
         )
 
     def to_dict(self) -> dict:
         """All fields plus the two rates, for the result JSON."""
-        return {**asdict(self), "false_alarm_rate": self.false_alarm_rate, "detection_rate": self.detection_rate}
+        return {
+            **asdict(self),
+            "false_alarm_rate": self.false_alarm_rate,
+            "detection_rate": self.detection_rate,
+        }
 
     def table(self, name: str) -> str:
         """Markdown summary and per-case table, printed by main()."""
@@ -266,7 +274,9 @@ def measure(plan: SeedPlan, workers: int | None = None) -> RateResult:
         free_n=len(free_scores),
         false_alarms=false_alarms,
         false_alarm_interval=rate_interval(false_alarms, len(free_scores)),
-        false_alarm_tolerance=false_alarm_tolerance(len(calibration_scores), len(free_scores), RATE),
+        false_alarm_tolerance=false_alarm_tolerance(
+            len(calibration_scores), len(free_scores), RATE
+        ),
         striped_n=len(striped_scores),
         detected=detected,
         detection_interval=rate_interval(detected, len(striped_scores)),
@@ -284,8 +294,11 @@ def measure_probe(workers: int | None = None) -> RateResult:
 
 def run_info(workers: int) -> dict:
     """Commit, machine, versions and every setting, for the written result."""
+
     def git(*args: str) -> str:
-        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=False).stdout.strip()
+        return subprocess.run(
+            ["git", *args], cwd=ROOT, capture_output=True, text=True, check=False
+        ).stdout.strip()
 
     # Dirty only for changes to the measured code, not to notes under .scratch.
     commit = git("describe", "--always")
@@ -324,7 +337,12 @@ def measure_all(workers: int | None = None, probe: bool = True) -> dict:
     out: dict = {"run_info": run_info(workers)}
     # Timing first, before any worker pool has run.
     times = time_full_frame()
-    out["timing"] = {"shape": PROBE.shape, "seconds": times, "median_s": median(times), "limit_s": TIMING_LIMIT_S}
+    out["timing"] = {
+        "shape": PROBE.shape,
+        "seconds": times,
+        "median_s": median(times),
+        "limit_s": TIMING_LIMIT_S,
+    }
     print(
         f"analyse on one {_shape_text(PROBE.shape)} frame: {[round(t, 2) for t in times]} s,"
         f" median {median(times):.2f} s",
@@ -344,7 +362,12 @@ def measure_all(workers: int | None = None, probe: bool = True) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--skip-probe", action="store_true", help="skip the full-frame probe")
-    parser.add_argument("--workers", type=int, default=None, help="worker processes (default: three quarters of the CPUs)")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="worker processes (default: three quarters of the CPUs)",
+    )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="JSON measurement path")
     args = parser.parse_args(argv)
 

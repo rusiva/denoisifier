@@ -12,7 +12,6 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-
 _BAND_DEG = 12.0
 
 
