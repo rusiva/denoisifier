@@ -2,12 +2,29 @@ import numpy as np
 import pytest
 from scipy.stats import betabinom
 
-from denoisifier._calibration import false_alarm_tolerance, rate_interval, threshold_for_false_alarm_rate
+from denoisifier._calibration import (
+    false_alarm_tolerance,
+    rate_interval,
+    threshold_for_false_alarm_rate,
+    threshold_rank,
+)
 
 
 def test_threshold_is_the_kth_largest_score():
     # n = 2000, rate 0.01 -> k = floor(0.01 * 2001) = 20 -> 20th largest of 1..2000.
     assert threshold_for_false_alarm_rate(np.arange(1, 2001), 0.01) == 1981
+
+
+def test_threshold_rank_is_floor_of_rate_times_n_plus_one():
+    assert threshold_rank(2000, 0.01) == 20
+    assert threshold_rank(300, 0.01) == 3
+    # 0.29 * 100 is 28.999999999999996 in floating point; the rank is still 29.
+    assert threshold_rank(99, 0.29) == 29
+
+
+def test_threshold_rank_needs_enough_scores_for_the_rate():
+    with pytest.raises(ValueError):
+        threshold_rank(50, 0.01)
 
 
 def test_threshold_needs_enough_scores_for_the_rate():
