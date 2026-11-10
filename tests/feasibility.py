@@ -145,8 +145,12 @@ def _frame(seed: int, depth: float, shape: tuple[int, int], case: Case) -> np.nd
 
 
 def resolve_workers(workers: int | None = None) -> int:
-    """The worker process count: ``workers``, else half the CPUs."""
-    return workers or max(1, (os.cpu_count() or 2) // 2)
+    """The worker process count: ``workers``, else three quarters of the
+    logical CPUs (12 of 16), leaving the rest for other work."""
+    if workers:
+        return workers
+    n = os.cpu_count() or 2
+    return max(1, n - n // 4)
 
 
 def score_batch(seeds: Sequence[int], depth: float, shape: tuple[int, int], workers: int | None = None) -> np.ndarray:
@@ -317,7 +321,7 @@ def run_info(workers: int) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--skip-probe", action="store_true", help="skip the full-frame probe")
-    parser.add_argument("--workers", type=int, default=None, help="worker processes (default: half the CPUs)")
+    parser.add_argument("--workers", type=int, default=None, help="worker processes (default: three quarters of the CPUs)")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="JSON result path")
     args = parser.parse_args(argv)
 

@@ -42,6 +42,13 @@ def test_seed_sets_are_the_measured_plans():
     assert feasibility.SEED_SETS["probe_striped"] == feasibility.PROBE.striped
 
 
+@pytest.mark.parametrize(("cpus", "workers"), [(16, 12), (8, 6), (2, 2), (1, 1), (None, 2)])
+def test_default_workers_are_three_quarters_of_the_cpus(monkeypatch, cpus, workers):
+    monkeypatch.setattr(feasibility.os, "cpu_count", lambda: cpus)
+    assert feasibility.resolve_workers() == workers
+    assert feasibility.resolve_workers(5) == 5
+
+
 def test_run_info_records_the_worker_count():
     assert feasibility.run_info(workers=3)["workers"] == 3
 
