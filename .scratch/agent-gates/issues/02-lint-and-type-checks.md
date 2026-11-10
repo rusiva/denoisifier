@@ -21,6 +21,7 @@
 - **Q2 (scope), approved:** `extend-exclude = [".scratch"]`. The tracked evidence scripts (`.scratch/stripe-detector/evidence/03-premeasure.py`, `03-prototype-p1.py`, 11 findings) stay byte-identical and are not linted.
 - **Q3 (scipy typing), approved:** add `scipy-stubs` to the dev group. No `ignore_missing_imports` override.
 - **Q4 (approval), yes:** this ticket's text approves the gate-config edits its criteria need: the `Makefile` (criteria 1-3), the new `[tool.ruff]`/`[tool.mypy]` sections (criteria 1-2) and the `ruff`/`mypy`/`scipy-stubs` dev-group pins (criterion 6).
+- **Ruff scope (plan B1), covered by Q4:** `include = ["*.py","*.pyi","pyproject.toml"]` keeps Markdown out of ruff's scope. ruff 0.17.4's default `include` would also format the ```` ```python ```` fences in CLAUDE.md, GLOSSARY.md, README.md and `docs/**`, which the ticket never asked for. Ruff never ran on Markdown before this ticket, so this does not narrow an existing gate, and the Q4 ruling covers the new `[tool.ruff]` config.
 - **CLAUDE.md:** the gate-config list now names `[tool.ruff]`, `[tool.mypy]` and the `ruff`/`mypy`/`scipy-stubs` pins (strengthening). Commit `cf338f3`.
 - **B3/O5, approved:** `make check` runs a `git grep` step (`no-inline-mypy`) that fails on `# mypy: ignore-errors` and `# mypy: disable-error-code` in ruff's scope, because both pass ruff and mypy. It fails closed (review N7): any `git grep` exit other than 0 or 1 fails the gate.
 
