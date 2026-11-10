@@ -11,7 +11,7 @@ from denoisifier._calibration import (
     threshold_rank,
 )
 
-TOO_FEW = re.escape("50 scores are too few for a false-alarm rate of 0.01: need at least 99")
+TOO_FEW = "^" + re.escape("50 scores are too few for a false-alarm rate of 0.01: need at least 99")
 
 
 def test_threshold_is_the_kth_largest_score():
@@ -40,7 +40,7 @@ def test_threshold_needs_enough_scores_for_the_rate():
 def test_threshold_rejects_non_finite_scores():
     scores = np.arange(2000.0)
     scores[7] = np.nan
-    with pytest.raises(ValueError, match=re.escape("scores must all be finite")):
+    with pytest.raises(ValueError, match="^" + re.escape("scores must all be finite")):
         threshold_for_false_alarm_rate(scores, 0.01)
 
 
