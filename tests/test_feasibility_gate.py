@@ -1,12 +1,12 @@
 """Ticket 03 feasibility gate: weak stripes (m = 0.2) at 1% False Alarms.
 
-The slow tests run the real measurement (about 40 min); run them with
-`uv run pytest -m slow tests/test_feasibility_gate.py`. The written result is
+The gate tests read the saved measurement, feasibility-gate.json. Re-measure
+(about 40 min) with `uv run python tests/feasibility.py`. The written result is
 .scratch/stripe-detector/feasibility-gate.md.
 """
 
+import json
 from itertools import combinations
-from statistics import median
 
 import pytest
 
@@ -53,50 +53,52 @@ def test_run_info_records_the_worker_count():
     assert feasibility.run_info(workers=3)["workers"] == 3
 
 
-# First of the slow tests, so no worker pool has run yet.
-@pytest.mark.slow
-def test_full_frame_is_analysed_within_10_s():
-    times = feasibility.time_full_frame()
-    assert len(times) == 3
-    assert median(times) <= feasibility.TIMING_LIMIT_S, f"analyse times {times} s"
-
-
 @pytest.fixture(scope="module")
-def gate():
-    return feasibility.measure_gate()
+def saved():
+    return json.loads(feasibility.DEFAULT_OUT.read_text())
 
 
-@pytest.mark.slow
-def test_held_out_false_alarm_rate_is_about_one_percent(gate):
-    lo, hi = gate.false_alarm_tolerance
+def test_saved_result_is_from_clean_code_and_the_current_seed_plan(saved):
+    info = saved["run_info"]
+    assert not info["commit"].endswith("-dirty"), "re-measure from a clean tree"
+    assert tuple(info["gate_shape"]) == feasibility.GATE.shape
+    assert tuple(info["probe_shape"]) == feasibility.PROBE.shape
+    assert info["seeds"] == {name: [r[0], r[-1]] for name, r in feasibility.SEED_SETS.items()}, (
+        "the seed plan changed since the saved measurement: re-measure"
+    )
+
+
+def test_full_frame_is_analysed_within_10_s(saved):
+    timing = saved["timing"]
+    assert len(timing["seconds"]) == 3
+    assert timing["median_s"] <= feasibility.TIMING_LIMIT_S, f"analyse times {timing['seconds']} s"
+
+
+def test_held_out_false_alarm_rate_is_about_one_percent(saved):
+    gate = saved["gate"]
+    lo, hi = gate["false_alarm_tolerance"]
     assert (lo, hi) == (3, 18)
-    assert gate.free_n == len(feasibility.GATE.free)
-    assert lo <= gate.false_alarms <= hi, (
-        f"{gate.false_alarms}/{gate.free_n} held-out False Alarms at threshold "
-        f"{gate.threshold:.2f}: outside {lo}-{hi}, so the measurement is broken"
+    assert gate["free_n"] == len(feasibility.GATE.free)
+    assert lo <= gate["false_alarms"] <= hi, (
+        f"{gate['false_alarms']}/{gate['free_n']} held-out False Alarms at threshold "
+        f"{gate['threshold']:.2f}: outside {lo}-{hi}, so the measurement is broken"
     )
 
 
-@pytest.mark.slow
-def test_weak_stripes_are_detected_at_least_90_percent(gate):
-    assert gate.striped_n == len(feasibility.GATE.striped)
-    assert gate.detection_rate >= 0.90, (
-        f"{gate.detected}/{gate.striped_n} detected, exact 95% CI {gate.detection_interval}; "
-        f"per case {gate.per_case_summary()}"
+def test_weak_stripes_are_detected_at_least_90_percent(saved):
+    gate = saved["gate"]
+    assert gate["striped_n"] == len(feasibility.GATE.striped)
+    assert gate["detected"] / gate["striped_n"] >= 0.90, (
+        f"{gate['detected']}/{gate['striped_n']} detected, exact 95% CI {gate['detection_interval']}"
     )
 
 
-@pytest.fixture(scope="module")
-def probe():
-    return feasibility.measure_probe()
-
-
-@pytest.mark.slow
-def test_full_frame_probe_detects_at_least_95_percent(probe):
+def test_full_frame_probe_detects_at_least_95_percent(saved):
     # The probe's False Alarm count is recorded in the result doc, not asserted:
     # its tolerance includes 0, so it cannot show "about 1%" (plan B4).
-    assert probe.striped_n == len(feasibility.PROBE.striped)
-    assert probe.detection_rate >= feasibility.PROBE_MIN_RATE, (
-        f"{probe.detected}/{probe.striped_n} detected at full frame, exact 95% CI "
-        f"{probe.detection_interval}; per case {probe.per_case_summary()}"
+    probe = saved["probe"]
+    assert probe["striped_n"] == len(feasibility.PROBE.striped)
+    assert probe["detected"] / probe["striped_n"] >= feasibility.PROBE_MIN_RATE, (
+        f"{probe['detected']}/{probe['striped_n']} detected at full frame, exact 95% CI "
+        f"{probe['detection_interval']}"
     )

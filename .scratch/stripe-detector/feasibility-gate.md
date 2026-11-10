@@ -96,7 +96,7 @@ These ranges are disjoint from each other and from every seed used before: 0-199
 ## Re-run
 
 - `uv run python tests/feasibility.py` (about 39 min on this laptop; `--skip-probe` for the timing and 256×256 gate only; `--workers N`; `--out PATH`). It rewrites `feasibility-gate.json`.
-- `uv run pytest -W error -m slow tests/test_feasibility_gate.py` runs the same measurement as tests (slow tests are skipped by default). At `ffffbed` (12 worker processes) all 4 slow tests passed (37.2 min); the default suite passed 203 tests with `-W error`.
+- `tests/test_feasibility_gate.py` checks the gates against the saved `feasibility-gate.json` in the default suite, and fails if the seed plan or frame shapes have changed since it was measured or it came from a dirty tree.
 
 ## Evidence
 

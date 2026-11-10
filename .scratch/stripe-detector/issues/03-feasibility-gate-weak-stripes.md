@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The threshold is set only on calibration seeds; all rates are measured on held-out seeds that were never used for calibration.
 - [x] The false-alarm rate on held-out stripe-free frames is about 1% (within binomial tolerance for the batch size used).
