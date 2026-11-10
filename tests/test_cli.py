@@ -7,7 +7,8 @@ import numpy as np
 
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import generate
-from truth_match import assert_matches_truth
+from test_analyse import BORDERLINE, borderline_frame
+from truth_match import DEPTH_TOL, assert_matches_truth
 
 
 def _run(*args, cmd=(sys.executable, "-m", "denoisifier")):
@@ -35,6 +36,19 @@ def test_cli_writes_json_report_for_striped_csv(tmp_path):
     report = json.loads(out.read_text())
     assert report["striped"] is True
     assert_matches_truth(report["period_px"], report["angle_deg"], s.truth)
+    assert abs(report["modulation_depth"] - 0.6) <= DEPTH_TOL
+
+
+def test_cli_reports_borderline_frame(tmp_path):
+    frame_path = tmp_path / "frame.csv"
+    out = tmp_path / "report.json"
+    write_frame_csv(borderline_frame(*BORDERLINE[0]), frame_path)
+    result = _run(frame_path, "-o", out)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(out.read_text())
+    assert report["striped"] is True
+    for key in ("period_px", "angle_deg", "modulation_depth"):
+        assert np.isfinite(report[key])
 
 
 def test_cli_prints_json_to_stdout_without_output_flag(tmp_path):

@@ -12,8 +12,9 @@ class Report:
 
     ``striped`` is decided by ``score > threshold``. ``period_px`` is the
     Period in sensor pixels; ``angle_deg`` is the Angle in degrees, with the
-    sign convention in GLOSSARY.md. Both are ``None`` when the frame is not
-    striped.
+    sign convention in GLOSSARY.md. ``modulation_depth`` is the Modulation
+    Depth relative to the local Envelope (GLOSSARY.md). All three are
+    ``None`` when the frame is not striped.
     """
 
     striped: bool
@@ -21,6 +22,7 @@ class Report:
     threshold: float
     period_px: float | None
     angle_deg: float | None
+    modulation_depth: float | None
 
     def to_dict(self) -> dict:
         """Plain Python types only, so ``json.dumps`` works."""
@@ -30,6 +32,7 @@ class Report:
             "threshold": float(self.threshold),
             "period_px": None if self.period_px is None else float(self.period_px),
             "angle_deg": None if self.angle_deg is None else float(self.angle_deg),
+            "modulation_depth": None if self.modulation_depth is None else float(self.modulation_depth),
         }
 
     def to_json(self) -> str:
