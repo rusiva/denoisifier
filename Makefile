@@ -7,7 +7,7 @@ PYTEST := $(UV) pytest
 check: lock-check           ## gate: every non-slow test, whole run
 	$(PYTEST)
 
-check-slow: lock-check      ## the slow tier (~40 min): run in the background, nothing else meanwhile
+check-slow: lock-check      ## the slow tier (duration: tests/test_feasibility_gate.py): background, nothing else meanwhile
 	$(PYTEST) -m slow
 
 test-fast:                  ## inner loop: stop at first failure, failures first
