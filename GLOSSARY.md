@@ -53,7 +53,7 @@ The part of a frame where stripes are present. It may cover only part of the env
 _Avoid_: stripe area, patch
 
 **Phase Break**:
-A line across the stripes where every stripe on one side is shifted sideways relative to the other side. Period and orientation stay the same on both sides.
+A line across the stripes where every stripe on one side is shifted sideways relative to the other side. Period and angle stay the same on both sides.
 _Avoid_: fault, discontinuity, glitch
 
 **Fork**:
