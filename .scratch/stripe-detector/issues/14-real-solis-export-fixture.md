@@ -22,13 +22,19 @@ Behaviour:
 
 **Status:** ready-for-agent
 
-- [ ] The real-image fixture loads by default: every value column plus the axis column kept, an axis warning, the metadata lines skipped and counted, the trailing comma noted.
-- [ ] With the drop-axis-column option, the fixture loads as 64x64 with values equal to the source crop.
-- [ ] A grid where only some rows end with an empty field, or a row with an empty interior field, raises a clear error naming the position.
-- [ ] The transpose option (library and CLI) returns the transposed frame and notes it; the default leaves the orientation unchanged.
-- [ ] The kinetic-series fixture (CRLF) raises a clear error saying series are not supported.
-- [ ] The CLI runs end to end on the real-image fixture with `--drop-axis-column` (and with `--transpose`), and the reader notes appear in the JSON report.
+- [x] The real-image fixture loads by default: every value column plus the axis column kept, an axis warning, the metadata lines skipped and counted, the trailing comma noted.
+- [x] With the drop-axis-column option, the fixture loads as 64x64 with values equal to the source crop.
+- [x] A grid where only some rows end with an empty field, or a row with an empty interior field, raises a clear error naming the position.
+- [x] The transpose option (library and CLI) returns the transposed frame and notes it; the default leaves the orientation unchanged.
+- [x] The kinetic-series fixture (CRLF) raises a clear error saying series are not supported.
+- [x] The CLI runs end to end on the real-image fixture with `--drop-axis-column` (and with `--transpose`), and the reader notes appear in the JSON report.
 
 ## Comments
 
 **Approval (recorded before the test change).** Weakening move "changing an expected value": replace `test_trailing_comma_is_rejected` (tests/test_read_frame.py) with `test_trailing_comma_on_every_row_is_accepted_and_noted`. Approved by the orchestrator (Codex adversarial review agrees); see `.scratch/stripe-detector/handoffs/14-orchestrator.md`, section "Decisions", Q1. Reason: two real Solis exports (WrightTools, MIT) end every grid row with a comma, so the old expectation encoded a wrong layout assumption. Limit: a missing last value on only some rows is still caught (uneven trailing comma or width), but a missing last value on every row, or in a one-row file, cannot be told apart from a trailing delimiter and reads as a grid one column narrower; documented in the `read_frame` docstring and pinned by tests.
+
+**Implementer (2026-11-11).** Built per `.scratch/stripe-detector/handoffs/14-plan.md` (Settled section), test-first, commits `a045427` (fixtures, trailing comma T1/T2), `eecba3f` (boundary rows T3), `709b14c` (kinetic series K), `5d8b159` (transpose X, kept-axis warning), `c354b4d` (CLI `--transpose`), `2e16753` (docstrings, help). Fixtures in `tests/data/solis/` with `NOTICE.md` (WrightTools, MIT); `.gitattributes` keeps them byte-exact. This ticket supersedes 04's S6 (trailing comma rejected) for the one shape allowed here, and extends 04's S2 with a normalized-width boundary check. One weakening move, the Q1 replacement above; no stamped file, protected number or gate config changed.
+
+Gate: `make check` exit 0; `352 passed, 4 deselected in 102.38s (0:01:42)`; slow-tier stamp check passed; HEAD `2e16753` (clean apart from the pre-existing 02/07 issue edits and untracked handoff dirs).
+
+Known gaps: (Q1) a last value missing on every row, or in a one-row file, cannot be told apart from a trailing comma and reads as a grid one column narrower. (Q3) a kinetic series is detected from the `Number in Kinetics Series` metadata key only; a file without that key is not proven to be a single frame (the "does not count up" warning catches a restarting axis only when the axis column is dropped).
