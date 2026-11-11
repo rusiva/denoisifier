@@ -52,4 +52,8 @@ protected :: PROBE_FREE_SEEDS :: range(71000, 71200)
 protected :: PROBE_STRIPED_SEEDS :: range(72000, 72100)
 protected :: TIMING_SEED :: 40000
 protected :: TIMING_CASE :: Case(period=8, angle_deg=0)
-protected :: USED_SEEDS :: [range(0, 200), range(1000, 1400), range(2000, 2032), range(50000, 50300), range(59999, 60100)]
+protected :: A0_CALIBRATION_SEEDS :: range(0, 10)
+protected :: THRESHOLD_CALIBRATION_SEEDS :: range(100, 200)
+protected :: TEST_SEED_BLOCK :: range(10, 100)
+protected :: USED_SEEDS :: [range(0, 10), range(10, 100), range(100, 200), range(1000, 1400), range(2000, 2032), range(50000, 50300), range(59999, 60100)]
+protected :: CALIBRATION_SEEDS :: {'A0_CALIBRATION_SEEDS': range(0, 10), 'THRESHOLD_CALIBRATION_SEEDS': range(100, 200), 'GATE_CALIBRATION_SEEDS': range(10000, 12000), 'PROBE_CALIBRATION_SEEDS': range(70000, 70300)}

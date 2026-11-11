@@ -9,17 +9,54 @@ below), a fresh measurement. Re-measure and save with
 
 import json
 from itertools import combinations
+from types import SimpleNamespace
 
 import pytest
 
 import feasibility
+import protected
 from protected import (
     FALSE_ALARM_TOLERANCE,
     MIN_DETECTION_RATE,
     PROBE_MIN_DETECTION_RATE,
     TIMING_LIMIT_S,
-    USED_SEEDS,
+    TIMING_SEED,
 )
+
+
+def seed_range_overlaps(namespace) -> list[str]:
+    """Every pair of top-level seed ranges in ``namespace`` that share seeds.
+
+    The top-level ranges are each module-level ``range`` (except
+    ``*_TEST_SEEDS``), each ``USED_SEEDS[i]``, and each ``int`` named ``*_SEED``
+    (except ``*_TEST_SEED``) as a one-seed range. Aliases (the same object) are
+    counted once, under their first name; equal ranges under two names are
+    different entries, so they overlap (ticket agent-gates/04).
+    """
+    entries: list[tuple[str, range]] = []
+
+    def add(name: str, r: range) -> None:
+        if not any(r is seen for _, seen in entries):
+            entries.append((name, r))
+
+    for name, value in vars(namespace).items():
+        if isinstance(value, range) and not name.endswith("_TEST_SEEDS"):
+            add(name, value)
+        elif (
+            isinstance(value, int)
+            and not isinstance(value, bool)
+            and name.endswith("_SEED")
+            and not name.endswith("_TEST_SEED")
+        ):
+            add(name, range(value, value + 1))
+    for i, r in enumerate(getattr(namespace, "USED_SEEDS", [])):
+        add(f"USED_SEEDS[{i}]", r)
+    overlaps = []
+    for (a, ra), (b, rb) in combinations(entries, 2):
+        shared = len(set(ra) & set(rb))
+        if shared:
+            overlaps.append(f"{a} = {ra!r} and {b} = {rb!r} share {shared} seeds")
+    return overlaps
 
 
 def test_seed_sets_are_disjoint_and_unused():
@@ -33,11 +70,41 @@ def test_seed_sets_are_disjoint_and_unused():
         "probe_striped": 100,
         "timing": 1,
     }
-    for (a, ra), (b, rb) in combinations(seed_sets.items(), 2):
-        assert not set(ra) & set(rb), f"{a} and {b} share seeds"
+    assert seed_range_overlaps(protected) == []
+
+    # Test seeds may share seeds with each other, but stay in the test block.
+    for name, value in vars(protected).items():
+        if name.endswith("_TEST_SEEDS"):
+            seeds = list(value)
+        elif name.endswith("_TEST_SEED"):
+            seeds = [value]
+        else:
+            continue
+        outside = [s for s in seeds if s not in protected.TEST_SEED_BLOCK]
+        assert not outside, f"{name} has seeds {outside} outside TEST_SEED_BLOCK"
+
+    # Registry links: the calibration registry names top-level ranges, and
+    # every feasibility seed set is a registered range.
+    top_level = [v for v in vars(protected).values() if isinstance(v, range)]
+    for name, r in protected.CALIBRATION_SEEDS.items():
+        assert getattr(protected, name) is r, f"CALIBRATION_SEEDS[{name!r}] is not {name}"
     for name, r in seed_sets.items():
-        for used in USED_SEEDS:
-            assert not set(r) & set(used), f"{name} reuses seeds {used}"
+        assert r in top_level or r == range(TIMING_SEED, TIMING_SEED + 1), (
+            f"SEED_SETS[{name!r}] = {r!r} is not a protected seed range"
+        )
+        if "calibration" in name:
+            assert any(r is c for c in protected.CALIBRATION_SEEDS.values()), (
+                f"SEED_SETS[{name!r}] is a calibration set missing from CALIBRATION_SEEDS"
+            )
+
+
+def test_equal_ranges_under_two_names_are_an_overlap():
+    distinct = SimpleNamespace(A_SEEDS=range(5, 9), B_SEEDS=range(5, 9))
+    assert seed_range_overlaps(distinct) == [
+        "A_SEEDS = range(5, 9) and B_SEEDS = range(5, 9) share 4 seeds"
+    ]
+    a = range(5, 9)
+    assert seed_range_overlaps(SimpleNamespace(A_SEEDS=a, B_SEEDS=a)) == []
 
 
 def test_seed_sets_are_the_measured_plans():
