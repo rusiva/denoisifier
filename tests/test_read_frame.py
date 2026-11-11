@@ -163,3 +163,50 @@ def test_corrupted_first_or_last_row_is_an_error_not_metadata(tmp_path, content,
 def test_metadata_line_between_grid_rows_is_an_error(tmp_path):
     with pytest.raises(ValueError, match=r"line 2 has 2 values"):
         read_frame(_write(tmp_path, "1,2,3\nGain:,300\n4,5,6\n"))
+
+
+def test_axis_column_is_dropped_when_requested(tmp_path):
+    result = read_frame(_write(tmp_path, "0,5,6\n1,7,8\n2,9,10\n"), drop_axis_column=True)
+    assert np.array_equal(result.frame, [[5, 6], [7, 8], [9, 10]])
+    assert len(result.notes) == 1
+    assert "dropped" in result.notes[0]
+    assert not any(note.startswith("warning: ") for note in result.notes)
+
+
+def test_spectral_axis_column_is_dropped_when_requested(tmp_path):
+    text = "532.1,5,6\n532.4,7,8\n532.8,9,10\n"
+    result = read_frame(_write(tmp_path, text), drop_axis_column=True)
+    assert np.array_equal(result.frame, [[5, 6], [7, 8], [9, 10]])
+
+
+def test_dropping_a_column_that_does_not_count_up_warns(tmp_path):
+    result = read_frame(_write(tmp_path, "3,5,6\n1,7,8\n"), drop_axis_column=True)
+    assert np.array_equal(result.frame, [[5, 6], [7, 8]])
+    assert len(result.notes) == 2
+    assert "dropped" in result.notes[0]
+    assert not result.notes[0].startswith("warning: ")
+    assert result.notes[1].startswith("warning: ")
+
+
+def test_dropping_the_only_column_is_an_error(tmp_path):
+    with pytest.raises(ValueError, match="only one column"):
+        read_frame(_write(tmp_path, "1\n2\n"), drop_axis_column=True)
+
+
+def test_dropping_on_a_one_row_grid_drops_without_assessing(tmp_path):
+    result = read_frame(_write(tmp_path, "3,5,6\n"), drop_axis_column=True)
+    assert np.array_equal(result.frame, [[5, 6]])
+    assert len(result.notes) == 1
+    assert "dropped" in result.notes[0]
+    assert "not assessed" in result.notes[0]
+    assert not result.notes[0].startswith("warning: ")
+
+
+def test_solis_export_with_axis_and_metadata_loads_when_dropping(tmp_path):
+    text = "Andor Solis export\n0,5,6\n1,7,8\n2,9,10\nGain:,300\n"
+    result = read_frame(_write(tmp_path, text), drop_axis_column=True)
+    assert np.array_equal(result.frame, [[5, 6], [7, 8], [9, 10]])
+    assert len(result.notes) == 3
+    assert "before" in result.notes[0]
+    assert "after" in result.notes[1]
+    assert "dropped" in result.notes[2]

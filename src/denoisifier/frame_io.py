@@ -1,4 +1,4 @@
-"""Frames on disk: the plain comma-separated grid format."""
+"""Frames on disk: comma-separated grids, including Solis exports."""
 
 from __future__ import annotations
 
@@ -14,17 +14,56 @@ class FrameFile:
 
     ``frame`` is a 2D float64 array, shape ``(rows, cols)``. ``notes`` holds
     anything the reader wants the experimenter to know about how the file was
-    read; it is always empty for plain grids.
+    read, in this order: metadata lines skipped before the grid, metadata lines
+    skipped after it, then the axis column (the dropped note, then its warning
+    if any). Notes that start with ``"warning: "`` are warnings. ``notes`` is
+    empty for a plain grid whose first column does not count up.
     """
 
     frame: np.ndarray
     notes: tuple[str, ...] = ()
 
 
-def read_frame(path: str | os.PathLike[str]) -> FrameFile:
-    """Read a plain comma-separated grid of floats with no header.
+def read_frame(path: str | os.PathLike[str], *, drop_axis_column: bool = False) -> FrameFile:
+    """Read a comma-separated grid of numbers, such as an Andor Solis export.
 
-    Rows of the file are rows of the frame. Every column is kept.
+    The file is read as UTF-8 (a byte order mark is ignored; bytes that are not
+    UTF-8 become a replacement character, which is not a number). Each line is
+    split on commas and whitespace around each field is stripped. Blank lines
+    are ignored everywhere and not counted.
+
+    A line whose first field is a number is a grid line. The grid is every line
+    from the first grid line to the last, and its width is the field count of
+    its first line. Rows of the grid are rows of the frame.
+
+    Lines before and after the grid are metadata: they are skipped and counted
+    in the notes. Except: a line there with the grid's width and more than half
+    of its fields numbers is a corrupted grid row, and raises.
+
+    Inside the grid every line must have the grid's width (checked first) and
+    every field must be a number, so a metadata line between grid rows, inline
+    ``#`` text or a trailing comma (an empty last field) raises. Unlike
+    ``np.loadtxt``, ``#`` lines are not stripped as comments: outside the grid
+    they are metadata, inside it they are errors.
+
+    A number is whatever Python's ``float()`` accepts, which includes ``nan``,
+    ``inf`` and ``1_0`` (= 10). The reader keeps non-finite values; ``analyse``
+    rejects them. A numeric header row (such as column indices) is not
+    detected: it is kept as data.
+
+    Every column is kept unless ``drop_axis_column`` is true, which drops the
+    first column as a Solis axis column (pixel or spectral axis) and says so in
+    the notes. The reader never drops it on its own. With at least 2 rows and 2
+    columns it also checks whether the first column counts up (strictly
+    increases) row by row, as an axis column does: a kept column that counts up
+    gets a warning note, and a dropped column that does not gets one too. With
+    one row that is not assessed, and the dropped note says so.
+
+    Raises ``ValueError`` naming the file when no line is a grid line, when a
+    grid line has the wrong number of fields (naming its line and the grid's
+    first line), when a grid field is not a number (naming its line and
+    column; positions are 1-based lines and columns of the file), or when
+    ``drop_axis_column`` is true and the grid has only one column.
     """
     with open(path, encoding="utf-8-sig", errors="replace") as f:
         lines = [(n, _fields(line)) for n, line in enumerate(f, start=1) if line.strip()]
@@ -51,7 +90,9 @@ def read_frame(path: str | os.PathLike[str]) -> FrameFile:
             )
         rows.append(_numbers(path, n, fields))
     grid = np.asarray(rows, dtype=np.float64)
-    if grid.shape[0] >= 2 and grid.shape[1] >= 2 and np.all(np.diff(grid[:, 0]) > 0):
+    if drop_axis_column:
+        grid = _drop_axis_column(path, grid, notes)
+    elif _counts_up(grid):
         notes.append(
             f"warning: the first column counts up row by row "
             f"({grid[0, 0]:g} to {grid[-1, 0]:g}), like a Solis axis column; "
@@ -59,6 +100,35 @@ def read_frame(path: str | os.PathLike[str]) -> FrameFile:
             "drop_axis_column=True (CLI: --drop-axis-column)"
         )
     return FrameFile(frame=grid, notes=tuple(notes))
+
+
+def _drop_axis_column(
+    path: str | os.PathLike[str], grid: np.ndarray, notes: list[str]
+) -> np.ndarray:
+    """Drop column 0 as requested, adding the dropped note and any warning to ``notes``."""
+    if grid.shape[1] < 2:
+        raise ValueError(f"{path}: cannot drop the axis column: the grid has only one column")
+    if grid.shape[0] < 2:
+        notes.append(
+            "dropped the first column as an axis column, as requested; "
+            "with one row, whether it is an axis column was not assessed"
+        )
+    else:
+        notes.append(
+            f"dropped the first column as an axis column "
+            f"({grid[0, 0]:g} to {grid[-1, 0]:g}), as requested"
+        )
+        if not _counts_up(grid):
+            notes.append(
+                "warning: the first column was dropped as requested, but it does not "
+                "count up row by row, so it may not be an axis column"
+            )
+    return grid[:, 1:]
+
+
+def _counts_up(grid: np.ndarray) -> bool:
+    """Whether the first column strictly increases row by row (needs 2 rows and 2 columns)."""
+    return grid.shape[0] >= 2 and grid.shape[1] >= 2 and bool(np.all(np.diff(grid[:, 0]) > 0))
 
 
 def _fields(line: str) -> list[str]:
@@ -74,6 +144,7 @@ def _is_number(field: str) -> bool:
 
 
 def _numbers(path: str | os.PathLike[str], n: int, fields: list[str]) -> list[float]:
+    """The fields as floats; raises naming the line and column of the first non-number."""
     for c, field in enumerate(fields, start=1):
         if not _is_number(field):
             raise ValueError(f"{path}: line {n}, column {c}: {field!r} is not a number")
