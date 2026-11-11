@@ -18,7 +18,8 @@ import seed_guard
 # Single-threaded BLAS/OpenMP in the worker processes. Set before NumPy is
 # imported here; workers are spawned (not forked), so they import NumPy fresh
 # and read these even when a parent (pytest) imported NumPy first.
-for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+_THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+for _var in _THREAD_VARS:
     os.environ.setdefault(_var, "1")
 
 import argparse  # noqa: E402
@@ -27,7 +28,7 @@ import multiprocessing  # noqa: E402
 import platform  # noqa: E402
 import subprocess  # noqa: E402
 import time  # noqa: E402
-from collections.abc import Sequence  # noqa: E402
+from collections.abc import Callable, Sequence  # noqa: E402
 from concurrent.futures import ProcessPoolExecutor  # noqa: E402
 from dataclasses import asdict, dataclass  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -51,11 +52,21 @@ from protected import (  # noqa: E402
     GATE_CALIBRATION_SEEDS,
     GATE_FREE_SEEDS,
     GATE_SHAPE,
+    GATE_STORED_THRESHOLD,
     GATE_STRIPED_SEEDS,
     PROBE_CALIBRATION_SEEDS,
     PROBE_FREE_SEEDS,
     PROBE_SHAPE,
+    PROBE_STORED_THRESHOLD,
     PROBE_STRIPED_SEEDS,
+    REGRESSION_FREE_SEEDS,
+    REGRESSION_MAX_FALSE_ALARMS,
+    REGRESSION_MIN_DETECTED,
+    REGRESSION_PROBE_MIN_DETECTED,
+    REGRESSION_PROBE_STRIPED_SEEDS,
+    REGRESSION_STRIPED_SEEDS,
+    REGRESSION_TIMED_FRAMES,
+    SLOW_TIMING_LIMIT_S,
     TIMING_CASE,
     TIMING_LIMIT_S,
     TIMING_SEED,
@@ -133,6 +144,22 @@ def time_full_frame(repeats: int = 3) -> list[float]:
         analyse(frame)
         times.append(time.perf_counter() - t0)
     return times
+
+
+def time_frames(
+    seeds: Sequence[int], depth: float, shape: tuple[int, int], case_for: Callable[[int], Case]
+) -> list[tuple[float, float]]:
+    """(seconds, Stripe Score) of ``analyse`` on each seed's frame, serial and in
+    this process. The frames are generated first and one warm-up call at
+    GATE.shape is made; neither is timed."""
+    frames = [_frame(seed, depth, shape, case_for(seed)) for seed in seeds]
+    analyse(_frame(seeds[0], 0.0, GATE.shape, case_for(seeds[0])))
+    out = []
+    for frame in frames:
+        t0 = time.perf_counter()
+        score = analyse(frame).score
+        out.append((time.perf_counter() - t0, float(score)))
+    return out
 
 
 def case_of(seed: int) -> Case:
@@ -261,6 +288,28 @@ class RateResult:
         return "\n".join(lines)
 
 
+def _case_results(
+    seeds: Sequence[int], scores: np.ndarray, threshold: float
+) -> tuple[CaseResult, ...]:
+    """Detected count and lowest score per Case of the striped ``seeds``."""
+    seed_cases = [case_of(s) for s in seeds]
+    cases = []
+    for case in CASES:
+        case_scores = scores[np.array([c == case for c in seed_cases], dtype=bool)]
+        if case_scores.size:
+            cases.append(
+                CaseResult(
+                    period=case.period,
+                    angle_deg=case.angle_deg,
+                    detected=_count_above(case_scores, threshold),
+                    n=int(case_scores.size),
+                    min_score=float(case_scores.min()),
+                    min_over_threshold=float(case_scores.min() / threshold),
+                )
+            )
+    return tuple(cases)
+
+
 def measure(plan: SeedPlan, workers: int | None = None) -> RateResult:
     """Set the 1% threshold on the calibration seeds alone, then score the
     held-out sets against it."""
@@ -273,21 +322,7 @@ def measure(plan: SeedPlan, workers: int | None = None) -> RateResult:
 
     false_alarms = _count_above(free_scores, threshold)
     detected = _count_above(striped_scores, threshold)
-    striped_cases = [case_of(s) for s in plan.striped]
-    cases = []
-    for case in CASES:
-        case_scores = striped_scores[np.array([c == case for c in striped_cases], dtype=bool)]
-        if case_scores.size:
-            cases.append(
-                CaseResult(
-                    period=case.period,
-                    angle_deg=case.angle_deg,
-                    detected=_count_above(case_scores, threshold),
-                    n=int(case_scores.size),
-                    min_score=float(case_scores.min()),
-                    min_over_threshold=float(case_scores.min() / threshold),
-                )
-            )
+    cases = _case_results(plan.striped, striped_scores, threshold)
     return RateResult(
         shape=plan.shape,
         threshold=threshold,
@@ -380,6 +415,101 @@ def measure_all(workers: int | None = None, probe: bool = True) -> dict:
         out["probe"] = probe_measurement.to_dict()
         print(probe_measurement.table("Full-frame probe"), flush=True)
     return out
+
+
+class RegressionPlan(NamedTuple):
+    """The slow tier's regression check (ticket agent-gates/05): fresh seeds
+    scored at stored thresholds, with no calibration. The first ``timed``
+    ``probe_striped`` seeds are analysed serially and timed; they count in the
+    probe total."""
+
+    gate_shape: tuple[int, int]
+    probe_shape: tuple[int, int]
+    gate_threshold: float
+    probe_threshold: float
+    striped: range  # gate_shape, m = DEPTH
+    free: range  # gate_shape, Stripe-free
+    probe_striped: range  # probe_shape, m = DEPTH
+    timed: int
+    min_detected: int
+    max_false_alarms: int
+    probe_min_detected: int
+
+
+REGRESSION = RegressionPlan(
+    gate_shape=GATE_SHAPE,
+    probe_shape=PROBE_SHAPE,
+    gate_threshold=GATE_STORED_THRESHOLD,
+    probe_threshold=PROBE_STORED_THRESHOLD,
+    striped=REGRESSION_STRIPED_SEEDS,
+    free=REGRESSION_FREE_SEEDS,
+    probe_striped=REGRESSION_PROBE_STRIPED_SEEDS,
+    timed=REGRESSION_TIMED_FRAMES,
+    min_detected=REGRESSION_MIN_DETECTED,
+    max_false_alarms=REGRESSION_MAX_FALSE_ALARMS,
+    probe_min_detected=REGRESSION_PROBE_MIN_DETECTED,
+)
+
+
+def _loadavg() -> str:
+    try:
+        return Path("/proc/loadavg").read_text().strip()
+    except OSError:
+        return "unavailable"
+
+
+def regression_check(plan: RegressionPlan = REGRESSION, workers: int | None = None) -> dict:
+    """Score ``plan``'s seeds at its stored thresholds: the counts, per-Case
+    breakdown, timed frames and run info. Asserts nothing (the slow tests do)."""
+    workers = resolve_workers(workers)
+    t_start = time.perf_counter()
+    load_start = _loadavg()
+    # Timing first, before any worker pool has run.
+    timed_seeds = plan.probe_striped[: plan.timed]
+    timed = time_frames(timed_seeds, DEPTH, plan.probe_shape, case_of)
+    pooled = score_batch(plan.probe_striped[plan.timed :], DEPTH, plan.probe_shape, workers)
+    probe_scores = np.concatenate([np.array([s for _, s in timed], dtype=float), pooled])
+    striped_scores = score_batch(plan.striped, DEPTH, plan.gate_shape, workers)
+    free_scores = score_batch(plan.free, 0.0, plan.gate_shape, workers)
+    seconds = [t for t, _ in timed]
+
+    def detection(seeds: range, scores: np.ndarray, threshold: float) -> dict:
+        return {
+            "n": len(seeds),
+            "detected": _count_above(scores, threshold),
+            "cases": [asdict(c) for c in _case_results(seeds, scores, threshold)],
+        }
+
+    return {
+        "plan": {
+            k: [v.start, v.stop - 1] if isinstance(v, range) else v
+            for k, v in plan._asdict().items()
+        },
+        "striped": detection(plan.striped, striped_scores, plan.gate_threshold),
+        "free": {
+            "n": len(plan.free),
+            "false_alarms": _count_above(free_scores, plan.gate_threshold),
+            "max_score": float(free_scores.max()),
+        },
+        "probe": detection(plan.probe_striped, probe_scores, plan.probe_threshold),
+        "timing": {
+            "shape": plan.probe_shape,
+            "seeds": list(timed_seeds),
+            "seconds": seconds,
+            "median_s": median(seconds),
+            "limit_s": SLOW_TIMING_LIMIT_S,
+        },
+        "run_info": run_info(workers),
+        "wall_clock_s": time.perf_counter() - t_start,
+        "loadavg": {"start": load_start, "end": _loadavg()},
+        "threads": {
+            **{v: os.environ.get(v) for v in _THREAD_VARS},
+            "note": (
+                "test collection imported NumPy before feasibility set these, so BLAS "
+                "threading of the in-process timed frames is not pinned (make bench pins it)"
+            ),
+        },
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
