@@ -15,6 +15,7 @@ Gamma distribution, Gaussian read noise, divided back by the gain.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Literal, cast
 
@@ -94,6 +95,10 @@ def generate(
     strength 0.4) or ``"multiscale"`` (power-law; typical strength 0.35).
     ``mottle_strength`` is the std of the log-mottle; ``None`` takes the
     typical value. Mottle is isotropic (ADR 0001).
+
+    Once the arguments are valid, the seed is raised as the audit event
+    ``denoisifier.synthetic.generate`` (``sys.audit``) just before it seeds the
+    RNG; the tests' seed guard listens for it (tests/seed_guard.py).
     """
     if len(shape) != 2 or shape[0] < 1 or shape[1] < 1:
         raise ValueError(f"shape must be two positive sizes, got {shape!r}")
@@ -113,6 +118,7 @@ def generate(
     elif noise < 0:
         raise ValueError(f"noise must be >= 0, got {noise!r}")
 
+    sys.audit("denoisifier.synthetic.generate", seed)
     rng = np.random.default_rng(seed)
     rows, cols = shape
     y, x = np.mgrid[0:rows, 0:cols].astype(float)
