@@ -8,11 +8,22 @@ from borderline import BORDERLINE, borderline_frame
 from cases import CASES
 from denoisifier import Report, analyse
 from denoisifier.synthetic import Emccd, generate
-from protected import BORDERLINE_SCORE_WINDOW
+from protected import (
+    BORDERLINE_SCORE_WINDOW,
+    ENVELOPE_TEST_SEEDS,
+    EXTREMES_TEST_SEEDS,
+    FULL_FRAME_TEST_SEEDS,
+    MOTTLED_TEST_SEEDS,
+    MULTISCALE_TEST_SEEDS,
+    PROFILE_ONLY_TEST_SEEDS,
+    SINGLE_FRAME_ALT_TEST_SEEDS,
+    SINGLE_FRAME_TEST_SEED,
+    STRONG_TEST_SEEDS,
+)
 from truth_match import assert_depth_matches, assert_matches_truth
 
 SHAPE = (256, 256)
-SEEDS = range(20)
+SEEDS = MOTTLED_TEST_SEEDS
 # About 100 photons at the peak, scorched mottle: the ticket 02 working point.
 TYPICAL = dict(mottle="scorched", noise=Emccd())
 
@@ -43,13 +54,12 @@ def test_clear_stripes_in_mottle_are_found_and_measured(seed):
 @pytest.mark.parametrize(
     ("seed", "period", "angle_deg"),
     [
-        (0, 5, 0),
-        (1, 8, 6),
-        (2, 12, -8),
-        (3, 18, 3),
-        (4, 4, -4),
-        (5, 3, 10),
-        (6, 20, -10),
+        (seed, *case)
+        for seed, case in zip(
+            FULL_FRAME_TEST_SEEDS,
+            [(5, 0), (8, 6), (12, -8), (18, 3), (4, -4), (3, 10), (20, -10)],
+            strict=True,
+        )
     ],
 )
 def test_clear_full_frame_stripes_are_found_and_measured(seed, period, angle_deg, noise):
@@ -69,7 +79,7 @@ def test_clear_full_frame_stripes_are_found_and_measured(seed, period, angle_deg
 
 
 @pytest.mark.parametrize("noise", [0.0, 0.001, 0.01])
-@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize("seed", PROFILE_ONLY_TEST_SEEDS)
 def test_profile_only_frame_is_not_striped(seed, noise):
     s = generate(seed=seed, shape=SHAPE, modulation_depth=0.0, noise=noise)
     report = analyse(s.frame)
@@ -80,8 +90,9 @@ def test_profile_only_frame_is_not_striped(seed, noise):
 
 
 def test_report_has_score_and_threshold():
-    striped = analyse(generate(seed=7, shape=SHAPE, period=9, modulation_depth=0.6).frame)
-    plain = analyse(generate(seed=7, shape=SHAPE, modulation_depth=0.0).frame)
+    seed = SINGLE_FRAME_ALT_TEST_SEEDS[4]
+    striped = analyse(generate(seed=seed, shape=SHAPE, period=9, modulation_depth=0.6).frame)
+    plain = analyse(generate(seed=seed, shape=SHAPE, modulation_depth=0.0).frame)
     assert striped.score > striped.threshold
     assert plain.score < plain.threshold
 
@@ -107,7 +118,9 @@ def test_rejects_frame_smaller_than_min_side():
         ValueError, match="^" + re.escape("frame is 39x64; both sides must be at least")
     ):
         analyse(np.ones((39, 64)))
-    report = analyse(generate(seed=0, shape=(40, 64), modulation_depth=0.0).frame)
+    report = analyse(
+        generate(seed=SINGLE_FRAME_TEST_SEED, shape=(40, 64), modulation_depth=0.0).frame
+    )
     assert isinstance(report, Report)
 
 
@@ -117,14 +130,14 @@ def test_rejects_non_2d_input():
 
 
 def test_rejects_non_finite_values():
-    frame = generate(seed=0, shape=(64, 64)).frame
+    frame = generate(seed=SINGLE_FRAME_TEST_SEED, shape=(64, 64)).frame
     frame[10, 10] = np.nan
     with pytest.raises(ValueError, match="^" + re.escape("frame contains non-finite values")):
         analyse(frame)
 
 
 def test_input_frame_is_not_modified():
-    frame = generate(seed=2, shape=(64, 64)).frame
+    frame = generate(seed=SINGLE_FRAME_ALT_TEST_SEEDS[1], shape=(64, 64)).frame
     before = frame.copy()
     analyse(frame)
     assert np.array_equal(frame, before)
@@ -132,7 +145,11 @@ def test_input_frame_is_not_modified():
 
 @pytest.mark.parametrize("modulation_depth", [0.6, 0.0])
 def test_report_converts_to_json(modulation_depth):
-    report = analyse(generate(seed=1, shape=SHAPE, modulation_depth=modulation_depth).frame)
+    report = analyse(
+        generate(
+            seed=SINGLE_FRAME_ALT_TEST_SEEDS[0], shape=SHAPE, modulation_depth=modulation_depth
+        ).frame
+    )
     data = json.loads(report.to_json())
     assert list(data) == [
         "striped",
@@ -157,7 +174,7 @@ def test_report_converts_to_json(modulation_depth):
     }
 
 
-@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("seed", STRONG_TEST_SEEDS)
 @pytest.mark.parametrize("period", [5, 12])
 def test_strong_stripes_are_measured(seed, period):
     s = generate(
@@ -185,7 +202,7 @@ def _crop_columns(profile, rows, width=128, step=8):
 
 
 @pytest.mark.parametrize("noise", [0.0, Emccd()], ids=["noise-free", "emccd"])
-@pytest.mark.parametrize("seed", range(3))
+@pytest.mark.parametrize("seed", ENVELOPE_TEST_SEEDS)
 def test_modulation_depth_is_relative_to_local_envelope(seed, noise):
     shape = (256, 640)
     s = generate(
@@ -217,7 +234,8 @@ EXTREMES = [(3, -10), (3, 0), (3, 10), (20, -10), (20, 0), (20, 10), (3, 5), (20
 
 
 @pytest.mark.parametrize(
-    ("seed", "period", "angle_deg"), [(i, *case) for i, case in enumerate(EXTREMES)]
+    ("seed", "period", "angle_deg"),
+    [(seed, *case) for seed, case in zip(EXTREMES_TEST_SEEDS, EXTREMES, strict=True)],
 )
 def test_period_and_angle_extremes_are_detected(seed, period, angle_deg):
     s = generate(
@@ -228,7 +246,7 @@ def test_period_and_angle_extremes_are_detected(seed, period, angle_deg):
     assert_matches_truth(report.period_px, report.angle_deg, s.truth)
 
 
-@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize("seed", MULTISCALE_TEST_SEEDS)
 def test_multiscale_mottle_is_handled(seed):
     common = dict(seed=seed, shape=SHAPE, mottle="multiscale", noise=Emccd())
     assert analyse(generate(**common, modulation_depth=0.0).frame).striped is False

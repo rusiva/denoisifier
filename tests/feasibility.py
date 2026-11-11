@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import os
 
+# Imports no NumPy (seed_guard.py), so it can come before the thread variables.
+import seed_guard
+
 # Single-threaded BLAS/OpenMP in the worker processes. Set before NumPy is
 # imported here; workers are spawned (not forked), so they import NumPy fresh
 # and read these even when a parent (pytest) imported NumPy first.
@@ -170,8 +173,12 @@ def score_batch(
     """Stripe Scores of generated frames, in seed order whatever the worker count."""
     jobs = [(seed, depth, shape) for seed in seeds]
     # Spawned workers import NumPy fresh, so the thread variables set above apply.
+    # Each worker installs the seed guard with this process's allowed ranges.
     with ProcessPoolExecutor(
-        resolve_workers(workers), mp_context=multiprocessing.get_context("spawn")
+        resolve_workers(workers),
+        mp_context=multiprocessing.get_context("spawn"),
+        initializer=seed_guard.install_worker,
+        initargs=(seed_guard.worker_allowance(),),
     ) as ex:
         return np.array(list(ex.map(_score_one, jobs, chunksize=4)), dtype=float)
 
@@ -257,7 +264,9 @@ class RateResult:
 def measure(plan: SeedPlan, workers: int | None = None) -> RateResult:
     """Set the 1% threshold on the calibration seeds alone, then score the
     held-out sets against it."""
-    calibration_scores = score_batch(plan.calibration, 0.0, plan.shape, workers)
+    # The one calibration step: only it may use the calibration seeds (seed_guard.py).
+    with seed_guard.calibrating(plan.calibration):
+        calibration_scores = score_batch(plan.calibration, 0.0, plan.shape, workers)
     threshold = threshold_for_false_alarm_rate(calibration_scores, RATE)
     free_scores = score_batch(plan.free, 0.0, plan.shape, workers)
     striped_scores = score_batch(plan.striped, DEPTH, plan.shape, workers)
@@ -374,6 +383,7 @@ def measure_all(workers: int | None = None, probe: bool = True) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    seed_guard.install()
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--skip-probe", action="store_true", help="skip the full-frame probe")
     parser.add_argument(

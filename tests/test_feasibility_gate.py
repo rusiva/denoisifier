@@ -78,6 +78,8 @@ def test_seed_sets_are_disjoint_and_unused():
             seeds = list(value)
         elif name.endswith("_TEST_SEED"):
             seeds = [value]
+        elif name == "BORDERLINE_TEST_CASES":
+            seeds = [seed for seed, _ in value]
         else:
             continue
         outside = [s for s in seeds if s not in protected.TEST_SEED_BLOCK]

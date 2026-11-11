@@ -55,6 +55,24 @@ THRESHOLD_CALIBRATION_SEEDS = range(100, 200)
 # Seeds of the non-slow tests: every *_TEST_SEED(S) lies in here.
 TEST_SEED_BLOCK = range(10, 100)
 
+# Test seeds (ticket agent-gates/04, owner ruling O1): each seed s in 0-9, now
+# A0_CALIBRATION_SEEDS, moved to s + 20; seeds 10-19 stayed. CASES[seed % 10]
+# and the other seed-derived cases are unchanged by the +20 shift.
+MOTTLED_TEST_SEEDS = range(10, 30)  # test_analyse.SEEDS
+FULL_FRAME_TEST_SEEDS = range(20, 27)  # zipped with its 7 cases, in order
+PROFILE_ONLY_TEST_SEEDS = range(20, 30)
+STRONG_TEST_SEEDS = range(20, 25)
+ENVELOPE_TEST_SEEDS = range(20, 23)
+EXTREMES_TEST_SEEDS = range(20, 28)  # zipped with test_analyse.EXTREMES
+MULTISCALE_TEST_SEEDS = range(20, 30)
+STRIPE_FREE_SPECTRUM_TEST_SEEDS = range(20, 30)
+SAME_SEED_TEST_SEEDS = (23, 24)
+SINGLE_FRAME_TEST_SEED = 20  # single-frame tests whose seed was 0
+SINGLE_FRAME_ALT_TEST_SEEDS = (21, 22, 23, 25, 27)  # were 1, 2, 3, 5 and 7
+# borderline.BORDERLINE. The first entry was (0, 20); 22 is the lowest Period
+# 20 seed in 20-99 that scores in the borderline window (ruling O3).
+BORDERLINE_TEST_CASES = [(22, 20), (13, 5), (13, 8), (12, 20), (16, 8)]
+
 # Seeds already used before ticket 03: tests and ticket 02 (0-199, split by
 # use), the planner's pre-measurement (1000-1399, 2000-2031) and prototype P1.
 # Every range here and every other seed range in this module is disjoint
