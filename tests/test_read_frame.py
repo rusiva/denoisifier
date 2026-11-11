@@ -86,3 +86,58 @@ def test_float_syntax_includes_non_finite_values(tmp_path):
     assert result.frame[1, 0] == -np.inf
     assert result.frame[0, 1] == 1
     assert result.frame[1, 1] == 2
+
+
+def test_metadata_lines_before_and_after_the_grid_are_skipped_and_counted(tmp_path):
+    text = (
+        "Andor Solis export\n"
+        "Exposure Time (secs):,0.1\n"
+        "6,5\n"
+        "4,7\n"
+        "Date and Time:,Mon Nov 10\n"
+        "Gain:,300\n"
+        "Software Version:,4.32\n"
+        "\n"
+    )
+    result = read_frame(_write(tmp_path, text))
+    assert np.array_equal(result.frame, [[6, 5], [4, 7]])
+    assert result.notes == (
+        "skipped 2 metadata lines before the grid",
+        "skipped 3 metadata lines after the grid",
+    )
+
+
+def test_bad_value_in_last_row_is_an_error_not_metadata(tmp_path):
+    with pytest.raises(ValueError, match=r"line 3, column 3"):
+        read_frame(_write(tmp_path, "1,2,3\n4,5,6\n7,8,abc\n"))
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Andor Solis export\nGain:,300\n", "", "\n  \n\t\n"],
+    ids=["metadata-only", "empty", "whitespace-only"],
+)
+def test_file_with_no_numbers_is_an_error(tmp_path, text):
+    with pytest.raises(ValueError, match="no rows of numbers"):
+        read_frame(_write(tmp_path, text))
+
+
+@pytest.mark.parametrize(
+    ("content", "line"),
+    [
+        (b"abc,8,9\n1,2,3\n4,5,6\n", 1),
+        (b"1,2,3\n4,5,6\nabc,8,9\n", 3),
+        (b"\xff,8,9\n1,2,3\n4,5,6\n", 1),
+    ],
+    ids=["first-row", "last-row", "undecodable-byte"],
+)
+def test_corrupted_first_or_last_row_is_an_error_not_metadata(tmp_path, content, line):
+    path = tmp_path / "frame.csv"
+    path.write_bytes(content)
+    with pytest.raises(ValueError, match=rf"line {line}, column 1: .* is not a number"):
+        read_frame(path)
+
+
+def test_metadata_line_between_grid_rows_is_an_error(tmp_path):
+    with pytest.raises(ValueError, match=r"line 2 has 2 values"):
+        read_frame(_write(tmp_path, "1,2,3\nGain:,300\n4,5,6\n"))
