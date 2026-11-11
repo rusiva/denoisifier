@@ -16,9 +16,9 @@ Single-context: one root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md
 
 ## Gates
 
-- **When:** `make test-fast` after every change (stops at the first failure, reruns failures first). `make check` before declaring any work done; it must be green. `make check-slow` whenever the slow tier is relevant (detector, generator or calibration changes). It runs far longer than the 10-minute foreground Bash limit (measured duration: the `fresh` timeout comment in `tests/test_feasibility_gate.py`), so always run it in the background with output sent to a log. Until ticket agent-gates/05 lands, run no other gate or heavy job while `make check-slow` runs: its 10 s timing test is load-sensitive. `make fix` is the only target that changes files.
+- **When:** `make test-fast` after every change (stops at the first failure, reruns failures first). `make check` before declaring any work done; it must be green. `make check-slow` only when `src/` changed since its last green run; otherwise cite that run's quote and commit. It runs far longer than the 10-minute foreground Bash limit (measured duration: the `fresh` timeout comment in `tests/test_feasibility_gate.py`), so always run it in the background with output sent to a log. Until ticket agent-gates/05 lands, run no other gate or heavy job while `make check-slow` runs: its 10 s timing test is load-sensitive. `make fix` is the only target that changes files.
 - **Fix the code, never the check.** When a test or check is red, change the code under test, not that test, that check or its config. Adding and changing tests as part of a ticket's work is normal.
-- **Weakening moves need the owner's explicit approval**, asked before the change and recorded in the ticket's Comments:
+- **Weakening moves need an approval**, given before the change and recorded with its reason in the ticket's Comments. A worker asks whoever runs it (the orchestrator, else the owner). The orchestrator approves from a Codex adversarial review plus its own critical reading, and escalates to the owner only when undecided or when the move lacks a clearly good, motivated reason. The moves:
   - changing a tolerance or expected value;
   - adding `skip`, `skipif` or `xfail` (or `strict=False`);
   - suppressing a warning (`filterwarnings`, `warnings.catch_warnings`, `PYTHONWARNINGS`) or a lint (`noqa`, `type: ignore`);
