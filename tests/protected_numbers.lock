@@ -65,7 +65,17 @@ protected :: MULTISCALE_TEST_SEEDS :: range(20, 30)
 protected :: STRIPE_FREE_SPECTRUM_TEST_SEEDS :: range(20, 30)
 protected :: SAME_SEED_TEST_SEEDS :: (23, 24)
 protected :: SINGLE_FRAME_TEST_SEED :: 20
-protected :: SINGLE_FRAME_ALT_TEST_SEEDS :: (21, 22, 23, 25, 27)
+protected :: CLI_STRIPED_CSV_TEST_SEED :: 21
+protected :: REPORT_TO_JSON_TEST_SEED :: 21
+protected :: CLI_STDOUT_TEST_SEED :: 22
+protected :: INPUT_NOT_MODIFIED_TEST_SEED :: 22
+protected :: CLI_MISSING_OUTPUT_DIR_TEST_SEED :: 23
+protected :: MOTTLE_NONE_TEST_SEED :: 23
+protected :: CSV_ROUND_TRIP_TEST_SEED :: 25
+protected :: SCORE_AND_THRESHOLD_TEST_SEED :: 27
 protected :: BORDERLINE_TEST_CASES :: [(22, 20), (13, 5), (13, 8), (12, 20), (16, 8)]
+protected :: MEASURE_PLAN_FREE_TEST_SEEDS :: range(40, 50)
+protected :: MEASURE_PLAN_STRIPED_TEST_SEEDS :: range(50, 60)
+protected :: FEASIBILITY_SCRIPT_TIMEOUT_S :: 45
 protected :: USED_SEEDS :: [range(0, 10), range(10, 100), range(100, 200), range(1000, 1400), range(2000, 2032), range(50000, 50300), range(59999, 60100)]
 protected :: CALIBRATION_SEEDS :: {'A0_CALIBRATION_SEEDS': range(0, 10), 'THRESHOLD_CALIBRATION_SEEDS': range(100, 200), 'GATE_CALIBRATION_SEEDS': range(10000, 12000), 'PROBE_CALIBRATION_SEEDS': range(70000, 70300)}

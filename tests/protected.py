@@ -68,10 +68,27 @@ MULTISCALE_TEST_SEEDS = range(20, 30)
 STRIPE_FREE_SPECTRUM_TEST_SEEDS = range(20, 30)
 SAME_SEED_TEST_SEEDS = (23, 24)
 SINGLE_FRAME_TEST_SEED = 20  # single-frame tests whose seed was 0
-SINGLE_FRAME_ALT_TEST_SEEDS = (21, 22, 23, 25, 27)  # were 1, 2, 3, 5 and 7
+# Single-frame tests whose seed was 1, 2, 3, 5 or 7, one name per test.
+CLI_STRIPED_CSV_TEST_SEED = 21  # test_cli_writes_json_report_for_striped_csv (was 1)
+REPORT_TO_JSON_TEST_SEED = 21  # test_report_converts_to_json (was 1)
+CLI_STDOUT_TEST_SEED = 22  # test_cli_prints_json_to_stdout_without_output_flag (was 2)
+INPUT_NOT_MODIFIED_TEST_SEED = 22  # test_input_frame_is_not_modified (was 2)
+CLI_MISSING_OUTPUT_DIR_TEST_SEED = 23  # test_cli_fails_cleanly_when_output_dir_missing (was 3)
+MOTTLE_NONE_TEST_SEED = 23  # test_mottle_none_is_unchanged_from_ticket_01 (was 3)
+CSV_ROUND_TRIP_TEST_SEED = 25  # test_written_csv_reads_back_as_the_same_frame (was 5)
+SCORE_AND_THRESHOLD_TEST_SEED = 27  # test_report_has_score_and_threshold (was 7)
 # borderline.BORDERLINE. The first entry was (0, 20); 22 is the lowest Period
 # 20 seed in 20-99 that scores in the borderline window (ruling O3).
 BORDERLINE_TEST_CASES = [(22, 20), (13, 5), (13, 8), (12, 20), (16, 8)]
+
+# test_seed_guard.py (ticket agent-gates/04). The held-out free and striped
+# seeds of test_measure_calibrates_inside_the_block_and_evaluates_outside's
+# small SeedPlan.
+MEASURE_PLAN_FREE_TEST_SEEDS = range(40, 50)
+MEASURE_PLAN_STRIPED_TEST_SEEDS = range(50, 60)
+# subprocess timeout of test_feasibility_script_guards_itself_and_its_workers:
+# bounds a hung child; the run takes about 1-2 s.
+FEASIBILITY_SCRIPT_TIMEOUT_S = 45
 
 # Seeds already used before ticket 03: tests and ticket 02 (0-199, split by
 # use), the planner's pre-measurement (1000-1399, 2000-2031) and prototype P1.

@@ -5,8 +5,8 @@ import pytest
 
 from denoisifier.synthetic import Emccd, generate
 from protected import (
+    MOTTLE_NONE_TEST_SEED,
     SAME_SEED_TEST_SEEDS,
-    SINGLE_FRAME_ALT_TEST_SEEDS,
     SINGLE_FRAME_TEST_SEED,
     STRIPE_FREE_SPECTRUM_TEST_SEEDS,
 )
@@ -49,7 +49,7 @@ def test_mottle_has_the_requested_strength(kind, strength, expected):
 
 
 def test_mottle_none_is_unchanged_from_ticket_01():
-    seed = SINGLE_FRAME_ALT_TEST_SEEDS[2]
+    seed = MOTTLE_NONE_TEST_SEED
     assert np.array_equal(generate(seed=seed).frame, generate(seed=seed, mottle="none").frame)
 
 

@@ -13,10 +13,12 @@ from protected import (
     ENVELOPE_TEST_SEEDS,
     EXTREMES_TEST_SEEDS,
     FULL_FRAME_TEST_SEEDS,
+    INPUT_NOT_MODIFIED_TEST_SEED,
     MOTTLED_TEST_SEEDS,
     MULTISCALE_TEST_SEEDS,
     PROFILE_ONLY_TEST_SEEDS,
-    SINGLE_FRAME_ALT_TEST_SEEDS,
+    REPORT_TO_JSON_TEST_SEED,
+    SCORE_AND_THRESHOLD_TEST_SEED,
     SINGLE_FRAME_TEST_SEED,
     STRONG_TEST_SEEDS,
 )
@@ -90,7 +92,7 @@ def test_profile_only_frame_is_not_striped(seed, noise):
 
 
 def test_report_has_score_and_threshold():
-    seed = SINGLE_FRAME_ALT_TEST_SEEDS[4]
+    seed = SCORE_AND_THRESHOLD_TEST_SEED
     striped = analyse(generate(seed=seed, shape=SHAPE, period=9, modulation_depth=0.6).frame)
     plain = analyse(generate(seed=seed, shape=SHAPE, modulation_depth=0.0).frame)
     assert striped.score > striped.threshold
@@ -137,7 +139,7 @@ def test_rejects_non_finite_values():
 
 
 def test_input_frame_is_not_modified():
-    frame = generate(seed=SINGLE_FRAME_ALT_TEST_SEEDS[1], shape=(64, 64)).frame
+    frame = generate(seed=INPUT_NOT_MODIFIED_TEST_SEED, shape=(64, 64)).frame
     before = frame.copy()
     analyse(frame)
     assert np.array_equal(frame, before)
@@ -147,7 +149,7 @@ def test_input_frame_is_not_modified():
 def test_report_converts_to_json(modulation_depth):
     report = analyse(
         generate(
-            seed=SINGLE_FRAME_ALT_TEST_SEEDS[0], shape=SHAPE, modulation_depth=modulation_depth
+            seed=REPORT_TO_JSON_TEST_SEED, shape=SHAPE, modulation_depth=modulation_depth
         ).frame
     )
     data = json.loads(report.to_json())

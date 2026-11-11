@@ -3,7 +3,7 @@ import numpy as np
 from denoisifier import read_frame
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import generate
-from protected import SINGLE_FRAME_ALT_TEST_SEEDS
+from protected import CSV_ROUND_TRIP_TEST_SEED
 
 
 def _write(tmp_path, text):
@@ -32,7 +32,7 @@ def test_every_column_is_kept_even_when_first_counts_up(tmp_path):
 
 
 def test_written_csv_reads_back_as_the_same_frame(tmp_path):
-    s = generate(seed=SINGLE_FRAME_ALT_TEST_SEEDS[3], shape=(40, 50))
+    s = generate(seed=CSV_ROUND_TRIP_TEST_SEED, shape=(40, 50))
     path = tmp_path / "frame.csv"
     write_frame_csv(s.frame, path)
     lines = path.read_text().splitlines()

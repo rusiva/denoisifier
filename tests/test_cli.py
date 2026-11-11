@@ -8,7 +8,12 @@ import numpy as np
 from borderline import BORDERLINE, borderline_frame
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import generate
-from protected import DEPTH_TOL, SINGLE_FRAME_ALT_TEST_SEEDS
+from protected import (
+    CLI_MISSING_OUTPUT_DIR_TEST_SEED,
+    CLI_STDOUT_TEST_SEED,
+    CLI_STRIPED_CSV_TEST_SEED,
+    DEPTH_TOL,
+)
 from truth_match import assert_matches_truth
 
 
@@ -28,7 +33,7 @@ def _assert_clean_failure(result, *details):
 
 
 def test_cli_writes_json_report_for_striped_csv(tmp_path):
-    s = generate(seed=SINGLE_FRAME_ALT_TEST_SEEDS[0], period=8, angle_deg=6, modulation_depth=0.6)
+    s = generate(seed=CLI_STRIPED_CSV_TEST_SEED, period=8, angle_deg=6, modulation_depth=0.6)
     frame_path = tmp_path / "frame.csv"
     out = tmp_path / "report.json"
     write_frame_csv(s.frame, frame_path)
@@ -53,7 +58,7 @@ def test_cli_reports_borderline_frame(tmp_path):
 
 
 def test_cli_prints_json_to_stdout_without_output_flag(tmp_path):
-    s = generate(seed=SINGLE_FRAME_ALT_TEST_SEEDS[1], modulation_depth=0.0)
+    s = generate(seed=CLI_STDOUT_TEST_SEED, modulation_depth=0.0)
     frame_path = tmp_path / "frame.csv"
     write_frame_csv(s.frame, frame_path)
     result = _run(frame_path)
@@ -76,7 +81,7 @@ def test_cli_fails_cleanly_on_frame_with_no_positive_light(tmp_path):
 
 def test_cli_fails_cleanly_when_output_dir_missing(tmp_path):
     frame_path = tmp_path / "frame.csv"
-    write_frame_csv(generate(seed=SINGLE_FRAME_ALT_TEST_SEEDS[2]).frame, frame_path)
+    write_frame_csv(generate(seed=CLI_MISSING_OUTPUT_DIR_TEST_SEED).frame, frame_path)
     out = tmp_path / "nope" / "r.json"
     _assert_clean_failure(_run(frame_path, "-o", out), str(out))
 
