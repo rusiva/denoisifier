@@ -1,3 +1,11 @@
 .venv/
 __pycache__/
 .pytest_cache/
+.gate/
+# Track the background-gate hook and its registration only (ticket agent-gates/05,
+# ruling O3); every other .claude/ path (skills, worktrees, settings.local.json)
+# stays ignored.
+!/.claude/
+/.claude/*
+!/.claude/hooks/
+!/.claude/settings.json

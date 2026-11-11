@@ -2,13 +2,23 @@
 UV     := uv run --locked
 PYTEST := $(UV) pytest
 
-.PHONY: check check-slow test-fast fix lock-check lint no-inline-mypy
+.PHONY: check check-slow bench measure test-fast fix lock-check lint no-inline-mypy
 
-check: lock-check lint      ## gate: lock, format, lint, types, then every non-slow test
+# The slow-tier stamp (ticket agent-gates/05): tests/slow_stamp.py STAMPED_FILES. check runs it
+# after pytest, so test results are not hidden; a stale stamp fails check.
+check: lock-check lint      ## gate: lock, format, lint, types, every non-slow test, then the slow-tier stamp
 	$(PYTEST)
+	$(UV) python tests/slow_stamp.py check
 
-check-slow: lock-check      ## the slow tier (duration: tests/test_feasibility_gate.py): background, nothing else meanwhile
-	$(PYTEST) -m slow
+check-slow: lock-check      ## regression check (~6 min; duration: tests/test_slow_regression.py): background only; writes the .gate/ stamp when green
+	$(UV) python tests/slow_stamp.py run -- $(PYTEST) -m slow
+
+bench:                      ## speed gate 10 s + ticket-13 target 5 s: idle machine, background; writes .gate/bench.json
+	$(UV) python tests/bench.py
+
+measure:                    ## full ticket-03 measurement (~39 min): milestones only, background; rewrites feasibility-gate.json
+	$(UV) python tests/feasibility.py
+	$(PYTEST) tests/test_feasibility_gate.py
 
 test-fast:                  ## inner loop: stop at first failure, failures first
 	$(PYTEST) -x --ff
@@ -31,6 +41,6 @@ no-inline-mypy:
 	if [ $$rc -eq 0 ]; then echo "make check: inline mypy config comment found (ticket agent-gates/02)"; exit 1; fi; \
 	if [ $$rc -ne 1 ]; then echo "make check: git grep failed (exit $$rc); inline mypy config comments not checked"; exit 1; fi
 
-fix:                        ## the ONLY target that changes files: ruff autofixes, then formatting
+fix:                        ## the ONLY target that changes source: ruff autofixes, then formatting
 	$(UV) ruff check --fix --exit-zero
 	$(UV) ruff format
