@@ -325,3 +325,25 @@ def test_real_roi_line_next_to_a_trailing_comma_grid_is_skipped(tmp_path, grid, 
     result = read_frame(_write(tmp_path, text))
     assert result.frame.shape == shape
     assert result.notes == ("skipped 1 metadata line after the grid", TRAILING_NOTE)
+
+
+@pytest.mark.parametrize("drop_axis_column", [False, True], ids=["axis-kept", "axis-dropped"])
+def test_kinetic_series_is_rejected(drop_axis_column):
+    path = SOLIS / "kinetic.asc"
+    assert b"\r\n" in path.read_bytes()  # the fixture keeps its real CRLF line endings
+    with pytest.raises(
+        ValueError, match=r"line 215 says the file is a kinetic series of 10 frames"
+    ) as excinfo:
+        read_frame(path, drop_axis_column=drop_axis_column)
+    assert "kinetic series are not supported" in str(excinfo.value)
+
+
+def test_series_length_of_one_reads_normally(tmp_path):
+    result = read_frame(_write(tmp_path, "6,5\n4,7\nNumber in Kinetics Series:    1\n"))
+    assert np.array_equal(result.frame, [[6, 5], [4, 7]])
+    assert result.notes == ("skipped 1 metadata line after the grid",)
+
+
+def test_unreadable_series_length_is_an_error(tmp_path):
+    with pytest.raises(ValueError, match=r"line 3: cannot read the kinetic series length 'ten'"):
+        read_frame(_write(tmp_path, "6,5\n4,7\nNumber in Kinetics Series:    ten\n"))

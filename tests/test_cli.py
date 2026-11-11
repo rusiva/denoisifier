@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 
@@ -15,6 +16,8 @@ from protected import (
     DEPTH_TOL,
 )
 from truth_match import assert_matches_truth
+
+SOLIS = Path(__file__).parent / "data" / "solis"
 
 
 def _run(*args, cmd=(sys.executable, "-m", "denoisifier")):
@@ -160,3 +163,7 @@ def test_cli_fails_cleanly_on_non_finite_values(tmp_path):
     frame_path = tmp_path / "frame.csv"
     write_frame_csv(frame, frame_path)
     _assert_clean_failure(_run(frame_path), "non-finite")
+
+
+def test_cli_fails_cleanly_on_kinetic_series():
+    _assert_clean_failure(_run(SOLIS / "kinetic.asc"), "kinetic series are not supported")

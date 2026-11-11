@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+_SERIES_KEY = "Number in Kinetics Series"
+
 
 @dataclass(frozen=True)
 class FrameFile:
@@ -68,6 +70,7 @@ def read_frame(path: str | os.PathLike[str], *, drop_axis_column: bool = False) 
     with open(path, encoding="utf-8-sig", errors="replace") as f:
         lines = [(n, _fields(line)) for n, line in enumerate(f, start=1) if line.strip()]
     start, stop = _grid_span(path, lines)
+    _check_not_a_series(path, lines[:start] + lines[stop:])
     first_line, first = lines[start]
     first_values, trailing = _values(first)
     width = len(first_values)  # values, so a trailing empty field never counts
@@ -131,6 +134,32 @@ def _grid_span(path: str | os.PathLike[str], lines: list[tuple[int, list[str]]])
         if _looks_like_a_row(fields, first) or _looks_like_a_row(values, grid_values):
             _parse_row(path, line_number, fields)
     return start, stop
+
+
+def _check_not_a_series(
+    path: str | os.PathLike[str], metadata: list[tuple[int, list[str]]]
+) -> None:
+    """Raise when a metadata line says the file is a kinetic series of more than one frame.
+
+    An unreadable series length raises too: the reader fails closed.
+    """
+    for line_number, fields in metadata:
+        key, sep, value = ",".join(fields).partition(":")
+        if not sep or key.strip() != _SERIES_KEY:
+            continue
+        try:
+            frames = int(value.strip())
+        except ValueError:
+            raise ValueError(
+                f"{path}: line {line_number}: cannot read the kinetic series length "
+                f"{value.strip()!r}; kinetic series are not supported"
+            ) from None
+        if frames > 1:
+            raise ValueError(
+                f"{path}: line {line_number} says the file is a kinetic series of {frames} "
+                f"frames ({_SERIES_KEY}: {frames}); kinetic series are not supported, "
+                "export a single frame"
+            )
 
 
 def _looks_like_a_row(fields: list[str], row: list[str]) -> bool:
