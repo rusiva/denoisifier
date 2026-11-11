@@ -526,51 +526,79 @@ SWEEP_FRAMES = {
 }
 
 
+# The thresholds of the verdict tests, by kind: each kind is its own test
+# item, so no item runs more than three analyses of its frame (the two-region
+# frame takes about 9 s per analysis; the per-test timeout is 60 s).
+SWEEP_THRESHOLDS = ("zero", "THRESHOLD", "score", "above-score", "below-score", "inf")
+
+
+def _sweep_threshold(name, kind):
+    if kind == "THRESHOLD":
+        return THRESHOLD
+    score = _sweep_report(name, "THRESHOLD").score
+    return {
+        "zero": 0.0,
+        "score": score,
+        "above-score": np.nextafter(score, np.inf),
+        # Below a zero score is negative, which analyse rejects: 0 again.
+        "below-score": max(np.nextafter(score, -np.inf), 0.0),
+        "inf": np.inf,
+    }[kind]
+
+
 @cache
-def _threshold_sweep(name):
-    """{threshold: report} on the real path, for the thresholds of the verdict tests."""
-    frame = SWEEP_FRAMES[name]()
-    base = analyse(frame)
-    score = base.score
-    thresholds = {0.0, THRESHOLD, score, np.nextafter(score, np.inf), np.inf}
-    if score > 0:
-        thresholds.add(np.nextafter(score, -np.inf))
-    return {t: (base if t == THRESHOLD else analyse(frame, threshold=t)) for t in thresholds}
+def _sweep_report(name, kind):
+    """``analyse`` of sweep frame ``name`` at threshold ``kind``, on the real path."""
+    if kind == "THRESHOLD":
+        return analyse(SWEEP_FRAMES[name]())
+    return analyse(SWEEP_FRAMES[name](), threshold=_sweep_threshold(name, kind))
 
 
+@pytest.mark.parametrize("kind", SWEEP_THRESHOLDS)
 @pytest.mark.parametrize("name", list(SWEEP_FRAMES))
-def test_verdict_is_striped_exactly_when_a_region_is_reported(name):
-    sweep = _threshold_sweep(name)
-    scores = {report.score for report in sweep.values()}
-    assert len(scores) == 1
-    for t, report in sweep.items():
-        assert report.threshold == t
-        assert report.striped == bool(report.regions) == (report.score > t)
-        assert_labels_consistent(report)
+def test_verdict_is_striped_exactly_when_a_region_is_reported(name, kind):
+    report = _sweep_report(name, kind)
+    assert report.score == _sweep_report(name, "THRESHOLD").score
+    t = _sweep_threshold(name, kind)
+    assert report.threshold == t
+    assert report.striped == bool(report.regions) == (report.score > t)
+    assert_labels_consistent(report)
     if name == "constant":
-        assert scores == {0.0}
-        assert all(not r.regions and not r.mask().any() for r in sweep.values())
+        assert report.score == 0.0
+        assert not report.regions
+        assert not report.mask().any()
+
+
+def test_sweep_thresholds_are_the_planned_ones():
+    """The kinds give 0, THRESHOLD, the score, its two neighbours and inf."""
+    name = "striped-" + str(MOTTLED_TEST_SEEDS[0])
+    score = _sweep_report(name, "THRESHOLD").score
+    assert score > 0
+    got = {_sweep_threshold(name, k) for k in SWEEP_THRESHOLDS}
+    want = {0.0, THRESHOLD, score, np.nextafter(score, np.inf), np.nextafter(score, -np.inf)}
+    assert got == want | {np.inf}
 
 
 def _regions_by_bbox(report):
     return {r.bbox: (r, report.labels == r.label) for r in report.regions}
 
 
+@pytest.mark.parametrize(("kind_a", "kind_b"), list(combinations(SWEEP_THRESHOLDS, 2)))
 @pytest.mark.parametrize(
     "name", ["two-region", "overlapping-extents", *[f"striped-{s}" for s in MOTTLED_TEST_SEEDS[:5]]]
 )
-def test_lowering_the_threshold_keeps_reported_regions_unchanged(name):
-    sweep = _threshold_sweep(name)
+def test_lowering_the_threshold_keeps_reported_regions_unchanged(name, kind_a, kind_b):
     if name == "overlapping-extents":
-        assert len(sweep[0.0].regions) >= 2
-    ordered = sorted(sweep)
-    for t_low, t_high in combinations(ordered, 2):
-        low = _regions_by_bbox(sweep[t_low])
-        for bbox, (region, pixels) in _regions_by_bbox(sweep[t_high]).items():
-            assert bbox in low
-            other, other_pixels = low[bbox]
-            assert dataclasses.replace(other, label=region.label) == region
-            assert np.array_equal(other_pixels, pixels)
+        assert len(_sweep_report(name, "zero").regions) >= 2
+    low, high = sorted(
+        (_sweep_report(name, kind_a), _sweep_report(name, kind_b)), key=lambda r: r.threshold
+    )
+    low_regions = _regions_by_bbox(low)
+    for bbox, (region, pixels) in _regions_by_bbox(high).items():
+        assert bbox in low_regions
+        other, other_pixels = low_regions[bbox]
+        assert dataclasses.replace(other, label=region.label) == region
+        assert np.array_equal(other_pixels, pixels)
 
 
 @pytest.mark.parametrize("threshold", [-1.0, np.nan])

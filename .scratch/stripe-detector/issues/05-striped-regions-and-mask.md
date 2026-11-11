@@ -187,3 +187,14 @@
   (worst -0.043 single scorched, +0.019 two/full); R1 guard: `neighbour` weak misses 7 (same as
   the second freeze), none mis-measured; N9: cap 20, cap-hit frames 64 (19 from the new `depth`
   kind), reach_top_max 11, uncapped max 14.
+- Acceptance after the third freeze (`c99a069`): `uv run --locked pytest -q -p no:randomly
+  --durations=12 tests/test_analyse.py tests/test_cli.py`, exit 0, `321 passed in 517.03s`
+  (not a gate quote; load average 5-9). The two-region threshold sweep took 52.70 s against the
+  60 s timeout. Deviation 14 (test construction, per the ruling "speed up the code or the
+  test's construction"; nothing loosened, timeout unchanged): the verdict and lowering-threshold
+  tests are parametrized per threshold kind (and per pair of kinds), each analysis cached per
+  (frame, threshold), so no test item runs more than three analyses. Every assertion is kept per
+  report (same score as at `THRESHOLD`, `threshold == t`, `striped == bool(regions) == score > t`,
+  labels; every pair: regions at the higher threshold present unchanged at the lower); the new
+  `test_sweep_thresholds_are_the_planned_ones` checks the kinds give the planned set. Slowest
+  item now 18.07 s.
