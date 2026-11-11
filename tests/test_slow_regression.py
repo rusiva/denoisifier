@@ -1,0 +1,89 @@
+"""The slow tier (`make check-slow`): a regression check of the detector at the
+thresholds stored by the last full measurement (ticket agent-gates/05).
+
+It scores fresh seeds at fixed stored thresholds, with no per-run calibration,
+and asserts the pass counts derived in .scratch/agent-gates/handoffs/05-plan.md.
+A detector change that moves the score scale is expected to go red here: run
+`make measure` (the full ticket-03 measurement), then re-store the thresholds
+(an approved lockfile edit); never edit the pass counts.
+
+Duration: this module is the one source for the slow tier's duration. The
+module fixture (regression_check) is estimated at about 5-6 min idle with the
+default workers; the 1200 s timeout covers the whole module, so any single test
+or rerun (`-k`, `--lf`) pays for the fixture under it (ticket agent-gates/05, W3).
+Every other test keeps the global 60 s limit.
+"""
+
+import json
+import os
+
+import pytest
+
+import feasibility
+from protected import (
+    REGRESSION_MAX_FALSE_ALARMS,
+    REGRESSION_MIN_DETECTED,
+    REGRESSION_PROBE_MIN_DETECTED,
+    SLOW_TIMING_LIMIT_S,
+)
+
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(1200)]
+
+MEASUREMENT = feasibility.ROOT / ".gate/check-slow-measurement.json"
+RESTORE = (
+    "A detector change that moves the score scale goes red here: run `make measure`, then "
+    "re-store the thresholds (approved lockfile edit); never edit the pass counts."
+)
+
+
+@pytest.fixture(scope="module")
+def regression() -> dict:
+    result = feasibility.regression_check()
+    result["run_id"] = os.environ.get("CHECK_SLOW_RUN_ID")
+    MEASUREMENT.parent.mkdir(exist_ok=True)
+    MEASUREMENT.write_text(json.dumps(result, indent=2) + "\n")
+    return result
+
+
+def _cases(part: dict) -> str:
+    return ", ".join(
+        f"{c['period']}px/{c['angle_deg']}deg {c['detected']}/{c['n']}" for c in part["cases"]
+    )
+
+
+def test_full_frame_is_analysed_within_30_s(regression):
+    timing = regression["timing"]
+    assert timing["median_s"] <= SLOW_TIMING_LIMIT_S, (
+        f"analyse times {timing['seconds']} s at {timing['shape']}"
+        f" (loadavg {regression['loadavg']})"
+    )
+
+
+def test_regression_weak_stripes_detected_at_256(regression):
+    striped = regression["striped"]
+    assert striped["n"] == len(feasibility.REGRESSION.striped)
+    assert striped["detected"] >= REGRESSION_MIN_DETECTED, (
+        f"{striped['detected']}/{striped['n']} detected at the stored threshold"
+        f" {feasibility.REGRESSION.gate_threshold}: {_cases(striped)}. {RESTORE}"
+    )
+
+
+def test_regression_false_alarms_at_256(regression):
+    free = regression["free"]
+    assert free["n"] == len(feasibility.REGRESSION.free)
+    assert free["false_alarms"] <= REGRESSION_MAX_FALSE_ALARMS, (
+        f"{free['false_alarms']}/{free['n']} False Alarms at the stored threshold"
+        f" {feasibility.REGRESSION.gate_threshold}. {RESTORE}"
+    )
+
+
+def test_regression_full_frame_detected(regression):
+    """A collapse check at a declared bad rate of 0.70 (ruling O1), the timed
+    frames included (ruling O2). The full-frame 0.95 bar
+    (PROBE_MIN_DETECTION_RATE) is `make measure`'s."""
+    probe = regression["probe"]
+    assert probe["n"] == len(feasibility.REGRESSION.probe_striped)
+    assert probe["detected"] >= REGRESSION_PROBE_MIN_DETECTED, (
+        f"{probe['detected']}/{probe['n']} detected at full frame at the stored threshold"
+        f" {feasibility.REGRESSION.probe_threshold}: {_cases(probe)}. {RESTORE}"
+    )
