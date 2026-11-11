@@ -95,15 +95,18 @@ def test_measure_calibrates_inside_the_block_and_evaluates_outside(monkeypatch):
     calls = []
 
     def fake(seeds, depth, shape, workers=None):
-        expected = (plan.calibration,) if seeds is plan.calibration else ()
-        assert seed_guard.worker_allowance() == expected
-        calls.append((seeds, workers))
-        return np.array(
+        # Real generate first, so a calibration seed outside the block fails
+        # with the guard's own message; then the block must be no wider.
+        scores = np.array(
             [
                 feasibility._frame(seed, depth, shape, feasibility.case_of(seed)).std()
                 for seed in seeds
             ]
         )
+        expected = (plan.calibration,) if seeds is plan.calibration else ()
+        assert seed_guard.worker_allowance() == expected
+        calls.append((seeds, workers))
+        return scores
 
     monkeypatch.setattr(feasibility, "score_batch", fake)
     result = feasibility.measure(plan)
