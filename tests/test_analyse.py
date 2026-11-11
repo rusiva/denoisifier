@@ -16,7 +16,7 @@ from protected import (
     BBOX_TOL_PERIODS,
     BORDERLINE_SCORE_WINDOW,
     DARK_FRACTION,
-    DARK_REGRESSION_SEED,
+    DARK_REGRESSION_CASES,
     DEPTH_REGRESSION_CASES,
     ENVELOPE_TEST_SEEDS,
     EXTREMES_TEST_SEEDS,
@@ -457,7 +457,7 @@ DARK_CASES = {
     [
         *[(seed, case) for seed in ENVELOPE_TEST_SEEDS for case in DARK_CASES],
         # First fresh range's miss: two mask pixels in a corner at Profile 4.9%.
-        (DARK_REGRESSION_SEED, "full-frame-typical"),
+        *DARK_REGRESSION_CASES,
     ],
 )
 def test_dark_area_is_never_reported_as_striped(seed, case):

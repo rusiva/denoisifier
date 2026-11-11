@@ -175,7 +175,7 @@
   90_000-90_099) and a `depth_errors` summary (median, worst, misses beyond `DEPTH_TOL`) per
   kind. Lockfile lines added under the "Lockfile approval" (new ticket-05 module numbers):
   `_LIGHT_PEAK_SIGMA` (3.0), `_INTERIOR_FRACTION` (0.5), and `tests/protected.py`'s
-  `REGION_EVALUATION_2_SEEDS`, `DEPTH_REGRESSION_CASES`, `DARK_REGRESSION_SEED` (the rulings'
+  `REGION_EVALUATION_2_SEEDS`, `DEPTH_REGRESSION_CASES`, `DARK_REGRESSION_CASES` (the rulings'
   regression cases 93024, 93048, 93130 as `test_depth_is_measured_on_the_region_interior` and a
   `test_dark_area_is_never_reported_as_striped` case). No existing line changed.
 - Third freeze (implementer 6): fixes 12-13 plus `region-calibration.json` from the tune on
