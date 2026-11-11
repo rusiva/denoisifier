@@ -115,6 +115,15 @@ def test_measure_calibrates_inside_the_block_and_evaluates_outside(monkeypatch):
     assert math.isfinite(result.threshold)
 
 
+def test_reinstall_with_a_different_allowance_is_refused():
+    gate_seed = GATE_CALIBRATION_SEEDS[0]
+    seed_guard.install()  # the conftest's allowance again: no change
+    with pytest.raises(ValueError, match="already installed with allowance"):
+        seed_guard.install((GATE_CALIBRATION_SEEDS,))
+    with pytest.raises(SeedGuardError, match=_message(gate_seed, "GATE_CALIBRATION_SEEDS")):
+        generate(seed=gate_seed, shape=SMALL)
+
+
 def test_non_int_seed_is_refused():
     with pytest.raises(SeedGuardError, match="is not an int"):
         generate(seed=[10_000], shape=SMALL)

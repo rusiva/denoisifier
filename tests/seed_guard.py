@@ -29,15 +29,13 @@ EVENT = "denoisifier.synthetic.generate"
 
 _allowed: list[range] = []
 _installed = False
+_install_allowance: tuple[range, ...] = ()
 
 
 class SeedGuardError(BaseException):
     """A calibration seed reached the generator outside its calibrating block.
 
     A BaseException, so a test's ``except Exception`` cannot swallow it."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
 
 
 def _hook(event: str, args: tuple) -> None:
@@ -63,13 +61,22 @@ def _hook(event: str, args: tuple) -> None:
 def install(allowed: tuple[range, ...] = ()) -> None:
     """Turn the guard on in this process, allowing ``allowed`` ranges.
 
-    Idempotent: audit hooks cannot be removed, so the hook is added once, and
-    a later call changes nothing."""
-    global _installed
-    if not _installed:
-        _allowed[:] = list(allowed)
-        sys.addaudithook(_hook)
-        _installed = True
+    Audit hooks cannot be removed, so the hook is added once. A later call
+    with the same allowance changes nothing; one with a different allowance
+    raises ValueError, since it could not take effect."""
+    global _installed, _install_allowance
+    allowed = tuple(allowed)
+    if _installed:
+        if allowed != _install_allowance:
+            raise ValueError(
+                f"seed guard already installed with allowance {_install_allowance!r};"
+                f" cannot change it to {allowed!r} (ticket agent-gates/04)"
+            )
+        return
+    _install_allowance = allowed
+    _allowed[:] = list(allowed)
+    sys.addaudithook(_hook)
+    _installed = True
 
 
 def installed() -> bool:
