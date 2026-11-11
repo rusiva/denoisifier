@@ -287,3 +287,41 @@ def test_real_solis_export_with_axis_dropped_is_the_source_crop():
     assert result.notes[1] == TRAILING_NOTE
     assert "dropped" in result.notes[2]
     assert not any(note.startswith("warning: ") for note in result.notes)
+
+
+@pytest.mark.parametrize(
+    ("text", "line"),
+    [
+        ("abc,8,9,\n1,2,3,\n4,5,6,\n", 1),
+        ("1,2,3,\n4,5,6,\nabc,8,9,\n", 3),
+        ("abc,8,9\n1,2,3,\n4,5,6,\n", 1),
+        ("1,2,3,\n4,5,6,\nabc,8,9\n", 3),
+        ("1,2,3\n4,5,6\nabc,8,9,\n", 3),
+    ],
+    ids=[
+        "trailing-both-first",
+        "trailing-both-last",
+        "lost-comma-first",
+        "lost-comma-last",
+        "extra-comma-last",
+    ],
+)
+def test_corrupted_boundary_row_raises_with_or_without_its_trailing_comma(tmp_path, text, line):
+    with pytest.raises(ValueError, match=rf"line {line}, column 1: 'abc' is not a number"):
+        read_frame(_write(tmp_path, text))
+
+
+@pytest.mark.parametrize(
+    ("grid", "shape"),
+    [
+        ("9,5,6,7,8,9,\n8,5,6,7,8,9,\n7,5,6,7,8,9,\n", (3, 6)),
+        ("9,5,6,7,8,9,10,\n8,5,6,7,8,9,10,\n7,5,6,7,8,9,10,\n", (3, 7)),
+    ],
+    ids=["raw-width-match", "value-count-match"],
+)
+def test_real_roi_line_next_to_a_trailing_comma_grid_is_skipped(tmp_path, grid, shape):
+    # The ROI line copied from tests/data/solis/kinetic.asc, line 217.
+    text = grid + "{left,right,bottom,top}:      1,20,1071,1090\n"
+    result = read_frame(_write(tmp_path, text))
+    assert result.frame.shape == shape
+    assert result.notes == ("skipped 1 metadata line after the grid", TRAILING_NOTE)

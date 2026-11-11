@@ -116,17 +116,26 @@ def _grid_span(path: str | os.PathLike[str], lines: list[tuple[int, list[str]]])
 
     The grid runs from the first line whose first field is a number to the last.
     Raises when there is no such line, or when a line outside the grid looks
-    like a corrupted grid row (the grid's width, more than half numbers).
+    like a corrupted grid row: the grid's width and more than half numbers,
+    counting either all fields or the fields without one trailing empty field,
+    so a trailing comma, kept or lost, cannot hide a damaged row.
     """
     grid_lines = [i for i, (_, fields) in enumerate(lines) if _is_number(fields[0])]
     if not grid_lines:
         raise ValueError(f"{path}: no rows of numbers found")
     start, stop = grid_lines[0], grid_lines[-1] + 1
-    width = len(lines[start][1])
+    first = lines[start][1]
+    grid_values, _ = _values(first)
     for line_number, fields in lines[:start] + lines[stop:]:
-        if len(fields) == width and 2 * sum(map(_is_number, fields)) > width:
+        values, _ = _values(fields)
+        if _looks_like_a_row(fields, first) or _looks_like_a_row(values, grid_values):
             _parse_row(path, line_number, fields)
     return start, stop
+
+
+def _looks_like_a_row(fields: list[str], row: list[str]) -> bool:
+    """Whether ``fields`` has ``row``'s width and more than half of them are numbers."""
+    return len(fields) == len(row) and 2 * sum(map(_is_number, fields)) > len(row)
 
 
 def _drop_axis_column(
