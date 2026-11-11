@@ -72,3 +72,9 @@
   protected.py: every new ticket-05 name, plus the new `USED_SEEDS` (N8/P1/P1-D/P2 reservations and
   implementer 1's scratch seeds `range(95_000, 95_300)`) and `CALIBRATION_SEEDS` (with
   `REGION_CALIBRATION_SEEDS`) lines. The `_PERIOD_SPREAD` line is removed (listed above).
+- Freeze committed at `ce42580` (knobs plus `region-calibration.json`). Acceptance after the
+  freeze is red (implementer 3, stopped and not re-tuned; details in
+  `handoffs/05-implementer-handoff.md`): ghost low-depth regions around sharp-edged small regions
+  (AC 5, 5 cases), dark-area test full-frame typical (3; question of which envelope defines
+  "dark"), strong P12 seed 23 Angle 1.02 deg off, borderline (22, 20) now scores 0 (re-pick
+  needs an approval, not covered by the measure-conditioned one). Two test bugs fixed in `b9f4a88`.
