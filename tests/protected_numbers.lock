@@ -69,6 +69,7 @@ protected :: REGRESSION_PROBE_BAD_DETECTION_RATE :: 0.7
 protected :: SLOW_TIMING_LIMIT_S :: 30.0
 protected :: BENCH_REPEATS :: 5
 protected :: TARGET_TIMING_S :: 5.0
+protected :: BENCH_IDLE_LOAD :: 1.0
 protected :: REGRESSION_TINY_STRIPED_TEST_SEEDS :: range(60, 62)
 protected :: REGRESSION_TINY_FREE_TEST_SEEDS :: range(62, 64)
 protected :: REGRESSION_TINY_PROBE_TEST_SEEDS :: range(64, 66)

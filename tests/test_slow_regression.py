@@ -20,6 +20,7 @@ import os
 import pytest
 
 import feasibility
+import slow_stamp
 from protected import (
     REGRESSION_MAX_FALSE_ALARMS,
     REGRESSION_MIN_DETECTED,
@@ -29,8 +30,8 @@ from protected import (
 
 pytestmark = [pytest.mark.slow, pytest.mark.timeout(1200)]
 
-MEASUREMENT = feasibility.ROOT / ".gate/check-slow-measurement.json"
-RESTORE = (
+MEASUREMENT = feasibility.ROOT / slow_stamp.MEASUREMENT
+RESTORE_ADVICE = (
     "A detector change that moves the score scale goes red here: run `make measure`, then "
     "re-store the thresholds (approved lockfile edit); never edit the pass counts."
 )
@@ -39,7 +40,7 @@ RESTORE = (
 @pytest.fixture(scope="module")
 def regression() -> dict:
     result = feasibility.regression_check()
-    result["run_id"] = os.environ.get("CHECK_SLOW_RUN_ID")
+    result["run_id"] = os.environ.get(slow_stamp.RUN_ID_VAR)
     MEASUREMENT.parent.mkdir(exist_ok=True)
     MEASUREMENT.write_text(json.dumps(result, indent=2) + "\n")
     return result
@@ -64,7 +65,7 @@ def test_regression_weak_stripes_detected_at_256(regression):
     assert striped["n"] == len(feasibility.REGRESSION.striped)
     assert striped["detected"] >= REGRESSION_MIN_DETECTED, (
         f"{striped['detected']}/{striped['n']} detected at the stored threshold"
-        f" {feasibility.REGRESSION.gate_threshold}: {_cases(striped)}. {RESTORE}"
+        f" {feasibility.REGRESSION.gate_threshold}: {_cases(striped)}. {RESTORE_ADVICE}"
     )
 
 
@@ -73,7 +74,7 @@ def test_regression_false_alarms_at_256(regression):
     assert free["n"] == len(feasibility.REGRESSION.free)
     assert free["false_alarms"] <= REGRESSION_MAX_FALSE_ALARMS, (
         f"{free['false_alarms']}/{free['n']} False Alarms at the stored threshold"
-        f" {feasibility.REGRESSION.gate_threshold}. {RESTORE}"
+        f" {feasibility.REGRESSION.gate_threshold}. {RESTORE_ADVICE}"
     )
 
 
@@ -85,5 +86,5 @@ def test_regression_full_frame_detected(regression):
     assert probe["n"] == len(feasibility.REGRESSION.probe_striped)
     assert probe["detected"] >= REGRESSION_PROBE_MIN_DETECTED, (
         f"{probe['detected']}/{probe['n']} detected at full frame at the stored threshold"
-        f" {feasibility.REGRESSION.probe_threshold}: {_cases(probe)}. {RESTORE}"
+        f" {feasibility.REGRESSION.probe_threshold}: {_cases(probe)}. {RESTORE_ADVICE}"
     )

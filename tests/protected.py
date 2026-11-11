@@ -74,6 +74,7 @@ REGRESSION_PROBE_BAD_DETECTION_RATE = 0.70
 SLOW_TIMING_LIMIT_S = 30.0  # check-slow: real slowdowns only (owner, 2026-11-10)
 BENCH_REPEATS = 5  # make bench: median of this many runs, asserted against TIMING_LIMIT_S
 TARGET_TIMING_S = 5.0  # ticket 13's target; make bench reports it without failing
+BENCH_IDLE_LOAD = 1.0  # make bench warns, without failing, above this 1-min load average
 # test_slow_regression_plan.py: the tiny-plan run of regression_check.
 REGRESSION_TINY_STRIPED_TEST_SEEDS = range(60, 62)
 REGRESSION_TINY_FREE_TEST_SEEDS = range(62, 64)

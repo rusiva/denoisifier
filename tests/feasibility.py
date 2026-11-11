@@ -18,8 +18,8 @@ import seed_guard
 # Single-threaded BLAS/OpenMP in the worker processes. Set before NumPy is
 # imported here; workers are spawned (not forked), so they import NumPy fresh
 # and read these even when a parent (pytest) imported NumPy first.
-_THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
-for _var in _THREAD_VARS:
+THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+for _var in THREAD_VARS:
     os.environ.setdefault(_var, "1")
 
 import argparse  # noqa: E402
@@ -451,11 +451,17 @@ REGRESSION = RegressionPlan(
 )
 
 
-def _loadavg() -> str:
+def loadavg() -> str:
+    """/proc/loadavg as one line, or "unavailable"."""
     try:
         return Path("/proc/loadavg").read_text().strip()
     except OSError:
         return "unavailable"
+
+
+def thread_settings() -> dict[str, str | None]:
+    """The BLAS/OpenMP thread variables as this process sees them."""
+    return {v: os.environ.get(v) for v in THREAD_VARS}
 
 
 def regression_check(plan: RegressionPlan = REGRESSION, workers: int | None = None) -> dict:
@@ -463,7 +469,7 @@ def regression_check(plan: RegressionPlan = REGRESSION, workers: int | None = No
     breakdown, timed frames and run info. Asserts nothing (the slow tests do)."""
     workers = resolve_workers(workers)
     t_start = time.perf_counter()
-    load_start = _loadavg()
+    load_start = loadavg()
     # Timing first, before any worker pool has run.
     timed_seeds = plan.probe_striped[: plan.timed]
     timed = time_frames(timed_seeds, DEPTH, plan.probe_shape, case_of)
@@ -501,9 +507,9 @@ def regression_check(plan: RegressionPlan = REGRESSION, workers: int | None = No
         },
         "run_info": run_info(workers),
         "wall_clock_s": time.perf_counter() - t_start,
-        "loadavg": {"start": load_start, "end": _loadavg()},
+        "loadavg": {"start": load_start, "end": loadavg()},
         "threads": {
-            **{v: os.environ.get(v) for v in _THREAD_VARS},
+            **thread_settings(),
             "note": (
                 "test collection imported NumPy before feasibility set these, so BLAS "
                 "threading of the in-process timed frames is not pinned (make bench pins it)"

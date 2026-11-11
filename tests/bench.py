@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from statistics import median
@@ -26,10 +25,11 @@ from statistics import median
 # feasibility sets single-threaded BLAS before it imports NumPy, so it comes first.
 import feasibility
 import seed_guard
-from protected import BENCH_REPEATS, TARGET_TIMING_S, TIMING_LIMIT_S
+import slow_stamp
+from protected import BENCH_IDLE_LOAD, BENCH_REPEATS, TARGET_TIMING_S, TIMING_LIMIT_S
 
 ROOT = feasibility.ROOT
-DEFAULT_OUT = ".gate/bench.json"
+DEFAULT_OUT = f"{slow_stamp.GATE_DIR}/bench.json"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,9 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     out_path: Path = args.out if args.out is not None else ROOT / DEFAULT_OUT
 
-    load_start = feasibility._loadavg()
+    load_start = feasibility.loadavg()
     seconds = feasibility.time_full_frame(repeats=BENCH_REPEATS)
-    load_end = feasibility._loadavg()
+    load_end = feasibility.loadavg()
     median_s = median(seconds)
     info = feasibility.run_info(workers=1)
     record = {
@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         "python": info["python"],
         "numpy": info["numpy"],
         "scipy": info["scipy"],
-        "threads": {v: os.environ.get(v) for v in feasibility._THREAD_VARS},
+        "threads": feasibility.thread_settings(),
         "loadavg": {"start": load_start, "end": load_end},
         "shape": feasibility.PROBE.shape,
         "seed": feasibility.TIMING_SEED,
@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         f"ticket 13 target {TARGET_TIMING_S} s: " + ("met" if record["meets_target"] else "not met")
     )
     one_minute = load_start.split()[0] if load_start != "unavailable" else None
-    if one_minute is not None and float(one_minute) > 1.0:
+    if one_minute is not None and float(one_minute) > BENCH_IDLE_LOAD:
         print(f"make bench: warning: load average {load_start} at start; the machine is not idle")
     print(f"wrote {out_path}")
     if not record["meets_limit"]:
