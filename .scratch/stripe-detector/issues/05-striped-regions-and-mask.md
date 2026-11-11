@@ -143,3 +143,14 @@
     cols 0-1) where the Profile is 4.86-4.94% of its max, just under `DARK_FRACTION` (5%).
   Not done after the stop: slice-7 `info`, gates (`make check`, `make measure`, stored
   thresholds, `make check-slow`).
+- Rulings A, B and "Evaluation" (orchestrator, 2026-11-11, `handoffs/05-orchestrator.md`,
+  "Rulings on the fresh-range misses"), taken up by implementer 6. 93_000-93_999 is consumed
+  (kept in `USED_SEEDS`; its record stays in `.scratch/stripe-detector/region-evaluation.json`).
+  **Predeclared before any fix:** a second fresh range `REGION_EVALUATION_2_SEEDS =
+  range(94_000, 95_000)` in `tests/protected.py`, registered in `USED_SEEDS` (lockfile: one new
+  line plus the `USED_SEEDS` line; a reservation, loosens nothing, under the ruling). Cases: the
+  same job list of `tests/evaluate_regions.py` (now `jobs(seeds)`, `--range second`, the
+  default). **Pass rule: every frame meets every criterion, same as before** (every count n/n,
+  every single-region IoU >= `MASK_IOU_MIN`; the driver's `summary["pass"]`). Run once after the
+  third freeze, no tuning on it, no retry; a miss stops the work and goes to the owner as a
+  tolerance question. 93024 and 93048 (depth) and 93130 (dark corner) become regression tests.

@@ -1,11 +1,18 @@
 """One-off held-out evaluation of ticket 05's acceptance criteria (ruling "Evaluation hygiene").
 
-Runs every analysis acceptance criterion of ticket 05 once on the fresh,
-predeclared REGION_EVALUATION_SEEDS, after the region knobs are frozen, and
-prints pass counts per criterion. Nothing is tuned on its results. The CLI
-criterion (AC 7) is file layout, not detection; tests/test_cli.py covers it.
+Runs every analysis acceptance criterion of ticket 05 once on a fresh,
+predeclared range, after the region knobs are frozen, and prints pass counts
+per criterion. Nothing is tuned on its results. The CLI criterion (AC 7) is
+file layout, not detection; tests/test_cli.py covers it.
 
-    uv run --locked python tests/evaluate_regions.py [--out PATH]
+Ranges: ``first`` is REGION_EVALUATION_SEEDS (consumed at 2107a40: AC2 39/40,
+AC6 dark 29/30); ``second`` (the default) is REGION_EVALUATION_2_SEEDS, for the
+evaluation after the third freeze ("Rulings on the fresh-range misses"). Pass
+rule, predeclared: every frame meets every criterion (each count is n/n, every
+IoU at least MASK_IOU_MIN); ``summary["pass"]`` records it. A miss is not
+retried.
+
+    uv run --locked python tests/evaluate_regions.py --out PATH [--range first|second]
 
 Heavy: run it alone, in the background.
 """
@@ -36,6 +43,7 @@ from protected import (
     MIN_SIZE_ABOVE_FACTOR,
     MIN_SIZE_BELOW_FACTOR,
     PERIOD_REL_TOL,
+    REGION_EVALUATION_2_SEEDS,
     REGION_EVALUATION_SEEDS,
     REGION_FRAME_SHAPE,
     TWO_REGION_PAIRS,
@@ -48,8 +56,11 @@ SHAPE = (256, 256)
 SIZE_CASES = [(p, a) for p in (3, 8, 20) for a in (-10, 10)]
 
 
-def jobs() -> list[tuple]:
-    s = iter(REGION_EVALUATION_SEEDS)
+RANGES = {"first": REGION_EVALUATION_SEEDS, "second": REGION_EVALUATION_2_SEEDS}
+
+
+def jobs(seeds: range = REGION_EVALUATION_2_SEEDS) -> list[tuple]:
+    s = iter(seeds)
     out: list[tuple] = []
     for i in range(40):  # AC 2 and AC 3 (scorched)
         out.append(("single", next(s), (*CASES[i % 10], "scorched")))
@@ -246,6 +257,7 @@ def summarise(records) -> dict:
         for x in records
         if not x["ok"] or (x["kind"] == "single" and not x["iou_ok"])
     ]
+    out["pass"] = not out["failures"]
     return out
 
 
@@ -259,6 +271,7 @@ def main(argv=None):
         os.environ.setdefault(var, "1")
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--range", choices=sorted(RANGES), default="second")
     parser.add_argument("--workers", type=int, default=12)
     args = parser.parse_args(argv)
     with ProcessPoolExecutor(
@@ -267,9 +280,11 @@ def main(argv=None):
         initializer=seed_guard.install_worker,
         initargs=(seed_guard.worker_allowance(),),
     ) as pool:
-        records = list(pool.map(run, jobs()))
+        records = list(pool.map(run, jobs(RANGES[args.range])))
     summary = summarise(records)
-    args.out.write_text(json.dumps({"summary": summary, "records": records}, indent=1) + "\n")
+    seeds = RANGES[args.range]
+    record = {"range": [seeds.start, seeds.stop], "summary": summary, "records": records}
+    args.out.write_text(json.dumps(record, indent=1) + "\n")
     print(json.dumps(summary, indent=1))
     return 0
 

@@ -92,6 +92,11 @@ REGION_CALIBRATION_SEEDS = range(90_000, 90_600)
 # predeclared before the post-freeze fixes, looked at once after the new freeze
 # by a one-off driver (tests/evaluate_regions.py), never tuned on.
 REGION_EVALUATION_SEEDS = range(93_000, 94_000)
+# Consumed at 2107a40 (AC2 39/40, AC6 dark 29/30). The second fresh range
+# (orchestrator, "Rulings on the fresh-range misses"): predeclared before the
+# depth and dark-surround fixes, evaluated once after the third freeze with the
+# same driver and cases; pass rule: every frame meets every criterion.
+REGION_EVALUATION_2_SEEDS = range(94_000, 95_000)
 # Seeds of the non-slow tests: every *_TEST_SEED(S) lies in here.
 TEST_SEED_BLOCK = range(10, 100)
 
@@ -188,6 +193,7 @@ USED_SEEDS = [
     range(95_000, 95_300),
     # Ticket 05: the fresh evaluation range (reserved before it is looked at).
     REGION_EVALUATION_SEEDS,
+    REGION_EVALUATION_2_SEEDS,
 ]
 
 # Calibration seed ranges, by name. tests/seed_guard.py refuses any of these
