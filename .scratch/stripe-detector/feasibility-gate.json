@@ -1,9 +1,9 @@
 {
   "run_info": {
-    "commit": "f0c8f6c",
+    "commit": "317744b",
     "cpu": "AMD Ryzen AI 7 PRO 360 w/ Radeon 880M",
     "logical_cpus": 16,
-    "workers": 8,
+    "workers": 12,
     "python": "3.11.15",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
@@ -103,11 +103,11 @@
       1600
     ],
     "seconds": [
-      7.721419931993296,
-      7.556295412003237,
-      7.142016896003042
+      5.734830803994555,
+      5.789141594985267,
+      5.592633264022879
     ],
-    "median_s": 7.556295412003237,
+    "median_s": 5.734830803994555,
     "limit_s": 10.0
   },
   "gate": {
@@ -115,34 +115,34 @@
       256,
       256
     ],
-    "threshold": 74.11851980928641,
+    "threshold": 49.7159577445053,
     "k": 20,
     "calibration_n": 2000,
     "calibration_above": 19,
     "free_n": 1000,
-    "false_alarms": 7,
+    "false_alarms": 12,
     "false_alarm_interval": [
-      0.0028188587596180135,
-      0.014369194979269567
+      0.006215525559595244,
+      0.020867679591036675
     ],
     "false_alarm_tolerance": [
       3,
       18
     ],
     "striped_n": 500,
-    "detected": 490,
+    "detected": 500,
     "detection_interval": [
-      0.9635275917077902,
-      0.9903685704135666
+      0.9926493899480923,
+      1.0
     ],
     "cases": [
       {
         "period": 3,
         "angle_deg": 10,
-        "detected": 42,
+        "detected": 50,
         "n": 50,
         "min_score": 66.37995940975306,
-        "min_over_threshold": 0.8955920811769398
+        "min_over_threshold": 1.3351841626160665
       },
       {
         "period": 5,
@@ -150,15 +150,15 @@
         "detected": 50,
         "n": 50,
         "min_score": 102.44075208377627,
-        "min_over_threshold": 1.3821208565330974
+        "min_over_threshold": 2.0605205397073583
       },
       {
         "period": 8,
         "angle_deg": 6,
         "detected": 50,
         "n": 50,
-        "min_score": 98.13409332738088,
-        "min_over_threshold": 1.3240158273517697
+        "min_score": 96.76100550935493,
+        "min_over_threshold": 1.9462766061275192
       },
       {
         "period": 12,
@@ -166,15 +166,15 @@
         "detected": 50,
         "n": 50,
         "min_score": 104.93240462789036,
-        "min_over_threshold": 1.4157379950097606
+        "min_over_threshold": 2.110638301833533
       },
       {
         "period": 20,
         "angle_deg": -10,
-        "detected": 48,
+        "detected": 50,
         "n": 50,
         "min_score": 67.41087967080198,
-        "min_over_threshold": 0.9095011590120283
+        "min_over_threshold": 1.3559203670023303
       },
       {
         "period": 4,
@@ -182,7 +182,7 @@
         "detected": 50,
         "n": 50,
         "min_score": 77.54722860341587,
-        "min_over_threshold": 1.0462598120274371
+        "min_over_threshold": 1.5598055860039532
       },
       {
         "period": 16,
@@ -190,7 +190,7 @@
         "detected": 50,
         "n": 50,
         "min_score": 116.71868966478759,
-        "min_over_threshold": 1.574757428576761
+        "min_over_threshold": 2.347710774568907
       },
       {
         "period": 6,
@@ -198,7 +198,7 @@
         "detected": 50,
         "n": 50,
         "min_score": 108.86911031195874,
-        "min_over_threshold": 1.4688516526245896
+        "min_over_threshold": 2.1898222472439675
       },
       {
         "period": 10,
@@ -206,34 +206,34 @@
         "detected": 50,
         "n": 50,
         "min_score": 112.48436562151079,
-        "min_over_threshold": 1.5176283324456983
+        "min_over_threshold": 2.2625404543059973
       },
       {
         "period": 14,
         "angle_deg": -6,
         "detected": 50,
         "n": 50,
-        "min_score": 114.85090346049003,
-        "min_over_threshold": 1.5495574352538568
+        "min_score": 105.65207814287729,
+        "min_over_threshold": 2.125114006368592
       }
     ],
-    "false_alarm_rate": 0.007,
-    "detection_rate": 0.98
+    "false_alarm_rate": 0.012,
+    "detection_rate": 1.0
   },
   "probe": {
     "shape": [
       400,
       1600
     ],
-    "threshold": 105.80269099368302,
+    "threshold": 85.17105365821853,
     "k": 3,
     "calibration_n": 300,
     "calibration_above": 2,
     "free_n": 200,
-    "false_alarms": 3,
+    "false_alarms": 2,
     "false_alarm_interval": [
-      0.003104107621555085,
-      0.043208281917709784
+      0.0012133490137476003,
+      0.035654668397239866
     ],
     "false_alarm_tolerance": [
       0,
@@ -252,7 +252,7 @@
         "detected": 10,
         "n": 10,
         "min_score": 116.14515690566715,
-        "min_over_threshold": 1.0977523899897936
+        "min_over_threshold": 1.3636693679021992
       },
       {
         "period": 5,
@@ -260,7 +260,7 @@
         "detected": 10,
         "n": 10,
         "min_score": 185.80298035976122,
-        "min_over_threshold": 1.7561271704408223
+        "min_over_threshold": 2.18152731919188
       },
       {
         "period": 8,
@@ -268,7 +268,7 @@
         "detected": 10,
         "n": 10,
         "min_score": 254.22432800018848,
-        "min_over_threshold": 2.4028153311844123
+        "min_over_threshold": 2.9848677112808883
       },
       {
         "period": 12,
@@ -276,7 +276,7 @@
         "detected": 10,
         "n": 10,
         "min_score": 232.2482647849084,
-        "min_over_threshold": 2.1951073512749772
+        "min_over_threshold": 2.726845034897578
       },
       {
         "period": 20,
@@ -284,7 +284,7 @@
         "detected": 10,
         "n": 10,
         "min_score": 308.4043833213355,
-        "min_over_threshold": 2.9149011279850043
+        "min_over_threshold": 3.6209999768105043
       },
       {
         "period": 4,
@@ -292,7 +292,7 @@
         "detected": 10,
         "n": 10,
         "min_score": 151.62390822221565,
-        "min_over_threshold": 1.4330817751248728
+        "min_over_threshold": 1.7802281609743218
       },
       {
         "period": 16,
@@ -300,7 +300,7 @@
         "detected": 10,
         "n": 10,
         "min_score": 303.7009403700416,
-        "min_over_threshold": 2.8704462761554352
+        "min_over_threshold": 3.5657764853861966
       },
       {
         "period": 6,
@@ -308,7 +308,7 @@
         "detected": 10,
         "n": 10,
         "min_score": 191.40935811680404,
-        "min_over_threshold": 1.8091161606488082
+        "min_over_threshold": 2.2473522387653837
       },
       {
         "period": 10,
@@ -316,7 +316,7 @@
         "detected": 10,
         "n": 10,
         "min_score": 264.6835753881761,
-        "min_over_threshold": 2.5016714877694284
+        "min_over_threshold": 3.1076705526072312
       },
       {
         "period": 14,
@@ -324,10 +324,10 @@
         "detected": 10,
         "n": 10,
         "min_score": 297.646248078245,
-        "min_over_threshold": 2.8132200162660896
+        "min_over_threshold": 3.4946878698092023
       }
     ],
-    "false_alarm_rate": 0.015,
+    "false_alarm_rate": 0.01,
     "detection_rate": 1.0
   }
 }

@@ -55,8 +55,8 @@ TIMING_CASE = Case(period=8, angle_deg=0)
 # chance of any false red at the pessimistic end of the stored baseline's 95% CI,
 # at most REGRESSION_MAX_PASS_BAD chance per check of passing a detector at its
 # bad rate. Never edit the pass counts to make check-slow green.
-GATE_STORED_THRESHOLD = 74.11851980928641  # = feasibility-gate.json gate.threshold
-PROBE_STORED_THRESHOLD = 105.80269099368302  # = feasibility-gate.json probe.threshold
+GATE_STORED_THRESHOLD = 49.7159577445053  # = feasibility-gate.json gate.threshold
+PROBE_STORED_THRESHOLD = 85.17105365821853  # = feasibility-gate.json probe.threshold
 REGRESSION_STRIPED_SEEDS = range(80_000, 80_300)  # 256x256, m = WEAK_DEPTH, 30 per case
 REGRESSION_FREE_SEEDS = range(81_000, 81_800)  # 256x256, stripe-free
 REGRESSION_PROBE_STRIPED_SEEDS = range(82_000, 82_030)  # 400x1600, m = WEAK_DEPTH, 3 per case

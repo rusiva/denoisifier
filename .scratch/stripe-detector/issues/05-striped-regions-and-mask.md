@@ -205,3 +205,18 @@
   (worst 0.905, median 0.935) and 40/40 multiscale (worst 0.904, median 0.938); AC4 30/30; AC5
   below 96/96, above 72/72; AC6 flank 10/10, dark area 30/30; full frame 20/20; stripe-free
   20/20; strong 20/20; weak neighbour (R1 guard) 12/12; failures none.
+- `make measure` at `317744b` (background, exit 0; `tests/test_feasibility_gate.py` 14 passed):
+  gate PASS. Detection 500/500 (CI 0.993-1.000); held-out False Alarms 12/1000 (tolerance
+  3-18); full frame median 5.73 s; probe 100/100, probe False Alarms 2/200. Thresholds: gate
+  49.7159577445053 (was 74.1185), probe 85.17105365821853 (was 105.8027).
+  `feasibility-gate.md` updated. Approval used (advance approval "stored thresholds after
+  `make measure` per the CLAUDE.md procedure"): `GATE_STORED_THRESHOLD` and
+  `PROBE_STORED_THRESHOLD` in `tests/protected.py` and their two lockfile lines set by hand to
+  the new JSON values. Pass counts untouched. `make check-slow` not yet run.
+- **STOPPED (implementer 6): `test_regression_plan_meets_the_operating_rule` is red** after
+  the stored thresholds were updated: `P(any false red) 8.4262%` > `REGRESSION_MAX_FALSE_RED`
+  1% (`{'detection': 2.2e-14, 'false alarms': 0.0804, 'full frame': 0.0042}`). The new baseline's
+  held-out False Alarms (12/1000, exact CI up to 2.09%) make `REGRESSION_MAX_FALSE_ALARMS = 22`
+  of 800 too tight at the pessimistic end. Per CLAUDE.md, re-deriving the pass counts is the
+  owner's decision; pass counts untouched. Committed as is (measurement + stored thresholds, the
+  procedure's outcome); `make check-slow` and the final `make check` not run.
