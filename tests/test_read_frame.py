@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from denoisifier import read_frame
 from denoisifier.frame_io import write_frame_csv
@@ -40,3 +41,48 @@ def test_written_csv_reads_back_as_the_same_frame(tmp_path):
     assert lines[0].count(",") == 49
     float(lines[0].split(",")[0])  # no header: the first line is numbers
     assert np.allclose(read_frame(path).frame, s.frame, rtol=1e-8, atol=0)
+
+
+def test_uneven_rows_raise_naming_the_row(tmp_path):
+    path = _write(tmp_path, "1,2,3\n4,5\n6,7,8\n")
+    with pytest.raises(ValueError, match=r"line 2 has 2 values") as excinfo:
+        read_frame(path)
+    assert "line 1" in str(excinfo.value)
+    assert str(path) in str(excinfo.value)
+
+
+def test_non_number_in_grid_raises_naming_its_position(tmp_path):
+    with pytest.raises(ValueError, match=r"line 2, column 2: 'x' is not a number"):
+        read_frame(_write(tmp_path, "1,2,3\n4,x,6\n7,8,9\n"))
+
+
+def test_empty_field_in_grid_raises_naming_its_position(tmp_path):
+    with pytest.raises(ValueError, match=r"line 2, column 2: '' is not a number"):
+        read_frame(_write(tmp_path, "1,2,3\n4,,6\n"))
+
+
+def test_trailing_comma_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match=r"line 1, column 3: '' is not a number"):
+        read_frame(_write(tmp_path, "1,2,\n3,4,\n"))
+
+
+def test_byte_order_mark_does_not_hide_the_first_row(tmp_path):
+    path = tmp_path / "frame.csv"
+    path.write_bytes(b"\xef\xbb\xbf3,2\n1,4\n")
+    result = read_frame(path)
+    assert np.array_equal(result.frame, [[3, 2], [1, 4]])
+    assert result.notes == ()
+
+
+def test_negative_values_load_unchanged(tmp_path):
+    result = read_frame(_write(tmp_path, "-1.5,-2e-3,0\n-4,-0,7\n"))
+    assert np.array_equal(result.frame, [[-1.5, -2e-3, 0], [-4, -0.0, 7]])
+    assert result.notes == ()
+
+
+def test_float_syntax_includes_non_finite_values(tmp_path):
+    result = read_frame(_write(tmp_path, "nan,1\n-inf,2\n"))
+    assert np.isnan(result.frame[0, 0])
+    assert result.frame[1, 0] == -np.inf
+    assert result.frame[0, 1] == 1
+    assert result.frame[1, 1] == 2

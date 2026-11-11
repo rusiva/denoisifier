@@ -26,8 +26,40 @@ def read_frame(path: str | os.PathLike[str]) -> FrameFile:
 
     Rows of the file are rows of the frame. Every column is kept.
     """
-    frame = np.loadtxt(path, delimiter=",", dtype=float, ndmin=2)
-    return FrameFile(frame=frame)
+    with open(path, encoding="utf-8-sig", errors="replace") as f:
+        lines = [(n, _fields(line)) for n, line in enumerate(f, start=1) if line.strip()]
+    if not lines:
+        raise ValueError(f"{path}: no rows of numbers found")
+    n0, first = lines[0]
+    width = len(first)
+    rows = []
+    for n, fields in lines:
+        if len(fields) != width:
+            raise ValueError(
+                f"{path}: line {n} has {len(fields)} values, "
+                f"but the grid's first row (line {n0}) has {width}"
+            )
+        rows.append(_numbers(path, n, fields))
+    return FrameFile(frame=np.asarray(rows, dtype=np.float64))
+
+
+def _fields(line: str) -> list[str]:
+    return [field.strip() for field in line.split(",")]
+
+
+def _is_number(field: str) -> bool:
+    try:
+        float(field)
+    except ValueError:
+        return False
+    return True
+
+
+def _numbers(path: str | os.PathLike[str], n: int, fields: list[str]) -> list[float]:
+    for c, field in enumerate(fields, start=1):
+        if not _is_number(field):
+            raise ValueError(f"{path}: line {n}, column {c}: {field!r} is not a number")
+    return [float(field) for field in fields]
 
 
 def write_frame_csv(frame: np.ndarray, path: str | os.PathLike[str]) -> None:
