@@ -8,6 +8,7 @@ with the pytest command replaced by small `python -c` stubs.
 import ast
 import fcntl
 import json
+import os
 import shutil
 import signal
 import subprocess
@@ -267,8 +268,16 @@ def test_the_stamp_is_git_ignored_local_state():
 
 
 def _dry_run(target: str) -> str:
+    # Under `make check` the outer make's MAKEFLAGS/MAKELEVEL would add
+    # "Entering/Leaving directory" lines.
+    env = {k: v for k, v in os.environ.items() if k not in ("MAKEFLAGS", "MFLAGS", "MAKELEVEL")}
     return subprocess.run(
-        ["make", "-n", target], cwd=ROOT, capture_output=True, text=True, check=True
+        ["make", "-n", "--no-print-directory", target],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+        env=env,
     ).stdout
 
 
