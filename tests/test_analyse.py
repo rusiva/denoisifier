@@ -411,9 +411,7 @@ def test_stripes_on_one_flank_of_the_envelope_are_found(seed):
     period, angle_deg = CASES[seed % len(CASES)]
     rows, cols = REGION_FRAME_SHAPE
     region = single_region(period, angle_deg, center=((rows - 1) / 2, cols / 4))
-    s = generate(
-        seed=seed, shape=REGION_FRAME_SHAPE, mottle="scorched", regions=[region], **TYPICAL
-    )
+    s = generate(seed=seed, shape=REGION_FRAME_SHAPE, regions=[region], **TYPICAL)
     report = analyse(s.frame)
     assert report.striped is True
     (found,) = report.regions

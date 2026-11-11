@@ -279,7 +279,8 @@ def test_cli_mask_and_bboxes_follow_the_file_layout_when_transposing(tmp_path):
     result = _run(frame_path, "--transpose", "-o", out, "--mask", mask_path)
     assert result.returncode == 0, result.stderr
     report = json.loads(out.read_text())
-    expected = analyse(frame)
+    # The CLI analyses the frame as written to the CSV (%.9g), read back transposed.
+    expected = analyse(read_frame(frame_path, transpose=True).frame)
     mask = read_frame(mask_path).frame
     assert mask.shape == (160, 96)
     assert report["regions"]
