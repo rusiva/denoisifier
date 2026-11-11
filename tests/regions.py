@@ -47,13 +47,20 @@ def single_region(period, angle_deg, depth=0.5, center=None):
     )
 
 
-def two_regions(left_period, right_period, angle_deg=(4.0, -6.0), depth=0.5):
+def two_regions(
+    left_period,
+    right_period,
+    angle_deg=(4.0, -6.0),
+    depth=(0.5, 0.5),
+    edge_px=REGION_EDGE_PX,
+    gap_windows=TWO_REGION_GAP_WINDOWS,
+):
     """Two regions side by side, each sized for its own Period, centred on the
-    frame's middle row; the gap between their 0.5 contours is
-    TWO_REGION_GAP_WINDOWS windows (3 Periods each) at the longer Period."""
+    frame's middle row; the gap between their 0.5 contours is ``gap_windows``
+    windows (3 Periods each) at the longer Period. ``depth`` is (left, right)."""
     rows, cols = TWO_REGION_SHAPE
     left_axes, right_axes = semi_axes(left_period), semi_axes(right_period)
-    gap = TWO_REGION_GAP_WINDOWS * 3 * max(left_period, right_period)
+    gap = gap_windows * 3 * max(left_period, right_period)
     span = 2 * left_axes[1] + gap + 2 * right_axes[1]
     left_c = (cols - 1) / 2 - span / 2 + left_axes[1]
     right_c = left_c + left_axes[1] + gap + right_axes[1]
@@ -63,19 +70,19 @@ def two_regions(left_period, right_period, angle_deg=(4.0, -6.0), depth=0.5):
             center=(row_c, left_c),
             semi_axes=left_axes,
             rotation_deg=0.0,
-            edge_px=REGION_EDGE_PX,
+            edge_px=edge_px,
             period=float(left_period),
             angle_deg=angle_deg[0],
-            modulation_depth=depth,
+            modulation_depth=depth[0],
         ),
         StripedRegion(
             center=(row_c, right_c),
             semi_axes=right_axes,
             rotation_deg=0.0,
-            edge_px=REGION_EDGE_PX,
+            edge_px=edge_px,
             period=float(right_period),
             angle_deg=angle_deg[1],
-            modulation_depth=depth,
+            modulation_depth=depth[1],
         ),
     ]
 

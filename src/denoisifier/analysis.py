@@ -18,16 +18,21 @@ score and the reported regions always agree:
    of it.
 4. Each group must be at least 3x2 Periods (width x height), measured as
    half-peak widths with a blur correction (``MIN_HALF_DEPTH_*_PERIODS``)
-   through the depth peak on its top candidate's core
+   around the depth peak reached from its top candidate's core
    (``ratio >= _CORE_FRACTION * peak``).
-5. Pixels claimed by two qualifying groups go to the one with the higher
+5. A qualifying group that is leakage of a stronger candidate near it (its
+   depth collapses when that candidate's stripes are taken out,
+   ``_LEAK_FRACTION``) is dropped.
+6. Pixels claimed by two qualifying groups go to the one with the higher
    depth there; groups left empty are dropped. ``score`` is the highest peak
    ratio over what is left (0.0 if nothing), and the reported regions are
-   those whose peak ratio is above the threshold.
+   those whose peak ratio is above the threshold. Each one's Period and Angle
+   are refined on its pixels with a filter re-tuned to them.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass
 
@@ -111,6 +116,15 @@ _ABSORB_FRACTION = 0.5
 # prototype P1, where the size constants were fitted; a larger seed area
 # would put the peak on a noise or Mottle outlier).
 _CORE_FRACTION = 0.5
+# Leakage: a size-qualifying group near a stronger candidate (higher peak
+# ratio, qualifying or not) is that candidate's leakage when its depth on its
+# seed area falls below this fraction once the stronger candidate's stripes are
+# taken out of the frame (its grown extent set to the local mean). Sharp-edged
+# stripes leak response into a halo at nearby Periods and Angles.
+_LEAK_FRACTION = 0.5
+# Period and Angle of a reported region: the neighbour-product sum of a filter
+# re-tuned to the current estimate, over the region's pixels, this many times.
+_REFINE_STEPS = 2
 
 _EIGHT = np.ones((3, 3), dtype=bool)
 _LOG_BANK_STEP = float(np.log(_PERIODS[1] / _PERIODS[0]))
@@ -182,6 +196,7 @@ class _Candidate:
     grown: np.ndarray  # bool, frame shape
     period: float
     angle_deg: float
+    depth: float  # median depth on the seed area, at the candidate's tuning
 
 
 @dataclass
@@ -189,6 +204,7 @@ class _Group:
     """Merged candidates, measured as one: Period and Angle on the union of
     the seed areas, depth map re-tuned to them."""
 
+    members: list[_Candidate]
     peak_ratio: float
     top_core: np.ndarray
     top_seed: np.ndarray
@@ -223,13 +239,16 @@ def _qualifying_regions(
     candidates = _grow_candidates(local, light, filters)
     groups = _merge(candidates, local, filters)
     # A group shallower than the ratio floor's depth _A0 is not stripes (it
-    # is what a constant frame's rounding gives); then the size rule.
+    # is what a constant frame's rounding gives); then the size rule, then
+    # the leakage test.
     qualifying = [
         g
         for g in groups
-        if _seed_depth(g.tuned_depth, g.top_seed) >= _A0 and _passes_size_rule(g, filters)
+        if _seed_depth(g.tuned_depth, g.top_seed) >= _A0
+        and _passes_size_rule(g, filters)
+        and not _is_leakage(g, candidates, frame, filters)
     ]
-    return _settle_overlaps(qualifying)
+    return [_refined(s, filters) for s in _settle_overlaps(qualifying)]
 
 
 class _Filters:
@@ -240,12 +259,16 @@ class _Filters:
         self.light = light
         self._means: dict[float, np.ndarray] = {}
 
+    def mean(self, period: float) -> np.ndarray:
+        """The bank-style filter's local mean at ``period`` (cached)."""
+        if period not in self._means:
+            self._means[period] = self.spec.local_mean(period)
+        return self._means[period]
+
     def depth(self, period: float, angle_deg: float) -> np.ndarray:
         """Local Modulation Depth ``2|response| / local mean`` of the bank-style
         filter at ``period`` and ``angle_deg``; 0 outside the light."""
-        if period not in self._means:
-            self._means[period] = self.spec.local_mean(period)
-        return _depth(self.spec.gabor(period, angle_deg), self._means[period], self.light)
+        return _depth(self.spec.gabor(period, angle_deg), self.mean(period), self.light)
 
     def size_depth(self, period: float, angle_deg: float) -> np.ndarray:
         """The same with the along window of SIZE_ALONG_PERIODS (size rule only)."""
@@ -303,8 +326,11 @@ def _grow_candidates(local: LocalStripes, light: np.ndarray, filters: _Filters) 
         period, angle_deg = _period_and_angle(
             local, seed, float(local.period[peak]), float(local.angle_deg[peak])
         )
-        grown = _grow(filters.depth(period, angle_deg), seed, seed, light)
-        candidates.append(_Candidate(peak_ratio, core, seed, grown, period, angle_deg))
+        depth = filters.depth(period, angle_deg)
+        grown = _grow(depth, seed, seed, light)
+        candidates.append(
+            _Candidate(peak_ratio, core, seed, grown, period, angle_deg, _seed_depth(depth, seed))
+        )
         claimed |= grown
     return candidates
 
@@ -355,17 +381,25 @@ def _period_and_angle(
     Local frequency from the phase step between neighbours (not np.gradient
     of the phase: central differences are biased at short Periods). Fewer
     than _MIN_PAIRS pairs either way: the bank values are returned."""
+    return _phase_steps(local.response, area, bank_period, bank_angle)
+
+
+def _phase_steps(
+    response: np.ndarray, area: np.ndarray, period: float, angle_deg: float
+) -> tuple[float, float]:
+    """Period and Angle from the summed neighbour products of the complex
+    ``response`` over ``area``; ``(period, angle_deg)`` when there are fewer
+    than _MIN_PAIRS pairs either way or no phase step."""
     h_pairs = area[:, :-1] & area[:, 1:]
     v_pairs = area[:-1, :] & area[1:, :]
     if h_pairs.sum() < _MIN_PAIRS or v_pairs.sum() < _MIN_PAIRS:
-        return bank_period, bank_angle
-    bank = local.response
-    cx = (bank[:, 1:] * np.conj(bank[:, :-1]))[h_pairs].sum()
-    cy = (bank[1:, :] * np.conj(bank[:-1, :]))[v_pairs].sum()
+        return period, angle_deg
+    cx = (response[:, 1:] * np.conj(response[:, :-1]))[h_pairs].sum()
+    cy = (response[1:, :] * np.conj(response[:-1, :]))[v_pairs].sum()
     fx, fy = np.angle(cx) / (2 * np.pi), np.angle(cy) / (2 * np.pi)
     f = np.hypot(fx, fy)
     if not f > 0:
-        return bank_period, bank_angle
+        return period, angle_deg
     return float(1.0 / f), float(np.degrees(np.arctan2(fy, fx)))
 
 
@@ -398,6 +432,7 @@ def _merge(candidates: list[_Candidate], local: LocalStripes, filters: _Filters)
             grown = _grow(tuned_depth, top.seed, seed, filters.light)
         groups.append(
             _Group(
+                members=members,
                 peak_ratio=top.peak_ratio,
                 top_core=top.core,
                 top_seed=top.seed,
@@ -422,7 +457,7 @@ def _compatible(a: _Candidate, b: _Candidate) -> bool:
     return ratio <= _MERGE_PERIOD_RATIO and abs(a.angle_deg - b.angle_deg) <= _MERGE_ANGLE_DEG
 
 
-def _near(a: _Candidate, b: _Candidate) -> bool:
+def _near(a: _Candidate | _Group, b: _Candidate | _Group) -> bool:
     """``a``'s grown extent touches or lies within _MERGE_GAP_PERIODS Periods of ``b``'s."""
     if (a.grown & b.grown).any():
         return True
@@ -450,24 +485,86 @@ def _passes_size_rule(group: _Group, filters: _Filters) -> bool:
 
 
 def _half_peak_span(depth: np.ndarray, core: np.ndarray, axis: int) -> float:
-    """Sub-pixel distance between the crossings of half the peak depth on
-    ``core``, along the row (axis 1) or the column (axis 0) through that peak."""
-    on_seed = np.where(core, depth, -1.0)
-    r, c = np.unravel_index(np.argmax(on_seed), depth.shape)
-    line = depth[r, :] if axis == 1 else depth[:, c]
-    i0 = int(c if axis == 1 else r)
-    level = 0.5 * line[i0]
+    """Sub-pixel half-peak extent of ``depth`` along the rows (axis 1) or the
+    columns (axis 0).
 
-    def edge(step: int) -> float:
-        i = i0
-        while 0 <= i + step < len(line) and line[i + step] >= level:
-            i += step
-        if not 0 <= i + step < len(line):
-            return float(i)
-        a, b = line[i], line[i + step]
-        return float(i + step * (a - level) / (a - b))
+    The peak is the local maximum reached by climbing ``depth`` from its
+    largest value on ``core``: the ratio peaks where the reference energy is
+    low, which can be in the blurred skirt just outside sharp-edged stripes.
+    The extent is the widest run, along ``axis``, of the connected part of
+    ``depth >= 0.5 x peak`` that holds the peak, with linear-interpolated ends.
+    For a compact, centrally symmetric region this is the run through the
+    peak; unlike that run, it is not cut short where a line through the peak
+    grazes the edge of the light."""
+    on_core = np.where(core, depth, -1.0)
+    start = np.unravel_index(np.argmax(on_core), depth.shape)
+    peak = _climb(depth, (int(start[0]), int(start[1])))
+    level = 0.5 * depth[peak]
+    part = _component(depth >= level, peak)
+    return _widest_run(depth if axis == 1 else depth.T, part if axis == 1 else part.T, level)
 
-    return edge(1) - edge(-1)
+
+def _climb(depth: np.ndarray, at: tuple[int, int]) -> tuple[int, int]:
+    """Steepest ascent on ``depth`` (8 neighbours) from ``at`` to a local maximum."""
+    r, c = at
+    while True:
+        r0, c0 = max(r - 1, 0), max(c - 1, 0)
+        window = depth[r0 : r + 2, c0 : c + 2]
+        k = np.unravel_index(np.argmax(window), window.shape)
+        nr, nc = r0 + int(k[0]), c0 + int(k[1])
+        if not depth[nr, nc] > depth[r, c]:
+            return r, c
+        r, c = nr, nc
+
+
+def _widest_run(depth: np.ndarray, part: np.ndarray, level: float) -> float:
+    """The longest run of ``part`` along a row, its ends interpolated where
+    ``depth`` crosses ``level`` (at the frame's edge, the edge pixel)."""
+    edges = np.diff(np.pad(part, ((0, 0), (1, 1))).astype(np.int8), axis=1)
+    rows, first = np.nonzero(edges == 1)
+    _, stop = np.nonzero(edges == -1)
+    last = stop - 1
+    left = first.astype(float)
+    inner = first > 0
+    a, b = depth[rows[inner], first[inner]], depth[rows[inner], first[inner] - 1]
+    left[inner] -= (a - level) / (a - b)
+    right = last.astype(float)
+    inner = stop < depth.shape[1]
+    a, b = depth[rows[inner], last[inner]], depth[rows[inner], stop[inner]]
+    right[inner] += (a - level) / (a - b)
+    return float((right - left).max())
+
+
+def _is_leakage(
+    group: _Group, candidates: list[_Candidate], frame: np.ndarray, filters: _Filters
+) -> bool:
+    """``group`` is leakage of a stronger candidate near it (see _LEAK_FRACTION)."""
+    own = _seed_depth(group.tuned_depth, group.top_seed)
+    for s in candidates:
+        if s.peak_ratio <= group.peak_ratio or any(s is m for m in group.members):
+            continue
+        # Leaked depth is below its source's; and leakage reaches about a window.
+        if own >= s.depth or not _near(s, group):
+            continue
+        without = np.where(s.grown, filters.mean(s.period), frame)
+        rest = _Filters(_Spectrum(without), filters.light)
+        if _seed_depth(rest.depth(group.period, group.angle_deg), group.top_seed) < (
+            _LEAK_FRACTION * own
+        ):
+            return True
+    return False
+
+
+def _refined(region: _Survivor, filters: _Filters) -> _Survivor:
+    """Period and Angle re-measured on the region's pixels with a filter
+    re-tuned to them (see _REFINE_STEPS): the bank's response is tuned to the
+    nearest bank Angle and Period, and noise in it pulls the estimate there."""
+    period, angle_deg = region.period, region.angle_deg
+    for _ in range(_REFINE_STEPS):
+        period, angle_deg = _phase_steps(
+            filters.spec.gabor(period, angle_deg), region.pixels, period, angle_deg
+        )
+    return dataclasses.replace(region, period=period, angle_deg=angle_deg)
 
 
 def _settle_overlaps(groups: list[_Group]) -> list[_Survivor]:

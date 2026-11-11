@@ -58,6 +58,8 @@ KNOBS = (
     "_MERGE_GAP_PERIODS",
     "_ABSORB_FRACTION",
     "_CORE_FRACTION",
+    "_LEAK_FRACTION",
+    "_REFINE_STEPS",
 )
 SIZE_PERIODS = (3, 5, 8, 12, 20)
 SIZE_ANGLES = (-10, 0, 10)
@@ -85,6 +87,31 @@ def tune_jobs() -> list[tuple]:
         jobs.append(("probe", next(s), CASES[i % 10]))
     for i in range(30):  # two regions at low noise (leak into the size rule)
         jobs.append(("two_low", next(s), TWO_REGION_PAIRS[i % 3]))
+    # Ruling R1 (post-freeze reds): the last 40 tuning seeds, each used for
+    # several frames. Size rule without Mottle at low noise, sharp edge, every
+    # shape (seeds 90_360-90_379)...
+    size_seeds = range(next(s), TUNE.stop - 20)
+    i = 0
+    for shape, f in [(k, MIN_SIZE_BELOW_FACTOR) for k in SIZE_SHAPES] + [
+        (k, MIN_SIZE_ABOVE_FACTOR) for k in ("both", "wide_short", "narrow_tall")
+    ]:
+        for p in SIZE_PERIODS:
+            for a in SIZE_ANGLES:
+                jobs.append(("size_low", size_seeds[i % len(size_seeds)], (p, a, shape, f)))
+                i += 1
+    # ...and genuine weak regions beside strong ones (seeds 90_380-90_399):
+    # each pair, strong on either side, weak depth 0.15 or 0.3, at low noise
+    # with sharp edges half a window apart, and at typical noise.
+    neighbour_seeds = range(TUNE.stop - 20, TUNE.stop)
+    i = 0
+    for pair in TWO_REGION_PAIRS:
+        for strong_left in (True, False):
+            for weak in (0.15, 0.3):
+                for regime in ("low", "typical"):
+                    depths = (0.6, weak) if strong_left else (weak, 0.6)
+                    seed = neighbour_seeds[i % len(neighbour_seeds)]
+                    jobs.append(("neighbour", seed, (*pair, *depths, regime)))
+                    i += 1
     return jobs
 
 
@@ -102,12 +129,16 @@ def info_jobs() -> list[tuple]:
     return jobs
 
 
+SIZE_SHAPES = {
+    "both": lambda p, f: (f * p, 1.5 * f * p),
+    "wide_short": lambda p, f: (f * p, 2.0 * p),
+    "four_by_one": lambda p, _f: (0.5 * p, 2.0 * p),
+    "narrow_tall": lambda p, f: (2.0 * p, 1.5 * f * p),
+}
+
+
 def size_region(period, angle_deg, shape, f, center):
-    axes = {
-        "both": (f * period, 1.5 * f * period),
-        "wide_short": (f * period, 2.0 * period),
-        "narrow_tall": (2.0 * period, 1.5 * f * period),
-    }[shape]
+    axes = SIZE_SHAPES[shape](period, f)
     return StripedRegion(
         center=center,
         semi_axes=axes,
@@ -146,12 +177,28 @@ def _frame(kind, seed, params):
         )
     if kind == "free":
         return generate(seed=seed, modulation_depth=0.0, mottle="scorched", **TYPICAL)
-    if kind in ("size_mottle", "size_typical"):
+    if kind == "neighbour":
+        left, right, d_left, d_right, regime = params
+        sharp = regime == "low"
+        return generate(
+            seed=seed,
+            shape=TWO_REGION_SHAPE,
+            mottle="none" if sharp else "scorched",
+            regions=two_regions(
+                left,
+                right,
+                depth=(d_left, d_right),
+                edge_px=1.0 if sharp else 6.0,
+                gap_windows=0.5 if sharp else 2.0,
+            ),
+            **({} if sharp else TYPICAL),
+        )
+    if kind in ("size_mottle", "size_typical", "size_low"):
         p, a, shape, f = params
         noise = TYPICAL if kind == "size_typical" else {}
         return generate(
             seed=seed,
-            mottle="scorched",
+            mottle="none" if kind == "size_low" else "scorched",
             regions=[size_region(p, a, shape, f, (127.5, 127.5))],
             **noise,
         )
@@ -236,19 +283,20 @@ def run_job(job, overrides):
         ],
     }
     striped_truth = [t for t in s.truth.regions if t.modulation_depth > 0]
-    if kind in ("single", "single_weak", "two", "two_low"):
+    if kind in ("single", "single_weak", "two", "two_low", "neighbour"):
         rec["iou_union"] = iou(
             report.mask(), np.logical_or.reduce([t.mask >= 0.5 for t in striped_truth])
         )
         rec["per_truth"] = []
         for t in striped_truth:
             tm = t.mask >= 0.5
+            overlapping = [r for r in report.regions if (report.labels == r.label)[tm].any()]
             best = max(
-                report.regions,
+                overlapping,
                 key=lambda r: (report.labels == r.label)[tm].sum(),
                 default=None,
             )
-            entry = {"period": t.period, "angle": t.angle_deg}
+            entry = {"period": t.period, "angle": t.angle_deg, "depth": t.modulation_depth}
             if best is not None:
                 own = report.labels == best.label
                 entry.update(
@@ -304,7 +352,7 @@ def summarise(records):
             }
             for k, v in sorted(per_p.items())
         }
-    for kind in ("two", "two_low"):
+    for kind in ("two", "two_low", "neighbour"):
         if kind in by:
             out[kind] = {
                 "frames": len(by[kind]),
@@ -325,9 +373,24 @@ def summarise(records):
                     min(t.get("iou", 0.0) for x in by[kind] for t in x["per_truth"])
                 ),
                 "truth_inside_half_envelope": all(
-                    x["truth_inside_half_envelope"] for x in by[kind]
+                    x.get("truth_inside_half_envelope", True) for x in by[kind]
                 ),
             }
+    if "neighbour" in by:
+        out["neighbour"]["weak_missed"] = [
+            x["params"]
+            for x in by["neighbour"]
+            for t in x["per_truth"]
+            if t["depth"] < 0.5 and "period_err" not in t
+        ]
+        out["neighbour"]["weak_reported_wrong"] = [
+            x["params"]
+            for x in by["neighbour"]
+            for t in x["per_truth"]
+            if t["depth"] < 0.5
+            and "period_err" in t
+            and (abs(t["period_err"]) > 0.05 or abs(t["angle_err"]) > 1)
+        ]
     if "full" in by:
         out["full"] = {
             "frames": len(by["full"]),
@@ -351,6 +414,16 @@ def summarise(records):
             # a size-rule miss, not a detection miss.
             "above_not_qualifying": [
                 x["params"] for x in rows if x["params"][3] > 1 and x["score"] == 0
+            ],
+        }
+    if "size_low" in by:
+        rows = by["size_low"]
+        out["size_low"] = {
+            "below_reported": [
+                x["params"] for x in rows if x["params"][3] < 1 and x["n_regions"] > 0
+            ],
+            "above_not_exactly_one": [
+                x["params"] for x in rows if x["params"][3] > 1 and x["n_regions"] != 1
             ],
         }
     if "probe" in by:

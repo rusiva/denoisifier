@@ -85,3 +85,39 @@
   reservation and loosens nothing, under the ruling). Not looked at until after the new freeze;
   then one run of a one-off driver (`tests/evaluate_regions.py`), no tuning on its results. The
   seen reds (5 ghost, 3 dark-area, P12 seed 23, borderline (22, 20)) stay as regression tests.
+- Approval used (orchestrator, 2026-11-11, ruling R2, weakening-class test change):
+  `test_dark_area_is_never_reported_as_striped` now defines "dark" on the Profile (same seed,
+  `mottle="none"`, `regions=()`, noise 0) below `DARK_FRACTION` of its max, instead of on the
+  Mottled envelope. Reason (ruling): the ticket says "the dark area *outside* the envelope", and
+  AC 3's truth mask is geometric and includes interior Mottle holes, so the Mottled-envelope
+  assertion contradicts AC 3. The detector does not clip low-light pixels; the Glossary's
+  Envelope is unchanged.
+- Deviations, implementers 4 and 5 (rulings R1, R3, R4; none loosens a test or tolerance):
+  8. Size rule: the depth peak is climbed to (steepest ascent) from the top candidate's core, and
+     the extent is the widest row (column) run of the connected half-peak component holding it,
+     instead of the run through the peak. R1: at sharp edges the ratio peaks in the skirt outside
+     the stripes, so the column through it started low (P20 wide_short 0.8x measured 3.34 P tall,
+     now 1.69 P). R4: borderline (22, 20) had its depth peak at the light's edge, so the row
+     through it gave 0.449 P wide (a width-measure bug; now 12.15 P, score 217.1).
+  9. Leakage test (R1), new knob `_LEAK_FRACTION = 0.5`: a size-qualifying group near a stronger
+     candidate (higher peak ratio, qualifying or not, deeper than the group) is dropped when
+     taking that candidate's stripes out (its grown extent set to the local mean) drops the
+     group's seed depth below 0.5x.
+  10. Period/Angle refined on each survivor's settled pixels with a filter re-tuned to the
+      current estimate, `_REFINE_STEPS = 2` (R3; T-free, after settling).
+  11. `tests/regions.two_regions` takes per-region depths, edge and gap (existing calls unchanged);
+      `calibrate_regions.py` gains the `size_low` and `neighbour` kinds on the last 40 tuning
+      seeds (R1: every size shape unmottled at `edge_px=1`, and genuine weak regions beside strong
+      ones).
+- Lockfile lines added (implementer 5, under the "Lockfile approval": new ticket-05 module
+  numbers): `denoisifier.analysis._LEAK_FRACTION` (0.5) and `_REFINE_STEPS` (2). No existing
+  line changed.
+- Second freeze (implementer 5): constants above plus `region-calibration.json` from the tune on
+  90_000-90_399 at this tree (default knobs). Single IoU worst 0.873; two 30/30 and two_low
+  30/30 separate and correct; full frame 60/60, 0 mis-measured; `size_low` (every shape, no
+  Mottle, `edge_px=1`): 0 below reported, 0 above not exactly one; probe 0 mis-measured.
+  R1 guard (genuine weak neighbours): with the leak test disabled (`--set _LEAK_FRACTION=0.0`)
+  the `neighbour` misses are the same 7 (typical noise, 6 at depth 0.15, 1 at 0.3); every
+  low-noise weak neighbour is found either way, so the fix adds no misses. `_LEAK_FRACTION` not
+  tuned. The fresh-range driver `tests/evaluate_regions.py` is committed with the freeze,
+  before it is run.

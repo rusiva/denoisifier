@@ -37,6 +37,8 @@ denoisifier.analysis :: _MERGE_GAP_PERIODS :: 2.0
 denoisifier.analysis :: _ABSORB_FRACTION :: 0.5
 denoisifier.analysis :: _CORE_FRACTION :: 0.5
 denoisifier.analysis :: _LOG_BANK_STEP :: 0.11159529322858125
+denoisifier.analysis :: _LEAK_FRACTION :: 0.5
+denoisifier.analysis :: _REFINE_STEPS :: 2
 
 denoisifier.synthetic :: _TYPICAL_MOTTLE_STRENGTH :: {'scorched': 0.4, 'multiscale': 0.35}
 denoisifier.synthetic :: Emccd.photons_peak :: 100.0

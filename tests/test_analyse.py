@@ -445,9 +445,11 @@ def test_dark_area_is_never_reported_as_striped(seed, case):
     kwargs = DARK_CASES[case]
     report = analyse(generate(seed=seed, shape=SHAPE, **kwargs).frame)
     assert report.striped is True
-    mottle = kwargs.get("mottle", "none")
-    envelope = generate(seed=seed, shape=SHAPE, regions=(), mottle=mottle, noise=0.0).clean
-    dark = envelope < DARK_FRACTION * envelope.max()
+    # "Dark" is the surround outside the spot: the Profile (no Mottle, same
+    # seed, noise 0) below DARK_FRACTION of its max. Mottle holes inside the
+    # spot are not dark: the truth mask of a region includes them (ruling R2).
+    profile = generate(seed=seed, shape=SHAPE, regions=(), mottle="none", noise=0.0).clean
+    dark = profile < DARK_FRACTION * profile.max()
     assert dark.any()
     assert not report.mask()[dark].any()
 
