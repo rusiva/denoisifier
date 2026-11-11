@@ -50,7 +50,15 @@ def read_frame(path: str | os.PathLike[str]) -> FrameFile:
                 f"but the grid's first row (line {n0}) has {width}"
             )
         rows.append(_numbers(path, n, fields))
-    return FrameFile(frame=np.asarray(rows, dtype=np.float64), notes=tuple(notes))
+    grid = np.asarray(rows, dtype=np.float64)
+    if grid.shape[0] >= 2 and grid.shape[1] >= 2 and np.all(np.diff(grid[:, 0]) > 0):
+        notes.append(
+            f"warning: the first column counts up row by row "
+            f"({grid[0, 0]:g} to {grid[-1, 0]:g}), like a Solis axis column; "
+            "it was kept as intensities. If it is an axis, read with "
+            "drop_axis_column=True (CLI: --drop-axis-column)"
+        )
+    return FrameFile(frame=grid, notes=tuple(notes))
 
 
 def _fields(line: str) -> list[str]:

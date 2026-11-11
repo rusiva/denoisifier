@@ -27,9 +27,31 @@ def test_single_row_is_still_2d(tmp_path):
 
 
 def test_every_column_is_kept_even_when_first_counts_up(tmp_path):
-    result = read_frame(_write(tmp_path, "0,5,5\n1,5,5\n2,5,5\n"))
-    assert result.frame.shape == (3, 3)
-    assert np.array_equal(result.frame[:, 0], [0, 1, 2])
+    # The rising side of a profile crop: a real intensity column that counts up.
+    result = read_frame(_write(tmp_path, "10,12,15\n11,14,18\n13,17,22\n"))
+    assert np.array_equal(result.frame, [[10, 12, 15], [11, 14, 18], [13, 17, 22]])
+    assert len(result.notes) == 1
+    assert result.notes[0].startswith("warning: ")
+
+
+def test_plain_grid_with_falling_first_column_has_no_notes(tmp_path):
+    result = read_frame(_write(tmp_path, "9,1,1\n7,1,1\n8,1,1\n"))
+    assert np.array_equal(result.frame, [[9, 1, 1], [7, 1, 1], [8, 1, 1]])
+    assert result.notes == ()
+
+
+def test_numeric_header_row_is_kept_as_data(tmp_path):
+    result = read_frame(_write(tmp_path, "1,2,3\n9,5,6\n8,7,8\n"))
+    assert np.array_equal(result.frame, [[1, 2, 3], [9, 5, 6], [8, 7, 8]])
+    assert result.notes == ()
+
+
+def test_axis_column_is_kept_by_default_with_a_warning(tmp_path):
+    result = read_frame(_write(tmp_path, "0,5,6\n1,7,8\n2,9,10\n"))
+    assert np.array_equal(result.frame, [[0, 5, 6], [1, 7, 8], [2, 9, 10]])
+    assert len(result.notes) == 1
+    assert result.notes[0].startswith("warning: ")
+    assert "--drop-axis-column" in result.notes[0]
 
 
 def test_written_csv_reads_back_as_the_same_frame(tmp_path):
