@@ -26,7 +26,12 @@ class FrameFile:
     notes: tuple[str, ...] = ()
 
 
-def read_frame(path: str | os.PathLike[str], *, drop_axis_column: bool = False) -> FrameFile:
+def read_frame(
+    path: str | os.PathLike[str],
+    *,
+    drop_axis_column: bool = False,
+    transpose: bool = False,
+) -> FrameFile:
     """Read a comma-separated grid of numbers, such as an Andor Solis export.
 
     The file is read as UTF-8 (a byte order mark is ignored; bytes that are not
@@ -105,11 +110,19 @@ def read_frame(path: str | os.PathLike[str], *, drop_axis_column: bool = False) 
         grid, axis_notes = _drop_axis_column(path, grid)
         notes.extend(axis_notes)
     elif _counts_up(grid):
+        after_transposing = " (after transposing it is the frame's first row)" if transpose else ""
         notes.append(
-            f"warning: the first column counts up row by row "
+            f"warning: the file's first column counts up row by row "
             f"({_first_column_range(grid)}), like a Solis axis column; "
-            "it was kept as intensities. If it is an axis, read with "
+            f"it was kept as intensities{after_transposing}. If it is an axis, read with "
             "drop_axis_column=True (CLI: --drop-axis-column)"
+        )
+    if transpose:
+        grid = np.ascontiguousarray(grid.T)
+        rows, cols = grid.shape
+        notes.append(
+            f"transposed the frame, as requested: file rows are frame columns "
+            f"({rows} x {cols} frame)"
         )
     return FrameFile(frame=grid, notes=tuple(notes))
 

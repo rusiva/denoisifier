@@ -266,6 +266,7 @@ def test_real_solis_export_loads_by_default_with_notes():
     assert result.notes[0] == "skipped 27 metadata lines after the grid"
     assert result.notes[1] == TRAILING_NOTE
     assert result.notes[2].startswith("warning: ")
+    assert "file's first column" in result.notes[2]
     assert "1359 to 1422" in result.notes[2]
     assert "--drop-axis-column" in result.notes[2]
 
@@ -347,3 +348,36 @@ def test_series_length_of_one_reads_normally(tmp_path):
 def test_unreadable_series_length_is_an_error(tmp_path):
     with pytest.raises(ValueError, match=r"line 3: cannot read the kinetic series length 'ten'"):
         read_frame(_write(tmp_path, "6,5\n4,7\nNumber in Kinetics Series:    ten\n"))
+
+
+def test_transpose_returns_the_transposed_frame_and_notes_it(tmp_path):
+    path = _write(tmp_path, "0,5,6\n1,7,8\n2,9,10\n")
+    result = read_frame(path, drop_axis_column=True, transpose=True)
+    assert np.array_equal(result.frame, [[5, 7, 9], [6, 8, 10]])  # the axis went first
+    assert "transposed" in result.notes[-1]
+    assert "2 x 3" in result.notes[-1]
+
+
+def test_default_read_does_not_transpose(tmp_path):
+    result = read_frame(_write(tmp_path, "0,5,6\n1,7,8\n2,9,10\n"), drop_axis_column=True)
+    assert np.array_equal(result.frame, [[5, 6], [7, 8], [9, 10]])
+    assert not any("transposed" in note for note in result.notes)
+
+
+def test_kept_axis_warning_names_the_file_column_when_transposed(tmp_path):
+    result = read_frame(_write(tmp_path, "0,5,6\n1,7,8\n2,9,10\n"), transpose=True)
+    assert np.array_equal(result.frame, [[0, 1, 2], [5, 7, 9], [6, 8, 10]])
+    assert len(result.notes) == 2
+    assert result.notes[0].startswith("warning: ")
+    assert "file's first column" in result.notes[0]
+    assert "frame's first row" in result.notes[0]
+    assert "transposed" in result.notes[1]
+    assert "3 x 3" in result.notes[1]
+
+
+def test_real_solis_export_transposes_on_request():
+    result = read_frame(CROP, drop_axis_column=True, transpose=True)
+    assert np.array_equal(result.frame, read_frame(CROP, drop_axis_column=True).frame.T)
+    assert result.frame.flags.c_contiguous
+    assert "transposed" in result.notes[-1]
+    assert "64 x 64" in result.notes[-1]
