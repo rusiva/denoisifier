@@ -284,3 +284,9 @@ def _parse_row(path: str | os.PathLike[str], line_number: int, fields: list[str]
 def write_frame_csv(frame: np.ndarray, path: str | os.PathLike[str]) -> None:
     """Write a frame as a plain comma-separated grid, no header: the format ``read_frame`` reads."""
     np.savetxt(path, np.asarray(frame, dtype=float), delimiter=",", fmt="%.9g")
+
+
+def write_mask_csv(labels: np.ndarray, path: str | os.PathLike[str]) -> None:
+    """Write a region-label Mask as a plain comma-separated grid of integers, no
+    header (0 = no Striped Region, k = region k); ``read_frame`` reads it back."""
+    np.savetxt(path, np.asarray(labels, dtype=np.int64), delimiter=",", fmt="%d")

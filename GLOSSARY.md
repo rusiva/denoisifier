@@ -52,6 +52,10 @@ _Avoid_: orientation, rotation, tilt angle
 The part of a frame where stripes are present. It may cover only part of the envelope.
 _Avoid_: stripe area, patch
 
+**Mask**:
+An array the shape of the Frame that labels each pixel with the Striped Region it belongs to: 0 for none, k for region k of the report. The boolean mask is the union of the regions (label > 0).
+_Avoid_: region image, segmentation
+
 **Phase Break**:
 A line across the stripes where every stripe on one side is shifted sideways relative to the other side. Period and angle stay the same on both sides.
 _Avoid_: fault, discontinuity, glitch

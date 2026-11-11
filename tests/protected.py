@@ -85,6 +85,9 @@ REGRESSION_TINY_PROBE_TEST_SEEDS = range(64, 66)
 # 0-9; THRESHOLD (analysis.py) was set on seeds 100-199.
 A0_CALIBRATION_SEEDS = range(0, 10)
 THRESHOLD_CALIBRATION_SEEDS = range(100, 200)
+# Ticket 05's region knobs (analysis.py) are tuned on 90_000-90_399 and the
+# informational numbers measured on 90_400-90_599 (tests/calibrate_regions.py).
+REGION_CALIBRATION_SEEDS = range(90_000, 90_600)
 # Seeds of the non-slow tests: every *_TEST_SEED(S) lies in here.
 TEST_SEED_BLOCK = range(10, 100)
 
@@ -118,6 +121,27 @@ BORDERLINE_TEST_CASES = [(22, 20), (13, 5), (13, 8), (12, 20), (16, 8)]
 DIGEST_TEST_SEEDS = range(30, 33)  # test_default_frames_are_unchanged_by_regions
 REGION_GENERATOR_TEST_SEED = 33  # the generator's region-mask tests
 
+# Ticket 05 (Striped Regions): acceptance tests (tests/regions.py builds the frames).
+MASK_IOU_MIN = 0.8  # spec Further Notes: mask IoU >= 0.8
+BBOX_TOL_PERIODS = 1.0  # reported bbox vs the truth's (mask >= 0.5), per side, in Periods
+MIN_SIZE_BELOW_FACTOR = 0.8  # x the 3x2-Period minimum: never reported (low noise)
+MIN_SIZE_ABOVE_FACTOR = 1.4  # x the minimum: always reported (low noise)
+DARK_FRACTION = 0.05  # "dark": envelope below this x its max (light mask is at 0.1)
+# Test region: semi-axes max(5 P, 45) x max(6.6 P, 60) px (rows x cols), centred.
+REGION_SEMI_AXES_PERIODS = (5.0, 6.6)
+REGION_SEMI_AXES_FLOOR_PX = (45, 60)
+REGION_EDGE_PX = 6.0
+REGION_FRAME_SHAPE = (512, 512)
+# Two regions side by side in a wide frame; gap between their 0.5 contours in
+# windows (3 Periods) of the longer Period.
+TWO_REGION_PAIRS = ((5, 12), (8, 16), (4, 10))
+TWO_REGION_SHAPE = (640, 1024)
+TWO_REGION_GAP_WINDOWS = 2.0
+REGION_TEST_SEEDS = range(66, 76)  # CASES[seed % 10]: every case once
+TWO_REGION_TEST_SEEDS = range(76, 78)
+MIN_SIZE_TEST_SEEDS = range(78, 80)
+CLI_MASK_TEST_SEED = 80
+
 # test_seed_guard.py (ticket agent-gates/04). The held-out free and striped
 # seeds of test_measure_calibrates_inside_the_block_and_evaluates_outside's
 # small SeedPlan.
@@ -139,6 +163,25 @@ USED_SEEDS = [
     range(2000, 2032),
     range(50_000, 50_300),
     range(59_999, 60_100),
+    # Ticket 05: seeds the plan review (N8) and prototypes P1, P1-D and P2 looked at.
+    range(300_001, 300_006),
+    range(310_000, 310_400),
+    range(320_000, 320_200),
+    range(330_000, 330_100),
+    range(340_000, 340_004),
+    range(350_000, 350_002),
+    range(360_000, 360_060),
+    range(390_000, 390_008),
+    range(390_100, 390_108),
+    range(390_200, 390_208),
+    range(390_300, 390_308),
+    range(391_000, 391_008),
+    range(391_100, 391_108),
+    range(391_200, 391_208),
+    range(410_000, 410_080),
+    range(411_000, 411_004),
+    # Ticket 05: the implementer's scratch checks.
+    range(95_000, 95_300),
 ]
 
 # Calibration seed ranges, by name. tests/seed_guard.py refuses any of these
@@ -149,4 +192,5 @@ CALIBRATION_SEEDS = {
     "THRESHOLD_CALIBRATION_SEEDS": THRESHOLD_CALIBRATION_SEEDS,
     "GATE_CALIBRATION_SEEDS": GATE_CALIBRATION_SEEDS,
     "PROBE_CALIBRATION_SEEDS": PROBE_CALIBRATION_SEEDS,
+    "REGION_CALIBRATION_SEEDS": REGION_CALIBRATION_SEEDS,
 }

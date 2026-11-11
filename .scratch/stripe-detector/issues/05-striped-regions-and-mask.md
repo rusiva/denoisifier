@@ -37,3 +37,38 @@
   borderline re-pick only if `make measure` shows a seed is no longer borderline, reason recorded here;
   removing pinned constants the change makes obsolete (each listed here); stored thresholds after
   `make measure` per the CLAUDE.md procedure. Pass counts are never edited.
+- Removed pinned constant (advance approval "removing pinned constants the change makes obsolete"):
+  `denoisifier.analysis._PERIOD_SPREAD` (1.25). `_measure`, its only user, is replaced by the
+  per-region seed/grow/merge measurement; its lockfile line is removed with it.
+- Deviations from the plan text (implementers 1 and 2; none loosens a test or tolerance):
+  1. A candidate's seed area excludes pixels an earlier (higher) candidate grew over, and dedup
+     skips peaks there. Without it, low peaks (ratio 3-6) got frame-wide seed areas and merged
+     into the real region.
+  2. A merged group is re-grown on its re-tuned depth with the level taken from the top member's
+     seed area, and its depth is the median over that seed (a skirt fragment's low-depth seed
+     pulled the level down: P20 IoU 0.51).
+  3. A group qualifies only if its depth is at least `_A0` (the existing ratio floor); this gives
+     the constant frame `score == 0.0` (B6). The all-zero frame of B6 is not in the verdict test:
+     `analyse` rejects it ("no positive light", an existing test).
+  4. Two knobs beyond the plan's list, tuned on 90_000-90_399 and added under the lockfile-addition
+     approval: `_CORE_FRACTION = 0.5`: the size rule's depth peak is looked for on the top
+     candidate's core (ratio >= 0.5 x its peak, prototype P1's seed area) rather than on the whole
+     seed area; with the tuned `_SEED_FRACTION = 0.1` the seed area is large and its depth maximum
+     is a noise or Mottle outlier, which made full-frame m = 0.5 frames fail the width rule.
+     `_ABSORB_FRACTION = 0.5`: a candidate that is not merged but grows mostly over an earlier
+     group's extent is dropped as a fragment of it (12/60 full-frame calibration frames had such a
+     fragment, Angle 3-6 deg off, reported as a second region; 0/60 with the rule).
+  5. `TWO_REGION_SHAPE = (640, 1024)` instead of the starting (512, 1024): at 512 rows a (8, 16)
+     truth mask reached 2% outside the Profile's half maximum on calibration seeds.
+  6. The threshold-sweep and lowering-threshold tests use `MOTTLED_TEST_SEEDS[:5]` (stripe-free
+     and m = 0.5) instead of all 20, to bound the run time.
+  7. `tests/calibrate_regions.py` sets the one-thread variables in `main()` before the spawn pool
+     (the workers inherit them), so it needs no `noqa: E402`.
+- Lockfile lines added (implementer 3, under the "Lockfile approval" above): analysis.py
+  `MIN_HALF_DEPTH_WIDTH_PERIODS`, `MIN_HALF_DEPTH_HEIGHT_PERIODS`, `SIZE_ALONG_PERIODS`,
+  `_PEAK_FOOTPRINT_PX`, `_SEED_FRACTION`, `_MAX_CANDIDATES`, `_SPLIT_LOG_STEPS`, `_GROW_FRACTION`,
+  the three `_MERGE_*`, `_ABSORB_FRACTION`, `_CORE_FRACTION`, and `_LOG_BANK_STEP` (the bank's
+  log grid step, derived from `_PERIODS`, used by the Period split; a new ticket-05 module number);
+  protected.py: every new ticket-05 name, plus the new `USED_SEEDS` (N8/P1/P1-D/P2 reservations and
+  implementer 1's scratch seeds `range(95_000, 95_300)`) and `CALIBRATION_SEEDS` (with
+  `REGION_CALIBRATION_SEEDS`) lines. The `_PERIOD_SPREAD` line is removed (listed above).

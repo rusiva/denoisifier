@@ -1,21 +1,25 @@
 import json
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from borderline import BORDERLINE, borderline_frame
-from denoisifier import read_frame
+from denoisifier import analyse, read_frame
 from denoisifier.frame_io import write_frame_csv
-from denoisifier.synthetic import generate
+from denoisifier.synthetic import StripedRegion, generate
 from protected import (
+    CLI_MASK_TEST_SEED,
     CLI_MISSING_OUTPUT_DIR_TEST_SEED,
     CLI_STDOUT_TEST_SEED,
     CLI_STRIPED_CSV_TEST_SEED,
     DEPTH_TOL,
 )
+from regions import truth_bbox
 from truth_match import assert_matches_truth
 
 SOLIS = Path(__file__).parent / "data" / "solis"
@@ -45,8 +49,10 @@ def test_cli_writes_json_report_for_striped_csv(tmp_path):
     assert result.returncode == 0, result.stderr
     report = json.loads(out.read_text())
     assert report["striped"] is True
-    assert_matches_truth(report["period_px"], report["angle_deg"], s.truth)
-    assert abs(report["modulation_depth"] - 0.6) <= DEPTH_TOL
+    assert report["regions"]
+    for region in report["regions"]:
+        assert_matches_truth(region["period_px"], region["angle_deg"], s.truth)
+        assert abs(region["modulation_depth"] - 0.6) <= DEPTH_TOL
 
 
 def test_cli_reports_borderline_frame(tmp_path):
@@ -58,7 +64,7 @@ def test_cli_reports_borderline_frame(tmp_path):
     report = json.loads(out.read_text())
     assert report["striped"] is True
     for key in ("period_px", "angle_deg", "modulation_depth"):
-        assert np.isfinite(report[key])
+        assert np.isfinite(report["regions"][0][key])
 
 
 def test_cli_prints_json_to_stdout_without_output_flag(tmp_path):
@@ -202,4 +208,131 @@ def test_cli_transposes_real_solis_export_on_request(tmp_path):
     )
     plain_report.pop("reader_notes")
     assert "transposed" in solis_report.pop("reader_notes")[-1]
+    assert plain_report.pop("transposed") is False
+    assert solis_report.pop("transposed") is True
+    # The crop's bboxes are in the file's layout: the plain frame's, transposed.
+    for region in plain_report["regions"]:
+        b = region["bbox"]
+        region["bbox"] = {
+            "row_start": b["col_start"],
+            "row_stop": b["col_stop"],
+            "col_start": b["row_start"],
+            "col_stop": b["row_stop"],
+        }
     assert plain_report == solis_report
+
+
+def _mask_test_frame():
+    """96x160, low noise, one Period-5 region off the centre (rows and columns)."""
+    region = StripedRegion(
+        center=(40.0, 62.0),
+        semi_axes=(30.0, 40.0),
+        rotation_deg=0.0,
+        edge_px=6.0,
+        period=5.0,
+        angle_deg=0.0,
+        modulation_depth=0.6,
+    )
+    return generate(seed=CLI_MASK_TEST_SEED, shape=(96, 160), regions=[region]).frame
+
+
+def _assert_bboxes_are_tight(report, mask):
+    for region in report["regions"]:
+        b = region["bbox"]
+        bbox = (b["row_start"], b["row_stop"], b["col_start"], b["col_stop"])
+        assert truth_bbox(mask == region["label"]) == bbox
+
+
+def test_cli_writes_mask_csv_laid_out_like_the_frame(tmp_path):
+    frame = _mask_test_frame()
+    frame_path, out, mask_path = tmp_path / "frame.csv", tmp_path / "r.json", tmp_path / "m.csv"
+    write_frame_csv(frame, frame_path)
+    result = _run(frame_path, "-o", out, "--mask", mask_path)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(out.read_text())
+    mask = read_frame(mask_path).frame
+    assert mask.shape == frame.shape
+    assert np.array_equal(mask, np.round(mask))
+    assert set(np.unique(mask)) <= set(range(len(report["regions"]) + 1))
+    assert report["regions"]
+    assert np.array_equal(mask, analyse(frame).labels)
+    _assert_bboxes_are_tight(report, mask)
+    assert report["transposed"] is False
+
+
+def test_cli_writes_all_zero_mask_for_stripe_free_frame(tmp_path):
+    frame = generate(seed=CLI_MASK_TEST_SEED, shape=(96, 160), modulation_depth=0.0).frame
+    frame_path, out, mask_path = tmp_path / "frame.csv", tmp_path / "r.json", tmp_path / "m.csv"
+    write_frame_csv(frame, frame_path)
+    result = _run(frame_path, "-o", out, "--mask", mask_path)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(out.read_text())["regions"] == []
+    mask = read_frame(mask_path).frame
+    assert mask.shape == frame.shape
+    assert not mask.any()
+
+
+def test_cli_mask_and_bboxes_follow_the_file_layout_when_transposing(tmp_path):
+    frame = _mask_test_frame()
+    frame_path, out, mask_path = tmp_path / "frame.csv", tmp_path / "r.json", tmp_path / "m.csv"
+    write_frame_csv(frame.T, frame_path)  # 160x96 file, one sensor column per file row
+    result = _run(frame_path, "--transpose", "-o", out, "--mask", mask_path)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(out.read_text())
+    expected = analyse(frame)
+    mask = read_frame(mask_path).frame
+    assert mask.shape == (160, 96)
+    assert report["regions"]
+    assert np.array_equal(mask, expected.labels.T)
+    _assert_bboxes_are_tight(report, mask)
+    assert [(r["period_px"], r["angle_deg"]) for r in report["regions"]] == [
+        (r.period_px, r.angle_deg) for r in expected.regions
+    ]
+    assert report["transposed"] is True
+
+
+def test_cli_mask_follows_the_solis_crop_layout(tmp_path):
+    mask_path = tmp_path / "m.csv"
+    solis = SOLIS / "xpos_ypos_crop.asc"
+    result = _run(solis, "--drop-axis-column", "--transpose", "--mask", mask_path)
+    assert result.returncode == 0, result.stderr
+    grid = read_frame(solis, drop_axis_column=True).frame
+    assert read_frame(mask_path).frame.shape == grid.shape
+
+
+def test_cli_fails_cleanly_when_mask_dir_missing(tmp_path):
+    frame_path = tmp_path / "frame.csv"
+    write_frame_csv(_smooth_frame(), frame_path)
+    mask_path = tmp_path / "nope" / "m.csv"
+    _assert_clean_failure(_run(frame_path, "--mask", mask_path), str(mask_path))
+
+
+@pytest.mark.parametrize(
+    ("clash", "output_exists"),
+    [
+        ("frame", False),
+        ("frame", True),
+        ("frame_link", False),
+        ("output", False),
+        ("output", True),
+        ("output_link", True),  # a link needs an existing -o file
+    ],
+)
+def test_cli_refuses_a_mask_path_that_aliases_the_input_or_output(tmp_path, clash, output_exists):
+    frame_path, out = tmp_path / "frame.csv", tmp_path / "r.json"
+    write_frame_csv(_smooth_frame(), frame_path)
+    if output_exists:
+        out.write_text("previous report\n")
+    frame_bytes = frame_path.read_bytes()
+    target = {"frame": frame_path, "frame_link": frame_path}.get(clash, out)
+    mask_path = target
+    if clash.endswith("_link"):
+        mask_path = tmp_path / "link.csv"
+        os.symlink(target, mask_path)
+    result = _run(frame_path, "-o", out, "--mask", mask_path)
+    _assert_clean_failure(result, "--mask", "same file")
+    assert frame_path.read_bytes() == frame_bytes
+    if output_exists:
+        assert out.read_text() == "previous report\n"
+    else:
+        assert not out.exists()
