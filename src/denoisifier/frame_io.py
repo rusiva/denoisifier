@@ -69,20 +69,34 @@ def read_frame(path: str | os.PathLike[str], *, drop_axis_column: bool = False) 
         lines = [(n, _fields(line)) for n, line in enumerate(f, start=1) if line.strip()]
     start, stop = _grid_span(path, lines)
     first_line, first = lines[start]
-    width = len(first)
+    first_values, trailing = _values(first)
+    width = len(first_values)  # values, so a trailing empty field never counts
     notes = []
     for count, where in ((start, "before"), (len(lines) - stop, "after")):
         if count:
             noun = "line" if count == 1 else "lines"
             notes.append(f"skipped {count} metadata {noun} {where} the grid")
+    if trailing:
+        notes.append("every grid row ends with a trailing comma; the empty last field was ignored")
     rows = []
     for n, fields in lines[start:stop]:
-        if len(fields) != width:
+        values, has_trailing = _values(fields)
+        if trailing and not has_trailing:
             raise ValueError(
-                f"{path}: line {n} has {len(fields)} values, "
+                f"{path}: line {n} does not end with a trailing comma, "
+                f"but the grid's first row (line {first_line}) does"
+            )
+        if has_trailing and not trailing:
+            raise ValueError(
+                f"{path}: line {n} ends with a trailing comma (an empty last field), "
+                f"but the grid's first row (line {first_line}) does not"
+            )
+        if len(values) != width:
+            raise ValueError(
+                f"{path}: line {n} has {len(values)} values, "
                 f"but the grid's first row (line {first_line}) has {width}"
             )
-        rows.append(_parse_row(path, n, fields))
+        rows.append(_parse_row(path, n, values))
     grid = np.asarray(rows, dtype=np.float64)
     if drop_axis_column:
         grid, axis_notes = _drop_axis_column(path, grid)
@@ -147,6 +161,13 @@ def _first_column_range(grid: np.ndarray) -> str:
 def _counts_up(grid: np.ndarray) -> bool:
     """Whether the first column strictly increases row by row (needs 2 rows and 2 columns)."""
     return grid.shape[0] >= 2 and grid.shape[1] >= 2 and bool(np.all(np.diff(grid[:, 0]) > 0))
+
+
+def _values(fields: list[str]) -> tuple[list[str], bool]:
+    """The fields without a trailing empty one, and whether there was one."""
+    if len(fields) >= 2 and fields[-1] == "":
+        return fields[:-1], True
+    return fields, False
 
 
 def _fields(line: str) -> list[str]:

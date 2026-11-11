@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -5,6 +7,10 @@ from denoisifier import read_frame
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import generate
 from protected import CSV_ROUND_TRIP_TEST_SEED
+
+SOLIS = Path(__file__).parent / "data" / "solis"
+CROP = SOLIS / "xpos_ypos_crop.asc"
+TRAILING_NOTE = "every grid row ends with a trailing comma; the empty last field was ignored"
 
 
 def _write(tmp_path, text):
@@ -83,9 +89,48 @@ def test_empty_field_in_grid_raises_naming_its_position(tmp_path):
         read_frame(_write(tmp_path, "1,2,3\n4,,6\n"))
 
 
-def test_trailing_comma_is_rejected(tmp_path):
-    with pytest.raises(ValueError, match=r"line 1, column 3: '' is not a number"):
-        read_frame(_write(tmp_path, "1,2,\n3,4,\n"))
+def test_trailing_comma_on_every_row_is_accepted_and_noted(tmp_path):
+    result = read_frame(_write(tmp_path, "4,2,\n3,1,\n"))
+    assert np.array_equal(result.frame, [[4, 2], [3, 1]])
+    assert result.notes == (TRAILING_NOTE,)
+
+
+def test_one_row_trailing_comma_reads_as_a_trailing_delimiter(tmp_path):
+    # The documented limit: a one-row file cannot show a missing last value.
+    result = read_frame(_write(tmp_path, "5,6,\n"))
+    assert np.array_equal(result.frame, [[5, 6]])
+    assert result.notes == (TRAILING_NOTE,)
+
+
+def test_trailing_comma_missing_on_one_row_raises_naming_it(tmp_path):
+    path = _write(tmp_path, "1,2,\n3,4\n5,6,\n")
+    with pytest.raises(ValueError, match=r"line 2 does not end with a trailing comma") as excinfo:
+        read_frame(path)
+    assert "line 1" in str(excinfo.value)
+    assert str(path) in str(excinfo.value)
+
+
+def test_trailing_comma_on_only_some_rows_raises_naming_it(tmp_path):
+    with pytest.raises(ValueError, match=r"line 2 ends with a trailing comma"):
+        read_frame(_write(tmp_path, "1,2\n3,4,\n5,6\n"))
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("1,2,3\n4,5,\n", r"line 2 ends with a trailing comma"),
+        ("1,2,\n4,5,6\n", r"line 2 does not end with a trailing comma"),
+    ],
+    ids=["later-row-lost-its-last-value", "first-row-lost-its-last-value"],
+)
+def test_missing_last_value_on_one_row_is_caught(tmp_path, text, message):
+    with pytest.raises(ValueError, match=message):
+        read_frame(_write(tmp_path, text))
+
+
+def test_empty_interior_field_with_trailing_commas_raises_naming_it(tmp_path):
+    with pytest.raises(ValueError, match=r"line 1, column 2: '' is not a number"):
+        read_frame(_write(tmp_path, "1,,3,\n4,5,6,\n"))
 
 
 def test_byte_order_mark_does_not_hide_the_first_row(tmp_path):
@@ -210,3 +255,35 @@ def test_solis_export_with_axis_and_metadata_loads_when_dropping(tmp_path):
     assert "before" in result.notes[0]
     assert "after" in result.notes[1]
     assert "dropped" in result.notes[2]
+
+
+def test_real_solis_export_loads_by_default_with_notes():
+    result = read_frame(CROP)
+    assert result.frame.shape == (64, 65)
+    assert np.array_equal(result.frame[:, 0], np.arange(1359, 1423))
+    assert result.frame[31, 32] == 2022
+    assert len(result.notes) == 3
+    assert result.notes[0] == "skipped 27 metadata lines after the grid"
+    assert result.notes[1] == TRAILING_NOTE
+    assert result.notes[2].startswith("warning: ")
+    assert "1359 to 1422" in result.notes[2]
+    assert "--drop-axis-column" in result.notes[2]
+
+
+def test_real_solis_export_with_axis_dropped_is_the_source_crop():
+    result = read_frame(CROP, drop_axis_column=True)
+    assert result.frame.shape == (64, 64)
+    text = CROP.read_text()
+    expected = [[float(x) for x in line.split(",")[1:-1]] for line in text.splitlines()[:64]]
+    assert np.array_equal(result.frame, expected)
+    assert result.frame[0, 0] == 984
+    assert result.frame[0, 63] == 735
+    assert result.frame[63, 0] == 856
+    assert result.frame[63, 63] == 754
+    assert result.frame[31, 31] == 2022
+    assert result.frame.sum() == 4886612
+    assert len(result.notes) == 3
+    assert result.notes[0] == "skipped 27 metadata lines after the grid"
+    assert result.notes[1] == TRAILING_NOTE
+    assert "dropped" in result.notes[2]
+    assert not any(note.startswith("warning: ") for note in result.notes)
