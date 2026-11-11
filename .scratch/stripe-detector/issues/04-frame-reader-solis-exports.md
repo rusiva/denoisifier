@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A plain grid loads with every column kept.
 - [x] A grid with a Solis axis column keeps it by default and includes a warning in the reader notes; with the explicit option it is dropped and the note says so.
@@ -18,6 +18,8 @@
 
 **Implementer (2026-11-11).** Built per `.scratch/stripe-detector/handoffs/04-plan.md` (Settled S1-S9), test-first, commits `20a569a`, `510f92c`, `bb0d1a8`, `5bf2287`, `beefc76`. No stamped file, protected number or gate config changed; no weakening move.
 
-Gate: `make check` exit 0; `326 passed, 4 deselected in 123.50s (0:02:03)`; slow-tier stamp check passed; HEAD `beefc76` (tree dirty only with the pre-existing 02/07 issue edits and untracked handoff dirs).
+**Fixer (2026-11-11).** Review fixes S3, S5, S6, S8 as behaviour-preserving refactors of `src/denoisifier/frame_io.py` (commits `02ddd2f`, `a744265`, `67256d3`); no test, stamped file, protected number or gate config changed; no weakening move.
+
+Gate: `make check` exit 0; `326 passed, 4 deselected in 133.71s (0:02:13)`; slow-tier stamp check passed; HEAD `67256d3-dirty` (dirty only with this ticket's status/comment edit, the pre-existing 02/07 issue edits and untracked handoff dirs).
 
 Known gap: no real Andor Solis export is in the repo, so the assumed layout (comma-delimited rows, text-keyed metadata lines, axis in column 0, no trailing comma, no numeric header row) is unverified. Real-Solis compatibility is not proven; a real-file fixture may follow in a later ticket.
