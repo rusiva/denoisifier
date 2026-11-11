@@ -52,6 +52,26 @@ protected :: PROBE_FREE_SEEDS :: range(71000, 71200)
 protected :: PROBE_STRIPED_SEEDS :: range(72000, 72100)
 protected :: TIMING_SEED :: 40000
 protected :: TIMING_CASE :: Case(period=8, angle_deg=0)
+protected :: GATE_STORED_THRESHOLD :: 74.11851980928641
+protected :: PROBE_STORED_THRESHOLD :: 105.80269099368302
+protected :: REGRESSION_STRIPED_SEEDS :: range(80000, 80300)
+protected :: REGRESSION_FREE_SEEDS :: range(81000, 81800)
+protected :: REGRESSION_PROBE_STRIPED_SEEDS :: range(82000, 82030)
+protected :: REGRESSION_TIMED_FRAMES :: 3
+protected :: REGRESSION_MIN_DETECTED :: 280
+protected :: REGRESSION_MAX_FALSE_ALARMS :: 22
+protected :: REGRESSION_PROBE_MIN_DETECTED :: 26
+protected :: REGRESSION_MAX_FALSE_RED :: 0.01
+protected :: REGRESSION_MAX_PASS_BAD :: 0.05
+protected :: REGRESSION_BAD_DETECTION_RATE :: 0.9
+protected :: REGRESSION_BAD_FALSE_ALARM_RATE :: 0.04
+protected :: REGRESSION_PROBE_BAD_DETECTION_RATE :: 0.7
+protected :: SLOW_TIMING_LIMIT_S :: 30.0
+protected :: BENCH_REPEATS :: 5
+protected :: TARGET_TIMING_S :: 5.0
+protected :: REGRESSION_TINY_STRIPED_TEST_SEEDS :: range(60, 62)
+protected :: REGRESSION_TINY_FREE_TEST_SEEDS :: range(62, 64)
+protected :: REGRESSION_TINY_PROBE_TEST_SEEDS :: range(64, 66)
 protected :: A0_CALIBRATION_SEEDS :: range(0, 10)
 protected :: THRESHOLD_CALIBRATION_SEEDS :: range(100, 200)
 protected :: TEST_SEED_BLOCK :: range(10, 100)

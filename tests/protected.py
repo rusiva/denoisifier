@@ -47,6 +47,38 @@ PROBE_STRIPED_SEEDS = range(72_000, 72_100)  # 100: 10 per case
 TIMING_SEED = 40_000
 TIMING_CASE = Case(period=8, angle_deg=0)
 
+# Slow-tier regression check (ticket agent-gates/05; derivation:
+# .scratch/agent-gates/handoffs/05-plan.md). make check-slow scores fresh seeds
+# at the thresholds stored by the last full measurement (make measure), with no
+# per-run calibration. The pass counts meet the operating rule
+# (test_regression_plan_meets_the_operating_rule): at most REGRESSION_MAX_FALSE_RED
+# chance of any false red at the pessimistic end of the stored baseline's 95% CI,
+# at most REGRESSION_MAX_PASS_BAD chance per check of passing a detector at its
+# bad rate. Never edit the pass counts to make check-slow green.
+GATE_STORED_THRESHOLD = 74.11851980928641  # = feasibility-gate.json gate.threshold
+PROBE_STORED_THRESHOLD = 105.80269099368302  # = feasibility-gate.json probe.threshold
+REGRESSION_STRIPED_SEEDS = range(80_000, 80_300)  # 256x256, m = WEAK_DEPTH, 30 per case
+REGRESSION_FREE_SEEDS = range(81_000, 81_800)  # 256x256, stripe-free
+REGRESSION_PROBE_STRIPED_SEEDS = range(82_000, 82_030)  # 400x1600, m = WEAK_DEPTH, 3 per case
+REGRESSION_TIMED_FRAMES = 3  # first 3 probe seeds, timed serially; counted in the 30
+REGRESSION_MIN_DETECTED = 280
+REGRESSION_MAX_FALSE_ALARMS = 22
+REGRESSION_PROBE_MIN_DETECTED = 26
+REGRESSION_MAX_FALSE_RED = 0.01  # gate-wide: union over the three checks
+REGRESSION_MAX_PASS_BAD = 0.05  # per check
+REGRESSION_BAD_DETECTION_RATE = 0.90
+REGRESSION_BAD_FALSE_ALARM_RATE = 0.04
+# Declared (ruling O1): a collapse check, not the 0.95 full-run bar
+# (PROBE_MIN_DETECTION_RATE, enforced by make measure at milestones).
+REGRESSION_PROBE_BAD_DETECTION_RATE = 0.70
+SLOW_TIMING_LIMIT_S = 30.0  # check-slow: real slowdowns only (owner, 2026-11-10)
+BENCH_REPEATS = 5  # make bench: median of this many runs, asserted against TIMING_LIMIT_S
+TARGET_TIMING_S = 5.0  # ticket 13's target; make bench reports it without failing
+# test_slow_regression_plan.py: the tiny-plan run of regression_check.
+REGRESSION_TINY_STRIPED_TEST_SEEDS = range(60, 62)
+REGRESSION_TINY_FREE_TEST_SEEDS = range(62, 64)
+REGRESSION_TINY_PROBE_TEST_SEEDS = range(64, 66)
+
 # Calibration seeds outside the feasibility gate (ticket agent-gates/04).
 # _A0 (_local_stripes.py) was tuned on ticket 01's profile-only frames, seeds
 # 0-9; THRESHOLD (analysis.py) was set on seeds 100-199.
