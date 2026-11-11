@@ -156,6 +156,31 @@ def test_sigterm_to_the_runner_stops_its_whole_process_group(root):
     assert not (root / STAMP).exists()
 
 
+def test_a_signal_while_the_command_starts_still_stops_its_group(root, monkeypatch, capsys):
+    # SIGTERM lands after the child exists but before Popen has returned (review SP4).
+    started: list[subprocess.Popen[bytes]] = []
+    real_popen = subprocess.Popen
+
+    def popen_then_signal(*args, **kwargs):
+        child = real_popen(*args, **kwargs)
+        started.append(child)
+        os.kill(os.getpid(), signal.SIGTERM)
+        return child
+
+    monkeypatch.setattr(slow_stamp.subprocess, "Popen", popen_then_signal)
+    try:
+        assert run(root, "import time; time.sleep(120)") == 128 + signal.SIGTERM
+        assert started, "the command never started"
+        assert started[0].poll() is not None, "the started command outlived the runner"
+    finally:
+        for child in started:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+    assert "interrupted (signal 15)" in capsys.readouterr().out
+    assert not (root / STAMP).exists()
+
+
 def _state(pid: int) -> str:
     try:
         return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]

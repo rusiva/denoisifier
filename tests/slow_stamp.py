@@ -164,11 +164,37 @@ class _Interrupted(Exception):
         self.signum = signum
 
 
-def _on_signal(signum: int, _frame: FrameType | None) -> None:
+def _interrupt(signum: int) -> None:
     # Ignore further signals while the group is stopped.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     raise _Interrupted(signum)
+
+
+class _DeferredSignals:
+    """SIGINT/SIGTERM handler that holds a signal while the command starts.
+
+    A signal raised inside Popen would leave the runner without the started
+    child's handle, so its group would never be stopped (review SP4). While
+    ``starting`` is set the signal is only noted; ``started()`` raises it once
+    the handle is known.
+    """
+
+    def __init__(self) -> None:
+        self.starting = True
+        self.pending: int | None = None
+
+    def __call__(self, signum: int, _frame: FrameType | None) -> None:
+        if self.starting:
+            if self.pending is None:
+                self.pending = signum
+            return
+        _interrupt(signum)
+
+    def started(self) -> None:
+        self.starting = False
+        if self.pending is not None:
+            _interrupt(self.pending)
 
 
 def _group_alive(proc: subprocess.Popen[bytes], pgid: int) -> bool:
@@ -263,8 +289,9 @@ def run(root: Path, command: list[str]) -> int:
             lock.flush()
 
         record(None)
-        old_int = signal.signal(signal.SIGINT, _on_signal)
-        old_term = signal.signal(signal.SIGTERM, _on_signal)
+        handler = _DeferredSignals()
+        old_int = signal.signal(signal.SIGINT, handler)
+        old_term = signal.signal(signal.SIGTERM, handler)
         proc: subprocess.Popen[bytes] | None = None
         try:
             proc = subprocess.Popen(
@@ -274,6 +301,7 @@ def run(root: Path, command: list[str]) -> int:
                 start_new_session=True,
             )
             record(proc.pid)  # a new session: its pgid is its pid
+            handler.started()  # raises a signal that arrived while starting
             returncode = proc.wait()
         except _Interrupted as interrupted:
             if proc is not None:
