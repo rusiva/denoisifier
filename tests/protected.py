@@ -114,6 +114,10 @@ SCORE_AND_THRESHOLD_TEST_SEED = 27  # test_report_has_score_and_threshold (was 7
 # 20 seed in 20-99 that scores in the borderline window (ruling O3).
 BORDERLINE_TEST_CASES = [(22, 20), (13, 5), (13, 8), (12, 20), (16, 8)]
 
+# Ticket 05 (Striped Regions): generator tests.
+DIGEST_TEST_SEEDS = range(30, 33)  # test_default_frames_are_unchanged_by_regions
+REGION_GENERATOR_TEST_SEED = 33  # the generator's region-mask tests
+
 # test_seed_guard.py (ticket agent-gates/04). The held-out free and striped
 # seeds of test_measure_calibrates_inside_the_block_and_evaluates_outside's
 # small SeedPlan.

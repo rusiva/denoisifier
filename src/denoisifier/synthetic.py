@@ -5,6 +5,11 @@ The forward model follows the spec:
 
     clean = profile * mottle * (1 + m * cos(phase))
     phase = 2*pi/period * (x*cos(t) + y*sin(t)) + phase0
+
+With Striped Regions (``StripedRegion``), each region i has its own Period,
+Angle and depth under a soft elliptical mask, sharing ``phase0``:
+
+    clean = profile * mottle * (1 + sum_i m_i * mask_i * cos(phase_i))
     mottle = exp(strength * g),  g a unit-std isotropic Gaussian random field
     frame = clean + noise
 
@@ -16,6 +21,7 @@ Gamma distribution, Gaussian read noise, divided back by the gain.
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
@@ -46,16 +52,73 @@ class Emccd:
 
 
 @dataclass(frozen=True)
-class GroundTruth:
-    """What the generator put into a frame.
+class StripedRegion:
+    """One soft-edged elliptical Striped Region with its own stripes.
 
-    ``period`` is the Period in pixels; ``angle_deg`` is the Angle in degrees,
-    with the sign convention in GLOSSARY.md.
+    ``center`` is (row, col) and ``semi_axes`` (rows, cols) before rotation,
+    in px, to the mask's 0.5 contour. ``rotation_deg`` rotates the ellipse (it
+    is not the stripe Angle). ``edge_px`` is the soft edge: the mask goes from
+    0.9 to 0.1 over about ``edge_px`` along the minor axis, and over
+    ``edge_px * minor / major`` along the major axis. ``period``, ``angle_deg``
+    and ``modulation_depth`` are the region's Period, Angle and Modulation
+    Depth (GLOSSARY.md).
     """
+
+    center: tuple[float, float]
+    semi_axes: tuple[float, float]
+    rotation_deg: float
+    edge_px: float
+    period: float
+    angle_deg: float
+    modulation_depth: float
+
+
+@dataclass(frozen=True)
+class RegionTruth:
+    """One region's ground truth. ``mask`` is the soft mask (frame shape, 0-1);
+    the region's pixels are ``mask >= 0.5``."""
 
     period: float
     angle_deg: float
     modulation_depth: float
+    mask: np.ndarray
+
+
+@dataclass(frozen=True)
+class GroundTruth:
+    """What the generator put into a frame: one ``RegionTruth`` per region.
+
+    A full-frame frame (no ``regions`` given) has one region whose mask is
+    all ones. At ``modulation_depth=0`` that region is still listed, with depth
+    0, and it is not a Striped Region: filter on ``modulation_depth > 0``
+    before treating ``regions`` as the striped set.
+
+    ``period``, ``angle_deg`` and ``modulation_depth`` are the single
+    region's values (Period in pixels; Angle in degrees, sign convention in
+    GLOSSARY.md); they raise ``ValueError`` unless there is exactly one region.
+    """
+
+    regions: tuple[RegionTruth, ...]
+
+    def _only(self) -> RegionTruth:
+        if len(self.regions) != 1:
+            raise ValueError(
+                f"the frame has {len(self.regions)} regions, not exactly one region; "
+                "use GroundTruth.regions"
+            )
+        return self.regions[0]
+
+    @property
+    def period(self) -> float:
+        return self._only().period
+
+    @property
+    def angle_deg(self) -> float:
+        return self._only().angle_deg
+
+    @property
+    def modulation_depth(self) -> float:
+        return self._only().modulation_depth
 
 
 @dataclass(frozen=True)
@@ -73,15 +136,24 @@ def generate(
     *,
     seed: int,
     shape: tuple[int, int] = (256, 256),
-    period: float = 8.0,
-    angle_deg: float = 0.0,
-    modulation_depth: float = 0.6,
+    period: float | None = None,
+    angle_deg: float | None = None,
+    modulation_depth: float | None = None,
     mottle: MottleKind = "none",
     mottle_strength: float | None = None,
     noise: float | Emccd = 0.01,
     peak: float = 1000.0,
+    regions: Sequence[StripedRegion] | None = None,
 ) -> Synthetic:
     """Generate one frame: profile times full-frame stripes, plus noise.
+
+    Without ``regions`` the stripes cover the whole frame; ``period``,
+    ``angle_deg`` and ``modulation_depth`` default to 8.0, 0.0 and 0.6. With
+    ``regions`` the stripes lie only inside each ``StripedRegion`` (each with
+    its own Period, Angle and depth); passing any of those three as well is a
+    ``ValueError``, and ``regions=()`` gives a stripe-free frame. Regions may
+    overlap as long as the summed ``m_i * mask_i`` stays <= 1 everywhere.
+    The RNG stream is the same with or without regions.
 
     ``period`` and ``angle_deg`` are the Period and Angle (GLOSSARY.md);
     ``angle_deg`` is ``t`` in ``phase = 2*pi/period * (x cos t + y sin t)``
@@ -102,10 +174,26 @@ def generate(
     """
     if len(shape) != 2 or shape[0] < 1 or shape[1] < 1:
         raise ValueError(f"shape must be two positive sizes, got {shape!r}")
-    if not period > 0:
-        raise ValueError(f"period must be > 0, got {period!r}")
-    if not 0 <= modulation_depth <= 1:
-        raise ValueError(f"modulation_depth must be in [0, 1], got {modulation_depth!r}")
+    if regions is not None:
+        if period is not None or angle_deg is not None or modulation_depth is not None:
+            raise ValueError(
+                "period, angle_deg and modulation_depth go in each StripedRegion "
+                "when regions are given"
+            )
+        regions = tuple(regions)
+        for r in regions:
+            _check_region(r)
+    else:
+        full = StripedRegion(
+            center=(0.0, 0.0),
+            semi_axes=(1.0, 1.0),
+            rotation_deg=0.0,
+            edge_px=1.0,
+            period=8.0 if period is None else period,
+            angle_deg=0.0 if angle_deg is None else angle_deg,
+            modulation_depth=0.6 if modulation_depth is None else modulation_depth,
+        )
+        _check_stripes(full.period, full.modulation_depth)
     if mottle not in ("none", "scorched", "multiscale"):
         raise ValueError(f"mottle must be 'none', 'scorched' or 'multiscale', got {mottle!r}")
     if mottle_strength is not None:
@@ -131,15 +219,49 @@ def generate(
     scale = 1.0 if isinstance(noise, Emccd) else peak
     profile = scale * _profile(rng, rows, cols, x, y)
 
-    t = np.deg2rad(angle_deg)
     phase0 = rng.uniform(0, 2 * np.pi)
-    phase = 2 * np.pi / period * (x * np.cos(t) + y * np.sin(t)) + phase0
 
     envelope = profile
     if mottle != "none":
         strength = _TYPICAL_MOTTLE_STRENGTH[mottle] if mottle_strength is None else mottle_strength
         envelope = profile * _mottle(rng, shape, mottle, strength)
-    clean = envelope * (1 + modulation_depth * np.cos(phase))
+
+    if regions is None:
+        # Only full's Period, Angle and depth are used: the stripes cover the frame.
+        phase = _phase(x, y, full.period, full.angle_deg, phase0)
+        clean = envelope * (1 + full.modulation_depth * np.cos(phase))
+        truths: tuple[RegionTruth, ...] = (
+            RegionTruth(
+                period=float(full.period),
+                angle_deg=float(full.angle_deg),
+                modulation_depth=float(full.modulation_depth),
+                mask=np.ones(shape),
+            ),
+        )
+    else:
+        masks = [_region_mask(r, x, y) for r in regions]
+        depth_sum = np.zeros(shape)
+        modulation = np.zeros(shape)
+        for r, mask in zip(regions, masks, strict=True):
+            depth_sum += r.modulation_depth * mask
+            modulation += (
+                r.modulation_depth * mask * np.cos(_phase(x, y, r.period, r.angle_deg, phase0))
+            )
+        if (depth_sum > 1).any():
+            raise ValueError(
+                "regions overlap with a summed modulation depth above 1 "
+                f"(max {depth_sum.max():.3f}); the clean frame would go negative"
+            )
+        clean = envelope * (1 + modulation)
+        truths = tuple(
+            RegionTruth(
+                period=float(r.period),
+                angle_deg=float(r.angle_deg),
+                modulation_depth=float(r.modulation_depth),
+                mask=mask,
+            )
+            for r, mask in zip(regions, masks, strict=True)
+        )
 
     if isinstance(noise, Emccd):
         clean = clean / clean.max() * noise.photons_peak
@@ -148,13 +270,42 @@ def generate(
         frame = clean + rng.normal(0.0, noise * peak, size=shape)
     return Synthetic(
         frame=frame,
-        truth=GroundTruth(
-            period=float(period),
-            angle_deg=float(angle_deg),
-            modulation_depth=float(modulation_depth),
-        ),
+        truth=GroundTruth(regions=truths),
         clean=clean,
     )
+
+
+def _check_stripes(period: float, modulation_depth: float) -> None:
+    if not period > 0:
+        raise ValueError(f"period must be > 0, got {period!r}")
+    if not 0 <= modulation_depth <= 1:
+        raise ValueError(f"modulation_depth must be in [0, 1], got {modulation_depth!r}")
+
+
+def _check_region(r: StripedRegion) -> None:
+    _check_stripes(r.period, r.modulation_depth)
+    if not all(a > 0 for a in r.semi_axes) or len(r.semi_axes) != 2:
+        raise ValueError(f"semi_axes must be > 0, got {r.semi_axes!r}")
+    if not r.edge_px > 0:
+        raise ValueError(f"edge_px must be > 0, got {r.edge_px!r}")
+
+
+def _phase(x: _F64, y: _F64, period: float, angle_deg: float, phase0: float) -> _F64:
+    t = np.deg2rad(angle_deg)
+    return cast(_F64, 2 * np.pi / period * (x * np.cos(t) + y * np.sin(t)) + phase0)
+
+
+def _region_mask(r: StripedRegion, x: _F64, y: _F64) -> _F64:
+    """0.5 * (1 - tanh(d / w)): d the approximate signed distance to the ellipse,
+    (normalised radius - 1) * minor semi-axis, and w set so 0.9 -> 0.1 spans edge_px."""
+    rot = np.deg2rad(r.rotation_deg)
+    dy, dx = y - r.center[0], x - r.center[1]
+    v = dy * np.cos(rot) - dx * np.sin(rot)
+    u = dy * np.sin(rot) + dx * np.cos(rot)
+    radius = np.hypot(v / r.semi_axes[0], u / r.semi_axes[1])
+    d = (radius - 1) * min(r.semi_axes)
+    w = r.edge_px / (2 * np.arctanh(0.8))
+    return cast(_F64, 0.5 * (1 - np.tanh(d / w)))
 
 
 def _check_emccd(emccd: Emccd) -> None:

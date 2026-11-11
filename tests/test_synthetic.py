@@ -1,11 +1,14 @@
+import hashlib
 import re
 
 import numpy as np
 import pytest
 
-from denoisifier.synthetic import Emccd, generate
+from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
+    DIGEST_TEST_SEEDS,
     MOTTLE_NONE_TEST_SEED,
+    REGION_GENERATOR_TEST_SEED,
     SAME_SEED_TEST_SEEDS,
     SINGLE_FRAME_TEST_SEED,
     STRIPE_FREE_SPECTRUM_TEST_SEEDS,
@@ -130,3 +133,137 @@ def test_clean_stripes_put_the_spectral_peak_at_the_true_period_and_angle(period
     )
     peak = band_peak(s.frame)
     assert_matches_truth(peak.period, peak.angle_deg, s.truth)
+
+
+# --- Striped Regions (ticket 05) ---------------------------------------------
+
+# SHA-256 of generate(seed, **kwargs).frame.tobytes(), computed at BASE 87005b9
+# before the regions change. They are tied to the numpy/scipy pinned in uv.lock:
+# after a dependency bump re-pin them, with the reason recorded in the ticket.
+_BASE_DIGESTS = {
+    "default": [
+        "43435527d812c8eb166efd8f17dfc05535b48aadc1bce131a32b6403617f845d",
+        "cb7d6b1298b298616d9a56b9aad65fc1980022f8286c35e22d8d9c30220108b5",
+        "f04735d8d970d8600c5f55861bced3652d34956408b21aac45f10ea946fb6eaa",
+    ],
+    "scorched": [
+        "787bc74992fb80a5e241cd001c666a7db488033fa69d143b4122580ca277339b",
+        "7aa1a5616a24041ec6f38602db6e51148e21c3731668a1f163f0f4361f586ed0",
+        "1b76c377d0d32fb1f0552f2984cf6be38b06151e3834a10d812ecbed4b13c58b",
+    ],
+    "scorched-emccd": [
+        "ba68054d79191fa060dc36ae6b25611a38df005cfd102e451cf1c4f8fe9fc186",
+        "4ffb8c4bd42f94c2ff015baf9cdbaf04d0468137d7ea19eb1897c70ea6f23c6a",
+        "5b8bc7758fd8cac39d558434fd3dec43a118bce3d47bd96a97e328890dafc3d8",
+    ],
+}
+_DIGEST_KWARGS = {
+    "default": {},
+    "scorched": {"mottle": "scorched"},
+    "scorched-emccd": {"mottle": "scorched", "noise": Emccd()},
+}
+
+
+@pytest.mark.parametrize("kind", list(_BASE_DIGESTS))
+def test_default_frames_are_unchanged_by_regions(kind):
+    """Full-frame frames stay bit-identical to BASE; regions=() equals m = 0."""
+    for seed, digest in zip(DIGEST_TEST_SEEDS, _BASE_DIGESTS[kind], strict=True):
+        frame = generate(seed=seed, **_DIGEST_KWARGS[kind]).frame
+        assert hashlib.sha256(frame.tobytes()).hexdigest() == digest
+        no_regions = generate(seed=seed, regions=(), **_DIGEST_KWARGS[kind])
+        flat = generate(seed=seed, modulation_depth=0.0, **_DIGEST_KWARGS[kind])
+        assert np.array_equal(no_regions.frame, flat.frame)
+
+
+def _region(**overrides):
+    base = dict(
+        center=(64.0, 80.0),
+        semi_axes=(30.0, 45.0),
+        rotation_deg=0.0,
+        edge_px=6.0,
+        period=8.0,
+        angle_deg=0.0,
+        modulation_depth=0.5,
+    )
+    base.update(overrides)
+    return StripedRegion(**base)
+
+
+def test_regions_have_soft_edged_elliptical_masks():
+    a, b, edge = 30.0, 45.0, 6.0
+    s = generate(
+        seed=REGION_GENERATOR_TEST_SEED,
+        shape=(128, 160),
+        regions=[_region(semi_axes=(a, b), edge_px=edge)],
+        noise=0.0,
+    )
+    (truth,) = s.truth.regions
+    mask = truth.mask
+    assert mask.shape == (128, 160)
+    assert mask[64, 80] == pytest.approx(1.0, abs=1e-6)
+    assert mask[0, 0] < 1e-6
+    # A ray along the minor axis (rows), downward from the centre.
+    ray = mask[64:, 80]
+    assert np.all(np.diff(ray) <= 0)
+    # The 0.5 contour is at the ellipse, within 1 px.
+    crossing = np.interp(0.5, ray[::-1], np.arange(len(ray))[::-1])
+    assert abs(crossing - a) <= 1.0
+    # The 0.9 -> 0.1 band is edge_px wide along the minor axis, +-1 px.
+    r90 = np.interp(0.9, ray[::-1], np.arange(len(ray))[::-1])
+    r10 = np.interp(0.1, ray[::-1], np.arange(len(ray))[::-1])
+    assert abs((r10 - r90) - edge) <= 1.0
+    assert (mask >= 0.5).sum() == pytest.approx(np.pi * a * b, rel=0.02)
+
+
+def test_each_region_has_its_own_period_and_angle():
+    left = _region(center=(128.0, 128.0), semi_axes=(90.0, 90.0), period=5.0, angle_deg=4.0)
+    right = _region(center=(128.0, 384.0), semi_axes=(90.0, 90.0), period=12.0, angle_deg=-6.0)
+    common = dict(seed=REGION_GENERATOR_TEST_SEED, shape=(256, 512), mottle="none", noise=0.0)
+    s = generate(**common, regions=[left, right])
+    for region, cols in zip(s.truth.regions, (slice(64, 192), slice(320, 448)), strict=True):
+        peak = band_peak(s.frame[64:192, cols])
+        assert_matches_truth(peak.period, peak.angle_deg, region)
+    plain = generate(**common, regions=())
+    far = (s.truth.regions[0].mask < 1e-12) & (s.truth.regions[1].mask < 1e-12)
+    assert far.any()
+    # tanh never reaches 0, so equal up to the mask's 1e-12 tail.
+    assert np.allclose(s.clean[far], plain.clean[far], rtol=1e-9, atol=0)
+
+
+def test_ground_truth_lists_regions():
+    default = generate(seed=REGION_GENERATOR_TEST_SEED, period=7.0, modulation_depth=0.4)
+    (only,) = default.truth.regions
+    assert np.array_equal(only.mask, np.ones((256, 256)))
+    assert (only.period, only.angle_deg, only.modulation_depth) == (7.0, 0.0, 0.4)
+    assert default.truth.period == 7.0
+    two = generate(
+        seed=REGION_GENERATOR_TEST_SEED,
+        shape=(128, 320),
+        regions=[_region(center=(64.0, 80.0)), _region(center=(64.0, 240.0), period=12.0)],
+    )
+    assert [r.period for r in two.truth.regions] == [8.0, 12.0]
+    with pytest.raises(ValueError, match="exactly one region"):
+        _ = two.truth.period
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        (
+            dict(regions=[_region()], period=5.0),
+            "period, angle_deg and modulation_depth go in each StripedRegion",
+        ),
+        (dict(regions=[_region()], modulation_depth=0.5), "period, angle_deg and modulation_depth"),
+        (dict(regions=[_region(semi_axes=(0.0, 10.0))]), "semi_axes must be > 0"),
+        (dict(regions=[_region(edge_px=0.0)]), "edge_px must be > 0"),
+        (dict(regions=[_region(period=0.0)]), "period must be > 0"),
+        (dict(regions=[_region(modulation_depth=1.5)]), "modulation_depth must be in [0, 1]"),
+        (
+            dict(regions=[_region(modulation_depth=0.6), _region(modulation_depth=0.6)]),
+            "regions overlap with a summed modulation depth above 1",
+        ),
+    ],
+)
+def test_rejects_invalid_regions(kwargs, message):
+    with pytest.raises(ValueError, match="^" + re.escape(message)):
+        generate(seed=REGION_GENERATOR_TEST_SEED, shape=(128, 160), **kwargs)

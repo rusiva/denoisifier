@@ -95,6 +95,8 @@ protected :: MOTTLE_NONE_TEST_SEED :: 23
 protected :: CSV_ROUND_TRIP_TEST_SEED :: 25
 protected :: SCORE_AND_THRESHOLD_TEST_SEED :: 27
 protected :: BORDERLINE_TEST_CASES :: [(22, 20), (13, 5), (13, 8), (12, 20), (16, 8)]
+protected :: DIGEST_TEST_SEEDS :: range(30, 33)
+protected :: REGION_GENERATOR_TEST_SEED :: 33
 protected :: MEASURE_PLAN_FREE_TEST_SEEDS :: range(40, 50)
 protected :: MEASURE_PLAN_STRIPED_TEST_SEEDS :: range(50, 60)
 protected :: FEASIBILITY_SCRIPT_TIMEOUT_S :: 45
