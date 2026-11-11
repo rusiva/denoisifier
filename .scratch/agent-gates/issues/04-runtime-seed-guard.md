@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Every calibration seed range in use is registered in ticket 03's module: the 100-199 range that `THRESHOLD` was set from, and the feasibility gate's calibration and probe-calibration ranges. The registry's own disjointness check covers all registered ranges, replacing the feasibility-only version.
 - [x] During `make check` and `make check-slow`, every seed passed to the generator outside an explicitly marked calibration context is checked against the calibration ranges. A hit fails that test, naming the seed and the range.
