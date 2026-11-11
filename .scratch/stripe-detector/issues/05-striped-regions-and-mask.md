@@ -78,3 +78,10 @@
   (AC 5, 5 cases), dark-area test full-frame typical (3; question of which envelope defines
   "dark"), strong P12 seed 23 Angle 1.02 deg off, borderline (22, 20) now scores 0 (re-pick
   needs an approval, not covered by the measure-conditioned one). Two test bugs fixed in `b9f4a88`.
+- Rulings R1-R4 and "Evaluation hygiene" (orchestrator, 2026-11-11, `handoffs/05-orchestrator.md`,
+  "Rulings on the post-freeze reds"), taken up by implementer 4. Evaluation range predeclared
+  **before any fix**: `REGION_EVALUATION_SEEDS = range(93_000, 94_000)` in `tests/protected.py`,
+  registered in `USED_SEEDS` (lockfile: one new line plus the `USED_SEEDS` line; this adds a
+  reservation and loosens nothing, under the ruling). Not looked at until after the new freeze;
+  then one run of a one-off driver (`tests/evaluate_regions.py`), no tuning on its results. The
+  seen reds (5 ghost, 3 dark-area, P12 seed 23, borderline (22, 20)) stay as regression tests.

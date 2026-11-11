@@ -88,6 +88,10 @@ THRESHOLD_CALIBRATION_SEEDS = range(100, 200)
 # Ticket 05's region knobs (analysis.py) are tuned on 90_000-90_399 and the
 # informational numbers measured on 90_400-90_599 (tests/calibrate_regions.py).
 REGION_CALIBRATION_SEEDS = range(90_000, 90_600)
+# Ticket 05's fresh held-out evaluation (orchestrator, "Evaluation hygiene"):
+# predeclared before the post-freeze fixes, looked at once after the new freeze
+# by a one-off driver (tests/evaluate_regions.py), never tuned on.
+REGION_EVALUATION_SEEDS = range(93_000, 94_000)
 # Seeds of the non-slow tests: every *_TEST_SEED(S) lies in here.
 TEST_SEED_BLOCK = range(10, 100)
 
@@ -182,6 +186,8 @@ USED_SEEDS = [
     range(411_000, 411_004),
     # Ticket 05: the implementer's scratch checks.
     range(95_000, 95_300),
+    # Ticket 05: the fresh evaluation range (reserved before it is looked at).
+    REGION_EVALUATION_SEEDS,
 ]
 
 # Calibration seed ranges, by name. tests/seed_guard.py refuses any of these
