@@ -50,7 +50,7 @@ def read_frame(
     line does; then every grid line must have one, and without one no grid
     line may (an uneven trailing comma raises naming its line). The empty last
     field is not a value, and the notes say it was ignored. An empty interior
-    field still raises. Known limit: a last value missing on only some rows is
+    field still raises. Known gap: a last value missing on only some rows is
     caught (uneven trailing comma or width), but a last value missing on every
     row, or in a one-row file, cannot be told apart from a trailing comma and
     reads as a grid one column narrower.
@@ -103,28 +103,31 @@ def read_frame(
     or when ``drop_axis_column`` is true and the grid has only one column.
     """
     with open(path, encoding="utf-8-sig", errors="replace") as f:
-        lines = [(n, _fields(line)) for n, line in enumerate(f, start=1) if line.strip()]
-    start, stop = _grid_span(path, lines)
-    _check_not_a_series(path, lines[:start] + lines[stop:])
-    first_line, first = lines[start]
-    first_values, trailing = _values(first)
+        raw_lines = [(n, line) for n, line in enumerate(f, start=1) if line.strip()]
+    lines = [(n, _fields(line)) for n, line in raw_lines]
+    stripped = [_strip_trailing_empty(fields) for _, fields in lines]
+    start, stop = _grid_span(path, lines, stripped)
+    _check_not_a_series(path, raw_lines[:start] + raw_lines[stop:])
+    first_line = lines[start][0]
+    first_values, grid_has_trailing = stripped[start]
     width = len(first_values)  # values, so a trailing empty field never counts
     notes = []
     for count, where in ((start, "before"), (len(lines) - stop, "after")):
         if count:
             noun = "line" if count == 1 else "lines"
             notes.append(f"skipped {count} metadata {noun} {where} the grid")
-    if trailing:
+    if grid_has_trailing:
         notes.append("every grid row ends with a trailing comma; the empty last field was ignored")
     rows = []
-    for n, fields in lines[start:stop]:
-        values, has_trailing = _values(fields)
-        if trailing and not has_trailing:
+    for (n, _), (values, row_has_trailing) in zip(
+        lines[start:stop], stripped[start:stop], strict=True
+    ):
+        if grid_has_trailing and not row_has_trailing:
             raise ValueError(
                 f"{path}: line {n} does not end with a trailing comma, "
                 f"but the grid's first row (line {first_line}) does"
             )
-        if has_trailing and not trailing:
+        if row_has_trailing and not grid_has_trailing:
             raise ValueError(
                 f"{path}: line {n} ends with a trailing comma (an empty last field), "
                 f"but the grid's first row (line {first_line}) does not"
@@ -149,17 +152,22 @@ def read_frame(
         )
     if transpose:
         grid = np.ascontiguousarray(grid.T)
-        rows, cols = grid.shape
+        n_rows, n_cols = grid.shape
         notes.append(
             f"transposed the frame, as requested: file rows are frame columns "
-            f"({rows} x {cols} frame)"
+            f"({n_rows} x {n_cols} frame)"
         )
     return FrameFile(frame=grid, notes=tuple(notes))
 
 
-def _grid_span(path: str | os.PathLike[str], lines: list[tuple[int, list[str]]]) -> tuple[int, int]:
+def _grid_span(
+    path: str | os.PathLike[str],
+    lines: list[tuple[int, list[str]]],
+    stripped: list[tuple[list[str], bool]],
+) -> tuple[int, int]:
     """Indices ``start, stop`` of the grid in ``lines``; the rest is metadata.
 
+    ``stripped`` holds ``_strip_trailing_empty`` of each line's fields, in order.
     The grid runs from the first line whose first field is a number to the last.
     Raises when there is no such line, or when a line outside the grid looks
     like a corrupted grid row: the grid's width and more than half numbers,
@@ -171,23 +179,23 @@ def _grid_span(path: str | os.PathLike[str], lines: list[tuple[int, list[str]]])
         raise ValueError(f"{path}: no rows of numbers found")
     start, stop = grid_lines[0], grid_lines[-1] + 1
     first = lines[start][1]
-    grid_values, _ = _values(first)
-    for line_number, fields in lines[:start] + lines[stop:]:
-        values, _ = _values(fields)
-        if _looks_like_a_row(fields, first) or _looks_like_a_row(values, grid_values):
+    first_values = stripped[start][0]
+    for i in [*range(start), *range(stop, len(lines))]:
+        line_number, fields = lines[i]
+        values = stripped[i][0]
+        if _looks_like_a_row(fields, first) or _looks_like_a_row(values, first_values):
             _parse_row(path, line_number, fields)
     return start, stop
 
 
-def _check_not_a_series(
-    path: str | os.PathLike[str], metadata: list[tuple[int, list[str]]]
-) -> None:
+def _check_not_a_series(path: str | os.PathLike[str], metadata: list[tuple[int, str]]) -> None:
     """Raise when a metadata line says the file is a kinetic series of more than one frame.
 
-    An unreadable series length raises too: the reader fails closed.
+    ``metadata`` holds the raw metadata lines with their line numbers. An
+    unreadable series length raises too: the reader fails closed.
     """
-    for line_number, fields in metadata:
-        key, sep, value = ",".join(fields).partition(":")
+    for line_number, line in metadata:
+        key, sep, value = line.partition(":")
         if not sep or key.strip() != _SERIES_KEY:
             continue
         try:
@@ -244,8 +252,8 @@ def _counts_up(grid: np.ndarray) -> bool:
     return grid.shape[0] >= 2 and grid.shape[1] >= 2 and bool(np.all(np.diff(grid[:, 0]) > 0))
 
 
-def _values(fields: list[str]) -> tuple[list[str], bool]:
-    """The fields without a trailing empty one, and whether there was one."""
+def _strip_trailing_empty(fields: list[str]) -> tuple[list[str], bool]:
+    """The fields without one trailing empty field, and whether there was one."""
     if len(fields) >= 2 and fields[-1] == "":
         return fields[:-1], True
     return fields, False
