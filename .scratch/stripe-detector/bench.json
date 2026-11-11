@@ -1,0 +1,38 @@
+{
+  "commit": "b90b64e",
+  "cpu": "AMD Ryzen AI 7 PRO 360 w/ Radeon 880M",
+  "logical_cpus": 16,
+  "python": "3.11.15",
+  "numpy": "2.4.6",
+  "scipy": "1.17.1",
+  "threads": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "loadavg": {
+    "start": "3.40 8.18 11.94 2/1093 946955",
+    "end": "3.39 7.57 11.58 2/1084 948103"
+  },
+  "shape": [
+    400,
+    1600
+  ],
+  "seed": 40000,
+  "case": [
+    8,
+    0
+  ],
+  "seconds": [
+    7.604801643989049,
+    7.3032034909992944,
+    7.354015405988321,
+    7.354069519002223,
+    7.864881688001333
+  ],
+  "median_s": 7.354069519002223,
+  "limit_s": 10.0,
+  "target_s": 5.0,
+  "meets_limit": true,
+  "meets_target": false
+}
