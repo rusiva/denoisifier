@@ -27,7 +27,8 @@ score and the reported regions always agree:
    depth there; groups left empty are dropped. ``score`` is the highest peak
    ratio over what is left (0.0 if nothing), and the reported regions are
    those whose peak ratio is above the threshold. Each one's Period and Angle
-   are refined on its pixels with a filter re-tuned to them.
+   are refined on its pixels with a filter re-tuned to them; its depth is the
+   median over its interior (``_INTERIOR_FRACTION``).
 """
 
 from __future__ import annotations
@@ -72,6 +73,15 @@ assert _PAD < MIN_SIDE
 
 _ENVELOPE_SIGMA = 10.0
 _MASK_FRACTION = 0.1
+# The light is the smoothed frame (_ENVELOPE_SIGMA) above _MASK_FRACTION of
+# the peak of the frame smoothed with this smaller sigma (px). Smoothing at
+# _ENVELOPE_SIGMA flattens the Mottle's bright spots, lowering the maximum
+# about 1.2-2x, while it raises the dark surround near the spot's edge and
+# the frame's edge: the level fell to about 5% of the Profile's maximum
+# (ruling B on the fresh-range misses; on 300 full-frame calibration frames,
+# 90_000-90_299, light pixels where the Profile is below 5%: 29 frames at
+# sigma 10, 0 at 3). Sigma 3 still averages EMCCD noise over about 100 px.
+_LIGHT_PEAK_SIGMA = 3.0
 # Fewer horizontal or vertical neighbour pairs than this in a seed area and
 # the bank Period and Angle at the peak are used instead.
 _MIN_PAIRS = 8
@@ -125,6 +135,13 @@ _LEAK_FRACTION = 0.5
 # Period and Angle of a reported region: the neighbour-product sum of a filter
 # re-tuned to the current estimate, over the region's pixels, this many times.
 _REFINE_STEPS = 2
+# Reported Modulation Depth: the median over the region's interior, its pixels
+# at least this fraction of the largest distance from the region's edge
+# (_interior_depth). On 556 calibration regions (90_000-90_189: depths 0.2-0.8,
+# both Mottles, typical and low noise, full frames, two regions) its error was
+# -0.044 to +0.023, against -0.177 to +0.018 for the median over the top
+# seed area (33 beyond DEPTH_TOL).
+_INTERIOR_FRACTION = 0.5
 
 _EIGHT = np.ones((3, 3), dtype=bool)
 _LOG_BANK_STEP = float(np.log(_PERIODS[1] / _PERIODS[0]))
@@ -152,13 +169,7 @@ def analyse(frame: np.ndarray, *, threshold: float = THRESHOLD) -> Report:
     if not threshold >= 0:
         raise ValueError(f"threshold must be >= 0 (or inf), got {threshold!r}")
 
-    env = gaussian_filter(frame, sigma=_ENVELOPE_SIGMA)
-    env_max = env.max()
-    if env_max <= 0:
-        raise ValueError("envelope max <= 0: frame has no positive light")
-    # Only keeps the dark surround out of the regions.
-    light = env > _MASK_FRACTION * env_max
-
+    light = _light(frame)
     local = estimate_local_stripes(frame, light)
     survivors = _qualifying_regions(frame, light, local)
     score = max((g.peak_ratio for g in survivors), default=0.0)
@@ -188,6 +199,16 @@ def analyse(frame: np.ndarray, *, threshold: float = THRESHOLD) -> Report:
     )
 
 
+def _light(frame: np.ndarray) -> np.ndarray:
+    """The lit part of the frame; only keeps the dark surround out of the
+    regions (see _LIGHT_PEAK_SIGMA)."""
+    env = gaussian_filter(frame, sigma=_ENVELOPE_SIGMA)
+    if env.max() <= 0:
+        raise ValueError("envelope max <= 0: frame has no positive light")
+    peak = gaussian_filter(frame, sigma=_LIGHT_PEAK_SIGMA).max()
+    return np.asarray(env > _MASK_FRACTION * peak)
+
+
 @dataclass
 class _Candidate:
     peak_ratio: float
@@ -196,7 +217,7 @@ class _Candidate:
     grown: np.ndarray  # bool, frame shape
     period: float
     angle_deg: float
-    depth: float  # median depth on the seed area, at the candidate's tuning
+    depth: float  # median depth on the seed area, at the candidate's tuning (leakage test)
 
 
 @dataclass
@@ -587,7 +608,7 @@ def _settle_overlaps(groups: list[_Group]) -> list[_Survivor]:
                 peak_ratio=g.peak_ratio,
                 period=g.period,
                 angle_deg=g.angle_deg,
-                depth=_seed_depth(g.tuned_depth, g.top_seed),
+                depth=_interior_depth(g.tuned_depth, pixels),
                 pixels=pixels,
                 bbox=_bbox(pixels),
                 area_px=int(flat.size),
@@ -595,6 +616,17 @@ def _settle_overlaps(groups: list[_Group]) -> list[_Survivor]:
             )
         )
     return survivors
+
+
+def _interior_depth(depth: np.ndarray, pixels: np.ndarray) -> float:
+    """Median depth over the interior of a region: its pixels at least
+    _INTERIOR_FRACTION of the deepest pixel's distance from the region's edge.
+
+    The across window (sigma 1 Period) blurs the depth near the edge; a seed
+    area that reaches into that skirt measured up to 0.18 low (ruling A on the
+    fresh-range misses)."""
+    distance = ndimage.distance_transform_edt(pixels)
+    return _seed_depth(depth, distance >= _INTERIOR_FRACTION * distance.max())
 
 
 def _bbox(mask: np.ndarray) -> BoundingBox:

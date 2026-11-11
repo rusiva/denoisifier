@@ -26,7 +26,6 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
-from scipy.ndimage import gaussian_filter
 
 import seed_guard
 from cases import CASES
@@ -34,6 +33,7 @@ from denoisifier import analyse, analysis
 from denoisifier._local_stripes import _Spectrum, estimate_local_stripes
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
+    DEPTH_TOL,
     MIN_SIZE_ABOVE_FACTOR,
     MIN_SIZE_BELOW_FACTOR,
     PROBE_SHAPE,
@@ -112,7 +112,21 @@ def tune_jobs() -> list[tuple]:
                     seed = neighbour_seeds[i % len(neighbour_seeds)]
                     jobs.append(("neighbour", seed, (*pair, *depths, regime)))
                     i += 1
+    # Ruling A (fresh-range misses): depth across depths, Mottles and noise,
+    # two variants on each single-region seed (90_000-90_099).
+    for i in range(100):
+        for k in range(2):
+            m, mottle, regime = DEPTH_COMBOS[(2 * i + k) % len(DEPTH_COMBOS)]
+            jobs.append(("depth", TUNE[i], (*CASES[i % 10], m, mottle, regime)))
     return jobs
+
+
+DEPTH_COMBOS = [
+    (m, mottle, regime)
+    for m in (0.2, 0.35, 0.5, 0.8)
+    for mottle in ("scorched", "multiscale")
+    for regime in ("typical", "low")
+]
 
 
 def info_jobs() -> list[tuple]:
@@ -151,6 +165,15 @@ def size_region(period, angle_deg, shape, f, center):
 
 
 def _frame(kind, seed, params):
+    if kind == "depth":
+        p, a, m, mottle, regime = params
+        return generate(
+            seed=seed,
+            shape=(512, 512),
+            mottle=mottle,
+            regions=[single_region(p, a, depth=m)],
+            **(TYPICAL if regime == "typical" else {}),
+        )
     if kind in ("single", "single_weak"):
         p, a, mottle = params
         depth = WEAK_DEPTH if kind == "single_weak" else 0.5
@@ -229,8 +252,7 @@ class _CapCounter(logging.Handler):
 def _candidate_reach(frame):
     """Candidates (in visiting order, uncapped) needed to reach the top
     qualifying group and the last qualifying group above THRESHOLD."""
-    env = gaussian_filter(frame, analysis._ENVELOPE_SIGMA)
-    light = env > analysis._MASK_FRACTION * env.max()
+    light = analysis._light(frame)
     local = estimate_local_stripes(frame, light)
     filters = analysis._Filters(_Spectrum(frame), light)
     cap = analysis._MAX_CANDIDATES
@@ -283,7 +305,7 @@ def run_job(job, overrides):
         ],
     }
     striped_truth = [t for t in s.truth.regions if t.modulation_depth > 0]
-    if kind in ("single", "single_weak", "two", "two_low", "neighbour"):
+    if kind in ("single", "single_weak", "depth", "two", "two_low", "neighbour"):
         rec["iou_union"] = iou(
             report.mask(), np.logical_or.reduce([t.mask >= 0.5 for t in striped_truth])
         )
@@ -321,6 +343,7 @@ def run_job(job, overrides):
             for r in report.regions
             if abs(r.period_px / truth.period - 1) > 0.05 or abs(r.angle_deg - truth.angle_deg) > 1
         )
+        rec["depth_errs"] = [r.modulation_depth - truth.modulation_depth for r in report.regions]
     if kind in ("probe", "free", "full"):
         rec.update(_candidate_reach(s.frame))
     return rec
@@ -352,6 +375,7 @@ def summarise(records):
             }
             for k, v in sorted(per_p.items())
         }
+    out["depth_errors"] = _depth_errors(by)
     for kind in ("two", "two_low", "neighbour"):
         if kind in by:
             out[kind] = {
@@ -464,6 +488,35 @@ def summarise(records):
     secs = [x["seconds"] for x in records]
     out["seconds_max"] = max(secs)
     return out
+
+
+def _depth_errors(by) -> dict:
+    """Reported minus true Modulation Depth, per kind and depth/Mottle/noise
+    case: median, worst low and high, and misses beyond DEPTH_TOL."""
+    errs: dict[str, list[float]] = defaultdict(list)
+    for kind in ("single", "single_weak", "depth", "two", "two_low", "neighbour"):
+        for x in by.get(kind, []):
+            key = kind
+            if kind == "depth":
+                _p, _a, m, mottle, regime = x["params"]
+                key = f"depth m{m} {mottle} {regime}"
+            elif kind in ("single", "single_weak"):
+                key = f"{kind} {x['params'][2]}"
+            errs[key] += [t["depth_err"] for t in x["per_truth"] if "depth_err" in t]
+    for kind in ("full", "probe"):
+        for x in by.get(kind, []):
+            errs[kind] += x["depth_errs"]
+    return {
+        k: {
+            "regions": len(v),
+            "median": float(np.median(v)),
+            "worst_low": float(min(v)),
+            "worst_high": float(max(v)),
+            "misses": sum(1 for e in v if abs(e) > DEPTH_TOL),
+        }
+        for k, v in sorted(errs.items())
+        if v
+    }
 
 
 def main(argv=None):

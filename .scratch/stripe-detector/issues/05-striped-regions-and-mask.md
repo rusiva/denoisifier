@@ -154,3 +154,36 @@
   every single-region IoU >= `MASK_IOU_MIN`; the driver's `summary["pass"]`). Run once after the
   third freeze, no tuning on it, no retry; a miss stops the work and goes to the owner as a
   tolerance question. 93024 and 93048 (depth) and 93130 (dark corner) become regression tests.
+- Fixes A and B (implementer 6; code fixes per the rulings, no test or tolerance changed; both
+  developed on calibration seeds 90_000-90_299 inside `seed_guard.calibrating`):
+  12. **A, depth:** a region's reported depth is the median of the re-tuned depth over its
+      interior, the settled pixels at least `_INTERIOR_FRACTION = 0.5` of the region's largest
+      edge distance from its edge (`_interior_depth`), instead of over the top candidate's seed
+      area. Growth reference, `_A0` qualification and the leakage test keep the seed-area median.
+      On 556 calibration regions (depths 0.2/0.35/0.5/0.8, scorched and multiscale, typical
+      and low noise; full frames at 0.2/0.5/0.8; two regions) the error was -0.044..+0.023,
+      0 beyond `DEPTH_TOL`; the seed median was -0.177..+0.018 with 33 beyond; the core median
+      (Codex's suggestion) -0.304..+0.058 with 12 beyond (scratch `i6/depth.json`).
+  13. **B, dark surround:** the light is `G10(frame) > _MASK_FRACTION x max(G3(frame))`: the
+      level is taken from the frame smoothed at `_LIGHT_PEAK_SIGMA = 3.0` px rather than at 10.
+      Diagnosis: smoothing at 10 flattens the Mottle's bright spots (lowering the max 1.2-2x)
+      and raises the surround near steep edges, so the light reached Profile 4-5%. On 300
+      full-frame calibration frames: light pixels at Profile < 5% in 29 frames before, 0 after
+      (< 6%: 81 -> 5); lit share of Profile >= 20% 99.8% -> 96.6%; no truth-region pixel left
+      out of the light (400 single/two-region frames). `_MASK_FRACTION` unchanged.
+  The calibration driver gains the `depth` kind (those depth/Mottle/noise variants on
+  90_000-90_099) and a `depth_errors` summary (median, worst, misses beyond `DEPTH_TOL`) per
+  kind. Lockfile lines added under the "Lockfile approval" (new ticket-05 module numbers):
+  `_LIGHT_PEAK_SIGMA` (3.0), `_INTERIOR_FRACTION` (0.5), and `tests/protected.py`'s
+  `REGION_EVALUATION_2_SEEDS`, `DEPTH_REGRESSION_CASES`, `DARK_REGRESSION_SEED` (the rulings'
+  regression cases 93024, 93048, 93130 as `test_depth_is_measured_on_the_region_interior` and a
+  `test_dark_area_is_never_reported_as_striped` case). No existing line changed.
+- Third freeze (implementer 6): fixes 12-13 plus `region-calibration.json` from the tune on
+  90_000-90_399 at this tree (default knobs, no knob re-tuned). Single IoU worst 0.873, 0
+  Period/Angle misses; two 30/30 and two_low 30/30 (worst IoU 0.882 / 0.896); full frame 60/60,
+  0 mis-measured; `size_low` 0 below reported, 0 above not exactly one; `size_mottle` 0 below
+  reported, 7/30 1.4x "both" missed (detection, as before); probe score min 96.2, 0
+  mis-measured; stripe-free score max 48.1; **depth: 0 misses beyond `DEPTH_TOL` in every kind**
+  (worst -0.043 single scorched, +0.019 two/full); R1 guard: `neighbour` weak misses 7 (same as
+  the second freeze), none mis-measured; N9: cap 20, cap-hit frames 64 (19 from the new `depth`
+  kind), reach_top_max 11, uncapped max 14.

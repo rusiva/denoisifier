@@ -97,6 +97,11 @@ REGION_EVALUATION_SEEDS = range(93_000, 94_000)
 # depth and dark-surround fixes, evaluated once after the third freeze with the
 # same driver and cases; pass rule: every frame meets every criterion.
 REGION_EVALUATION_2_SEEDS = range(94_000, 95_000)
+# The first range's misses, kept as regression cases (same ruling): single
+# regions whose depth measured low (seed, Period, Angle, Mottle), and a
+# full-frame typical frame whose mask reached a dark corner (seed).
+DEPTH_REGRESSION_CASES = ((93_024, 20, -10, "scorched"), (93_048, 10, 3, "multiscale"))
+DARK_REGRESSION_SEED = 93_130
 # Seeds of the non-slow tests: every *_TEST_SEED(S) lies in here.
 TEST_SEED_BLOCK = range(10, 100)
 

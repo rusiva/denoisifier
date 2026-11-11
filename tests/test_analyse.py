@@ -16,6 +16,8 @@ from protected import (
     BBOX_TOL_PERIODS,
     BORDERLINE_SCORE_WINDOW,
     DARK_FRACTION,
+    DARK_REGRESSION_SEED,
+    DEPTH_REGRESSION_CASES,
     ENVELOPE_TEST_SEEDS,
     EXTREMES_TEST_SEEDS,
     FULL_FRAME_TEST_SEEDS,
@@ -331,6 +333,17 @@ def test_partial_region_is_reported_with_its_measurements(seed):
     assert_labels_consistent(report)
 
 
+@pytest.mark.parametrize(("seed", "period", "angle_deg", "mottle"), DEPTH_REGRESSION_CASES)
+def test_depth_is_measured_on_the_region_interior(seed, period, angle_deg, mottle):
+    """First fresh range's misses: the depth came from a seed area reaching
+    into the blurred skirt and measured 0.38-0.39 against 0.5."""
+    s, report = single_region_case(seed, period, angle_deg, mottle)
+    (region,) = report.regions
+    (truth,) = s.truth.regions
+    assert_matches_truth(region.period_px, region.angle_deg, truth)
+    assert_depth_matches(region.modulation_depth, truth)
+
+
 @pytest.mark.parametrize("mottle", ["scorched", "multiscale"])
 @pytest.mark.parametrize("seed", REGION_TEST_SEEDS)
 def test_mask_overlaps_the_true_region(seed, mottle):
@@ -439,8 +452,14 @@ DARK_CASES = {
 }
 
 
-@pytest.mark.parametrize("case", list(DARK_CASES))
-@pytest.mark.parametrize("seed", ENVELOPE_TEST_SEEDS)
+@pytest.mark.parametrize(
+    ("seed", "case"),
+    [
+        *[(seed, case) for seed in ENVELOPE_TEST_SEEDS for case in DARK_CASES],
+        # First fresh range's miss: two mask pixels in a corner at Profile 4.9%.
+        (DARK_REGRESSION_SEED, "full-frame-typical"),
+    ],
+)
 def test_dark_area_is_never_reported_as_striped(seed, case):
     kwargs = DARK_CASES[case]
     report = analyse(generate(seed=seed, shape=SHAPE, **kwargs).frame)
