@@ -20,7 +20,7 @@ Behaviour:
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The real-image fixture loads by default: every value column plus the axis column kept, an axis warning, the metadata lines skipped and counted, the trailing comma noted.
 - [x] With the drop-axis-column option, the fixture loads as 64x64 with values equal to the source crop.
@@ -35,6 +35,8 @@ Behaviour:
 
 **Implementer (2026-11-11).** Built per `.scratch/stripe-detector/handoffs/14-plan.md` (Settled section), test-first, commits `a045427` (fixtures, trailing comma T1/T2), `eecba3f` (boundary rows T3), `709b14c` (kinetic series K), `5d8b159` (transpose X, kept-axis warning), `c354b4d` (CLI `--transpose`), `2e16753` (docstrings, help). Fixtures in `tests/data/solis/` with `NOTICE.md` (WrightTools, MIT); `.gitattributes` keeps them byte-exact. This ticket supersedes 04's S6 (trailing comma rejected) for the one shape allowed here, and extends 04's S2 with a normalized-width boundary check. One weakening move, the Q1 replacement above; no stamped file, protected number or gate config changed.
 
-Gate: `make check` exit 0; `352 passed, 4 deselected in 102.38s (0:01:42)`; slow-tier stamp check passed; HEAD `2e16753` (clean apart from the pre-existing 02/07 issue edits and untracked handoff dirs).
+**Fixer (2026-11-11).** Review fixes from `14-orchestrator.md` (Sorting), behaviour-preserving, in `c93f128`: `_values` renamed `_strip_trailing_empty`, trailing flags renamed `grid_has_trailing`/`row_has_trailing`, `rows` no longer reused for the shape, each line's stripped fields computed once and passed into `_grid_span`, `_check_not_a_series` reads the raw line, docstring "Known limit" now "Known gap". No test changed.
+
+Gate: `make check` exit 0; `352 passed, 4 deselected in 132.75s (0:02:12)`; slow-tier stamp check passed; HEAD `c93f128-dirty` (pre-existing 02/07 issue edits; untracked handoff dirs).
 
 Known gaps: (Q1) a last value missing on every row, or in a one-row file, cannot be told apart from a trailing comma and reads as a grid one column narrower. (Q3) a kinetic series is detected from the `Number in Kinetics Series` metadata key only; a file without that key is not proven to be a single frame (the "does not count up" warning catches a restarting axis only when the axis column is dropped).
