@@ -17,9 +17,10 @@ class FrameFile:
     ``frame`` is a 2D float64 array, shape ``(rows, cols)``. ``notes`` holds
     anything the reader wants the experimenter to know about how the file was
     read, in this order: metadata lines skipped before the grid, metadata lines
-    skipped after it, then the axis column (the dropped note, then its warning
-    if any). Notes that start with ``"warning: "`` are warnings. ``notes`` is
-    empty for a plain grid whose first column does not count up.
+    skipped after it, the trailing comma, then the axis column (the dropped
+    note, then its warning if any; or the kept-axis warning), then the
+    transposed note. Notes that start with ``"warning: "`` are warnings.
+    ``notes`` is empty for a plain grid whose first column does not count up.
     """
 
     frame: np.ndarray
@@ -40,18 +41,40 @@ def read_frame(
     are ignored everywhere and not counted.
 
     A line whose first field is a number is a grid line. The grid is every line
-    from the first grid line to the last, and its width is the field count of
-    its first line. Rows of the grid are rows of the frame.
+    from the first grid line to the last, and its width is the value count of
+    its first line. Rows of the grid are rows of the frame (unless
+    ``transpose`` is true).
+
+    Trailing comma: Solis ends every grid row with a comma, so a row may end
+    with one empty last field. The grid has a trailing comma when its first
+    line does; then every grid line must have one, and without one no grid
+    line may (an uneven trailing comma raises naming its line). The empty last
+    field is not a value, and the notes say it was ignored. An empty interior
+    field still raises. Known limit: a last value missing on only some rows is
+    caught (uneven trailing comma or width), but a last value missing on every
+    row, or in a one-row file, cannot be told apart from a trailing comma and
+    reads as a grid one column narrower.
 
     Lines before and after the grid are metadata: they are skipped and counted
-    in the notes. Except: a line there with the grid's width and more than half
-    of its fields numbers is a corrupted grid row, and raises.
+    in the notes. Except: a line there that looks like a corrupted grid row
+    raises. It looks like one when it has the grid's width and more than half
+    of its fields are numbers, counted either over all fields or over the
+    fields without one trailing empty field (on both the line and the grid's
+    first line), so a damaged first or last row is caught whether or not it
+    kept its trailing comma.
 
-    Inside the grid every line must have the grid's width (checked first) and
-    every field must be a number, so a metadata line between grid rows, inline
-    ``#`` text or a trailing comma (an empty last field) raises. Unlike
-    ``np.loadtxt``, ``#`` lines are not stripped as comments: outside the grid
-    they are metadata, inside it they are errors.
+    Kinetic series: when a metadata line says ``Number in Kinetics Series:``
+    with a number above 1, or with a value that is not a whole number, the
+    reader raises; series are not supported. A length of 1 reads normally.
+    Known gap: detection uses that key only, so a file without it (for
+    example a series whose metadata was stripped) is not proven to be a
+    single frame.
+
+    Inside the grid every line must have the grid's width (checked after the
+    trailing comma) and every value must be a number, so a metadata line
+    between grid rows or inline ``#`` text raises. Unlike ``np.loadtxt``,
+    ``#`` lines are not stripped as comments: outside the grid they are
+    metadata, inside it they are errors.
 
     A number is whatever Python's ``float()`` accepts, which includes ``nan``,
     ``inf`` and ``1_0`` (= 10). The reader keeps non-finite values; ``analyse``
@@ -66,11 +89,18 @@ def read_frame(
     gets a warning note, and a dropped column that does not gets one too. With
     one row that is not assessed, and the dropped note says so.
 
+    ``transpose`` transposes the frame last, after any axis-column drop (the
+    axis belongs to file rows), and the notes say so with the final shape.
+    Solis may write one sensor column per file row; the detector looks for
+    near-vertical stripes in frame rows, so such a file needs
+    ``transpose=True``. The reader never transposes on its own.
+
     Raises ``ValueError`` naming the file when no line is a grid line, when a
-    grid line has the wrong number of fields (naming its line and the grid's
-    first line), when a grid field is not a number (naming its line and
-    column; positions are 1-based lines and columns of the file), or when
-    ``drop_axis_column`` is true and the grid has only one column.
+    grid line has the wrong number of values or an uneven trailing comma
+    (naming its line and the grid's first line), when a grid field is not a
+    number (naming its line and column; positions are 1-based lines and
+    columns of the file), when the metadata says the file is a kinetic series,
+    or when ``drop_axis_column`` is true and the grid has only one column.
     """
     with open(path, encoding="utf-8-sig", errors="replace") as f:
         lines = [(n, _fields(line)) for n, line in enumerate(f, start=1) if line.strip()]

@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "frame",
-        help="frame as a comma-separated grid of numbers; "
+        help="frame as a comma-separated grid of numbers, such as an Andor Solis export; "
         "metadata lines before and after the grid are skipped",
     )
     parser.add_argument("-o", "--output", help="write the JSON report here (default: stdout)")
