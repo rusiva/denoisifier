@@ -1,77 +1,107 @@
-# 05 implementer handoff 3: STOPPED, acceptance tests red after the freeze
+# 05 implementer handoff 5: STOPPED, fresh-range evaluation misses AC2 and AC6
 
 Ticket: `.scratch/stripe-detector/issues/05-striped-regions-and-mask.md`. Plan: `05-plan.md`. BASE 87005b9.
-Previous handoffs: `05-implementer-1.md`, `05-implementer-2.md`.
+Previous: `05-implementer-1.md`, `-2.md`, handoff 3 (the reds; superseded by this file, in git history at
+`138ffb3`), `05-implementer-4.md`. Rulings: `05-orchestrator.md`, "Rulings on the post-freeze reds".
 
 ## Commits (main)
 
-- `146102c` slice 1, the generator (implementer 1).
-- `ce42580` **freeze**: region detector, Report regions/labels/mask, CLI `--mask`, calibration driver
-  and range, the lockfile lines for every new number (`_PERIOD_SPREAD` line removed), and
-  `.scratch/stripe-detector/region-calibration.json` (the freeze tune run). It also adds the
-  orchestrator's untracked `05-*.md` handoffs (plan, review, prototypes, log) to git.
-- `b9f4a88` fixes two test bugs found on first run (no assertion loosened): the flank test passed
-  `mottle` twice (TypeError); the CLI transpose test compared with `analyse` on the in-memory
-  frame instead of on the frame the CLI reads (`%.9g` CSV), so the values differed by 1e-11.
+- `f72c427` (implementer 4) fresh evaluation range `REGION_EVALUATION_SEEDS = range(93_000, 94_000)`
+  predeclared before any fix.
+- `2107a40` **second freeze**: R1 leakage test (`_LEAK_FRACTION = 0.5`) and climbed widest-run size measure
+  (R1, R4), Period/Angle refinement on settled pixels (`_REFINE_STEPS = 2`, R3), dark area on the Profile
+  (R2, approved test change), lockfile lines for the two knobs, `region-calibration.json` from the tune at
+  this tree, `tests/evaluate_regions.py` (committed before its run), calibration kinds `size_low` and
+  `neighbour`, ticket Comments (R2 approval, deviations 8-11, lockfile lines, freeze numbers).
+- The next commit (this handoff): the evaluation record `.scratch/stripe-detector/region-evaluation.json`,
+  the ticket Comment on the stop, and this file.
 
-## Freeze run (tune, 90_000-90_399, at `ce42580`'s knobs)
+## Calibration at the freeze (tune, 90_000-90_399, default knobs)
 
-`uv run --locked python tests/calibrate_regions.py tune`, exit 0. Same as tuneC_g0.6:
-- single-region IoU worst 0.873 (scorched P10); two-region 30/30 separate and correct (worst per-region
-  IoU 0.882), two_low 30/30 (0.896); `truth_inside_half_envelope` true at (640, 1024);
-- full-frame 60/60 striped, every frame one region, 0 mis-measured (N9 angle-unmerged count: 0);
-- N9 candidate counts: cap 20, `reach_top_max` 10 (cap = 2x reach), `cap_hit_frames` 31 (frames
-  where the cap left peaks unvisited; none dropped a qualifying group), uncapped max 17;
-- stripe-free score max 47.9, median 2.1; probe m = 0.2: 18/20 reported, 1 mis-measured (90328);
-- size with Mottle at low noise: 7/30 1.4x "both" regions missed (detection, as in handoff 2), 0 below reported.
+Single IoU worst 0.873, 0 Period/Angle misses; two 30/30 and two_low 30/30 (worst IoU 0.882 / 0.896);
+full frame 60/60, one region each, 0 mis-measured; stripe-free score max 48.1 (median 15.4; 2.1 at
+`ce42580`, still far below T = 154); size_mottle 0 below reported, 7/30 1.4x "both" missed (as before:
+detection); **size_low (every shape, no Mottle, edge 1): 0 below reported, 0 above not exactly one**; probe
+m = 0.2 score min 96.2, 0 mis-measured (1 at `ce42580`); N9: cap 20, cap-hit frames 38, reach_top_max 9,
+uncapped max 17.
 
-## Acceptance (held-out tests after the freeze): RED, stopped as instructed
+**R1 guard:** `neighbour` misses 7/24 (all typical noise: six at weak depth 0.15, one at 0.3). With the
+leak test disabled (`--set _LEAK_FRACTION=0.0`) the misses are the same 7, so the fix erases no genuine weak
+neighbour; every low-noise weak neighbour is found. `_LEAK_FRACTION` was not tuned.
 
-`uv run --locked pytest -q tests/test_analyse.py` at `ce42580`: exit 1,
-`13 failed, 279 passed in 366.13s (0:06:06)`. Three of them were the flank test bug (fixed in
-`b9f4a88`; `-k flank` now 3 passed). `tests/test_cli.py` at `b9f4a88`: 1 failed (borderline), 25 passed.
-None is a gate quote; no `make` gate was run. No re-tuning was done.
+R4: borderline (22, 20) now scores 217.1 (one region, 12.15 P wide); it was a width-measure bug. No re-pick
+was needed, and its tests are green.
 
-Remaining reds (10 in test_analyse, 1 in test_cli), by cause:
+## Acceptance after the freeze (held-out tests, not a gate quote)
 
-1. **Ghost low-depth region next to sharp-edged small regions (AC 5, 5 reds).** Low noise, `edge_px = 1`, m 0.6:
-   - `test_region_above_the_minimum_is_reported[78-8-+-10-narrow_tall]`: two regions, the true one
-     (P 7.9, A -9.9, depth 0.16) plus a ghost (P 9.3, A -5.9, depth 0.031, bbox 80x62 around it).
-   - `test_region_below_the_minimum_is_not_reported[78-8-10-narrow_tall]`: the true region is
-     rejected, but a ghost (P 9.15, A 9.0, depth 0.024, score 420) qualifies.
-   - `...below...[78-20--10-wide_short]`, `[79-20--10-wide_short]`: a region P 20.4, A -8.9, depth
-     0.085 with a 127x110 bbox around a 32x80 truth region (a halo of the sharp edge).
-   These look like the edge's spectral leakage making a wide, shallow candidate that passes the
-   size rule. The plan's risk list (slice 4) named "tilted cores" and frames other than P1's; this
-   is a detector finding.
-2. **Dark-area test, full-frame typical, seeds 20-22 (3 reds).** The mask reaches pixels where the
-   *Mottled* clean envelope is < 5% of max. All of them have Profile (no Mottle) >= 7% of max
-   (median 17-19%), and 30-60% lie in interior Mottle holes inside the spot. So the detector's
-   `light` (blurred frame > 10%) covers them. Question for the orchestrator: is "dark" defined on
-   the Profile, or on the Mottled envelope as the test does now (plan row 6 says "envelope from the
-   same seed with regions=() / m=0 and noise 0", which is ambiguous about Mottle)? Changing the
-   test's definition is a test change, so I left it.
-3. **`test_strong_stripes_are_measured[12-23]`**: one region, Angle 4.98 vs truth 6 (1.02 deg off,
-   tolerance 1.0). Period and depth fine.
-4. **Borderline (22, 20) (2 reds: `test_borderline_striped_frame_has_finite_measurements[22-20]`,
-   `test_cli_reports_borderline_frame`)**: score 0.0, no qualifying group, so the frame is no longer
-   borderline. A re-pick changes `BORDERLINE_TEST_CASES`. The advance approval covers a re-pick
-   "only if `make measure` shows a seed is no longer borderline"; this showed up in `analyse`
-   directly, so I did not take it as covered.
+`uv run --locked pytest -q -p no:randomly --durations=12 tests/test_analyse.py tests/test_cli.py` at
+`2107a40` (tree had only others' `.scratch` edits): exit 0, `318 passed in 421.99s (0:07:01)`. Every seen
+red from handoff 3 is green.
 
-## Not done (blocked by the reds)
+**Timeout margin (open):** a first run of the same command died on the 60 s per-test timeout in
+`test_verdict_is_striped_exactly_when_a_region_is_reported[two-region]` while another project's tests
+loaded the machine (load average 7-9). Run alone under that load it took 59.05 s (`ce42580`'s detector
+took 53.61 s under the same load); in the green run 40.55 s (42.30 s at `ce42580`). Profiled, one analyse of
+that 640x1024 frame takes 9.4 s, 6.6 s of it the pre-existing bank (`estimate_local_stripes`). The R1/R3
+additions cost about 0.4 s (refinement 0.34 s, leakage 0.01 s). The test runs analyse 6 times. Not
+touched: the timeout is a protected move. `make check` may be flaky on a loaded machine.
 
-- Slice 7 `info` run (90_400-90_599).
-- Gates: `make test-fast`, `make check`, `make measure`, stored thresholds, `make check-slow`.
-- Docs: the module docstring now names the core and absorb steps; the CLI docstring/help, the
-  `THRESHOLD` comment, GLOSSARY Mask and the LocalStripes note were already done (handoff 2).
+## Fresh-range evaluation: STOPPED (brief: "the fresh-range evaluation misses an acceptance criterion")
 
-## Deviations
+`uv run --locked python tests/evaluate_regions.py --out <scratch>/i5/eval.json` at `2107a40`, exit 0, one
+run, no tuning. Record: `.scratch/stripe-detector/region-evaluation.json`.
 
-Deviations 1-7 are in the ticket Comments (handoff 2). New this round: none in code. The
-lockfile also gains `_LOG_BANK_STEP` (a derived ticket-05 module number), recorded in the Comments.
+| Criterion | Result |
+|---|---|
+| AC2 partial region (scorched) | **39/40** |
+| AC3 IoU >= 0.8 scorched / multiscale | 40/40 (worst 0.881, median 0.933) / 40/40 (worst 0.896, median 0.939) |
+| AC4 two regions | 30/30 |
+| AC5 below not reported / above reported | 96/96 / 72/72 |
+| AC6 flank found | 10/10 |
+| AC6 dark area never reported | **29/30** |
+| full frame, every region matches | 20/20 |
+| stripe-free not striped | 20/20 |
+| strong stripes measured | 20/20 |
+| weak region beside a strong one (R1 guard) | 12/12 |
+
+The misses, diagnosed only (`<scratch>/i5/diag.py`):
+
+1. **AC2, seed 93024 (P20, A -10, scorched): depth 0.383 vs truth 0.5** (`DEPTH_TOL` 0.1). One region;
+   Period 19.998, Angle -9.91, bbox within 0.45 P on every side, IoU 0.925. The multiscale frame 93048
+   (P10, A 3) fails the same way (depth 0.394) but is not counted for AC2. The depth tail predates rulings
+   R1-R4: on the calibration range 4/100 single frames have depth error below -0.1 at both `ce42580` and
+   `2107a40` (-0.102 to -0.121, P12 and P16 scorched). The calibration summary only counted Period/Angle
+   misses, so the tail was never flagged. The held-out `REGION_TEST_SEEDS` test passes.
+2. **AC6 dark, seed 93130, full-frame typical m = 0.6:** 2 mask pixels at the frame corner (row 0,
+   cols 0-1) where the Profile is 4.86-4.94% of its max, just under `DARK_FRACTION` (5%). The noise-free
+   and spilling-region cases of that seed pass.
+
+Questions for the orchestrator: is the depth under-measurement at typical noise (about 4% of single-region
+frames off by 0.10-0.12) a detector finding to fix (and how is the evaluation then re-run, given that the
+fresh range has now been looked at), or a tolerance question for the owner? Is a 2-pixel mask graze at
+Profile 4.9% a miss of "never", or within the smoothing margin that `DARK_FRACTION` 0.05 vs the detector's
+`_MASK_FRACTION` 0.1 was meant to leave?
+
+## Not done (after the stop)
+
+- Slice 7 `calibrate_regions.py info` (90_400-90_599): informational numbers.
+- Gates: `make test-fast`, `make check`, `make measure`, stored thresholds, `make check-slow`, `make check`.
+  **No gate was run; there is no gate quote.**
+- Optional guard test `test_weak_region_beside_a_strong_one_is_reported` (not added; the fresh-range
+  driver's R1 guard is 12/12).
+
+## Approvals used and deviations (all in the ticket Comments)
+
+- R2 (weakening-class test change, dark area on the Profile); "Lockfile approval" for `_LEAK_FRACTION`
+  and `_REFINE_STEPS`; the evaluation-range reservation (implementer 4).
+- Deviations 8-11: climbed widest-run size measure; leakage test; refinement; `two_regions` per-region
+  depth/edge/gap plus the new calibration kinds.
 
 ## Pointers
 
-- Logs: `/tmp/claude-1000/-home-rusiva-dev-denoisifier/72618a23-dbd5-4573-9e6c-b83c3532a4a4/scratchpad/impl/{tune_freeze.log,accept.log,reds.py,dark.py}`
-- Calibration: `.scratch/stripe-detector/region-calibration.json`
+- `src/denoisifier/analysis.py`; `tests/evaluate_regions.py`; `tests/calibrate_regions.py`
+- `.scratch/stripe-detector/region-calibration.json`, `.scratch/stripe-detector/region-evaluation.json`
+- Scratch (`/tmp/claude-1000/-home-rusiva-dev-denoisifier/72618a23-dbd5-4573-9e6c-b83c3532a4a4/scratchpad`):
+  `i4/tuneR.json`, `i4/nb_leak0.json` (R1 guard), `i4/accept.log` (timeout run), `i4/accept2.log` (green),
+  `i5/eval.json`, `i5/diag.py`, `i5/timing.py`, `i5/prof.py`.
+- No background jobs are left running.

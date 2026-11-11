@@ -121,3 +121,25 @@
   low-noise weak neighbour is found either way, so the fix adds no misses. `_LEAK_FRACTION` not
   tuned. The fresh-range driver `tests/evaluate_regions.py` is committed with the freeze,
   before it is run.
+- Acceptance after the second freeze (`2107a40`): `uv run --locked pytest -q -p no:randomly
+  --durations=12 tests/test_analyse.py tests/test_cli.py`, exit 0, `318 passed in 421.99s`
+  (not a gate quote). A first run of the same command died on the 60 s per-test timeout in
+  `test_verdict_is_striped_exactly_when_a_region_is_reported[two-region]` under another
+  project's load (load average 7-9); alone it took 59.05 s then, 40.55 s in the green run (42.30 s
+  at `ce42580`). The R1/R3 additions cost about 0.4 s of a 9.4 s analyse (profiled); the timeout
+  is unchanged.
+- **Fresh-range evaluation (one run, no tuning): STOPPED, two criteria missed.**
+  `uv run --locked python tests/evaluate_regions.py --out ...` at `2107a40`, exit 0; record in
+  `.scratch/stripe-detector/region-evaluation.json`. Results: AC2 39/40; AC3 IoU >= 0.8 40/40
+  scorched (worst 0.881) and 40/40 multiscale (worst 0.896); AC4 30/30; AC5 below 96/96, above
+  72/72; AC6 flank 10/10, dark area **29/30**; full frame 20/20; stripe-free 20/20; strong 20/20;
+  weak neighbour (R1 guard) 12/12. Misses (diagnosis only):
+  - AC2, seed 93024 (P20, A -10, scorched): one region, Period 19.998, Angle -9.91, bbox within
+    0.45 P, but depth 0.383 against 0.5 (`DEPTH_TOL` 0.1). The multiscale seed 93048 (P10, A 3,
+    not counted for AC2) is the same: depth 0.394. This depth tail predates the rulings: 4/100
+    calibration single frames have depth error below -0.1 both at `ce42580` and now (-0.102 to
+    -0.121, P12/P16 scorched); the calibration summary did not count depth misses.
+  - AC6 dark, seed 93130, full-frame typical: 2 mask pixels at the frame corner (row 0,
+    cols 0-1) where the Profile is 4.86-4.94% of its max, just under `DARK_FRACTION` (5%).
+  Not done after the stop: slice-7 `info`, gates (`make check`, `make measure`, stored
+  thresholds, `make check-slow`).
