@@ -97,9 +97,7 @@ def read_frame(path: str | os.PathLike[str], *, drop_axis_column: bool = False) 
     return FrameFile(frame=grid, notes=tuple(notes))
 
 
-def _grid_span(
-    path: str | os.PathLike[str], lines: list[tuple[int, list[str]]]
-) -> tuple[int, int]:
+def _grid_span(path: str | os.PathLike[str], lines: list[tuple[int, list[str]]]) -> tuple[int, int]:
     """Indices ``start, stop`` of the grid in ``lines``; the rest is metadata.
 
     The grid runs from the first line whose first field is a number to the last.
@@ -163,9 +161,7 @@ def _is_number(field: str) -> bool:
     return True
 
 
-def _parse_row(
-    path: str | os.PathLike[str], line_number: int, fields: list[str]
-) -> list[float]:
+def _parse_row(path: str | os.PathLike[str], line_number: int, fields: list[str]) -> list[float]:
     """The fields as floats; raises naming the line and column of the first non-number."""
     for column, field in enumerate(fields, start=1):
         if not _is_number(field):
