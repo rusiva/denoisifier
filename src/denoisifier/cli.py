@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import sys
 
 from denoisifier.analysis import analyse
@@ -14,13 +15,24 @@ def main(argv: list[str] | None = None) -> int:
         prog="denoisifier",
         description="Decide whether a frame is striped and report its stripe period and angle.",
     )
-    parser.add_argument("frame", help="frame as a plain comma-separated grid of floats, no header")
+    parser.add_argument(
+        "frame",
+        help="frame as a comma-separated grid of numbers; "
+        "metadata lines before and after the grid are skipped",
+    )
     parser.add_argument("-o", "--output", help="write the JSON report here (default: stdout)")
+    parser.add_argument(
+        "--drop-axis-column",
+        action="store_true",
+        help="drop the first column as a Solis axis column (pixel or spectral axis); "
+        "never done without this flag",
+    )
     args = parser.parse_args(argv)
 
     try:
-        frame_file = read_frame(args.frame)
-        text = analyse(frame_file.frame).to_json() + "\n"
+        frame_file = read_frame(args.frame, drop_axis_column=args.drop_axis_column)
+        report = dataclasses.replace(analyse(frame_file.frame), reader_notes=frame_file.notes)
+        text = report.to_json() + "\n"
         if args.output is None:
             sys.stdout.write(text)
         else:
