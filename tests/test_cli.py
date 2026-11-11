@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from borderline import BORDERLINE, borderline_frame
+from denoisifier import read_frame
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import generate
 from protected import (
@@ -167,3 +168,38 @@ def test_cli_fails_cleanly_on_non_finite_values(tmp_path):
 
 def test_cli_fails_cleanly_on_kinetic_series():
     _assert_clean_failure(_run(SOLIS / "kinetic.asc"), "kinetic series are not supported")
+
+
+def _run_crop_and_plain(tmp_path, plain_frame, *flags):
+    """Reports for the real Solis crop read with ``flags``, and for ``plain_frame`` as plain CSV."""
+    plain_path = tmp_path / "plain.csv"
+    write_frame_csv(plain_frame, plain_path)
+    plain_out = tmp_path / "plain.json"
+    solis_out = tmp_path / "solis.json"
+    plain = _run(plain_path, "-o", plain_out)
+    solis = _run(SOLIS / "xpos_ypos_crop.asc", *flags, "-o", solis_out)
+    assert plain.returncode == 0, plain.stderr
+    assert solis.returncode == 0, solis.stderr
+    return json.loads(plain_out.read_text()), json.loads(solis_out.read_text())
+
+
+def test_cli_reads_real_solis_export_and_reports_reader_notes(tmp_path):
+    frame = read_frame(SOLIS / "xpos_ypos_crop.asc", drop_axis_column=True).frame
+    plain_report, solis_report = _run_crop_and_plain(tmp_path, frame, "--drop-axis-column")
+    plain_report.pop("reader_notes")
+    solis_notes = solis_report.pop("reader_notes")
+    assert len(solis_notes) == 3
+    assert "after" in solis_notes[0]
+    assert "trailing comma" in solis_notes[1]
+    assert "dropped" in solis_notes[2]
+    assert plain_report == solis_report
+
+
+def test_cli_transposes_real_solis_export_on_request(tmp_path):
+    frame = read_frame(SOLIS / "xpos_ypos_crop.asc", drop_axis_column=True).frame
+    plain_report, solis_report = _run_crop_and_plain(
+        tmp_path, frame.T, "--drop-axis-column", "--transpose"
+    )
+    plain_report.pop("reader_notes")
+    assert "transposed" in solis_report.pop("reader_notes")[-1]
+    assert plain_report == solis_report

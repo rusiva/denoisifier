@@ -27,10 +27,18 @@ def main(argv: list[str] | None = None) -> int:
         help="drop the first column as a Solis axis column (pixel or spectral axis); "
         "never done without this flag",
     )
+    parser.add_argument(
+        "--transpose",
+        action="store_true",
+        help="transpose the frame after reading (and after --drop-axis-column), for exports "
+        "that write one sensor column per file row; never done without this flag",
+    )
     args = parser.parse_args(argv)
 
     try:
-        frame_file = read_frame(args.frame, drop_axis_column=args.drop_axis_column)
+        frame_file = read_frame(
+            args.frame, drop_axis_column=args.drop_axis_column, transpose=args.transpose
+        )
         report = dataclasses.replace(analyse(frame_file.frame), reader_notes=frame_file.notes)
         text = report.to_json() + "\n"
         if args.output is None:
