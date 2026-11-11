@@ -198,3 +198,10 @@
   labels; every pair: regions at the higher threshold present unchanged at the lower); the new
   `test_sweep_thresholds_are_the_planned_ones` checks the kinds give the planned set. Slowest
   item now 18.07 s.
+- **Second fresh-range evaluation (one run, no tuning): PASS** (predeclared rule: every frame
+  meets every criterion). `uv run --locked python tests/evaluate_regions.py --range second
+  --out ...` at `e70d99d` (detector as frozen at `c99a069`), exit 0; record in
+  `.scratch/stripe-detector/region-evaluation-2.json`. AC2 40/40; AC3 IoU >= 0.8 40/40 scorched
+  (worst 0.905, median 0.935) and 40/40 multiscale (worst 0.904, median 0.938); AC4 30/30; AC5
+  below 96/96, above 72/72; AC6 flank 10/10, dark area 30/30; full frame 20/20; stripe-free
+  20/20; strong 20/20; weak neighbour (R1 guard) 12/12; failures none.
