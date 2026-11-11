@@ -85,11 +85,12 @@ def read_frame(path: str | os.PathLike[str], *, drop_axis_column: bool = False) 
         rows.append(_parse_row(path, n, fields))
     grid = np.asarray(rows, dtype=np.float64)
     if drop_axis_column:
-        grid = _drop_axis_column(path, grid, notes)
+        grid, axis_notes = _drop_axis_column(path, grid)
+        notes.extend(axis_notes)
     elif _counts_up(grid):
         notes.append(
             f"warning: the first column counts up row by row "
-            f"({grid[0, 0]:g} to {grid[-1, 0]:g}), like a Solis axis column; "
+            f"({_first_column_range(grid)}), like a Solis axis column; "
             "it was kept as intensities. If it is an axis, read with "
             "drop_axis_column=True (CLI: --drop-axis-column)"
         )
@@ -117,27 +118,32 @@ def _grid_span(
 
 
 def _drop_axis_column(
-    path: str | os.PathLike[str], grid: np.ndarray, notes: list[str]
-) -> np.ndarray:
-    """Drop column 0 as requested, adding the dropped note and any warning to ``notes``."""
+    path: str | os.PathLike[str], grid: np.ndarray
+) -> tuple[np.ndarray, list[str]]:
+    """Drop column 0 as requested; returns the grid and the dropped note plus any warning."""
     if grid.shape[1] < 2:
         raise ValueError(f"{path}: cannot drop the axis column: the grid has only one column")
     if grid.shape[0] < 2:
-        notes.append(
+        notes = [
             "dropped the first column as an axis column, as requested; "
             "with one row, whether it is an axis column was not assessed"
-        )
+        ]
     else:
-        notes.append(
+        notes = [
             f"dropped the first column as an axis column "
-            f"({grid[0, 0]:g} to {grid[-1, 0]:g}), as requested"
-        )
+            f"({_first_column_range(grid)}), as requested"
+        ]
         if not _counts_up(grid):
             notes.append(
                 "warning: the first column was dropped as requested, but it does not "
                 "count up row by row, so it may not be an axis column"
             )
-    return grid[:, 1:]
+    return grid[:, 1:], notes
+
+
+def _first_column_range(grid: np.ndarray) -> str:
+    """The first column's first and last values, as ``"<first> to <last>"``."""
+    return f"{grid[0, 0]:g} to {grid[-1, 0]:g}"
 
 
 def _counts_up(grid: np.ndarray) -> bool:
