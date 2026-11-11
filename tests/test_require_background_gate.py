@@ -45,7 +45,7 @@ def bash(command: str, **extra) -> str:
         "true; make check-slow",
         "bash -lc 'make check-slow'",
         'bash -c "cd x && make check-slow"',
-        "make check-slow > log 2>&1; echo \"EXIT=$?\" >> log",
+        'make check-slow > log 2>&1; echo "EXIT=$?" >> log',
         'make check-slow; echo "# hook-allow-foreground"',
     ],
 )
