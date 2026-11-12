@@ -4,15 +4,15 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The generator places one or more soft-edged elliptical striped regions, each with its own period, and returns their true masks.
-- [ ] The report lists each region with its period, angle, modulation depth and bounding box; the frame-level verdict is striped if any region is reported.
-- [ ] Mask overlap with the true region (intersection over union) is at least the spec's tolerance at typical noise.
-- [ ] Two regions with different periods in one frame are reported separately with the correct periods.
-- [ ] A region just below the 3×2-period minimum is not reported; one just above it is.
-- [ ] Stripes covering only part of the envelope are found; the dark area outside the envelope is never reported as striped.
-- [ ] The CLI writes the mask CSV with the same rows and columns as the input frame.
+- [x] The generator places one or more soft-edged elliptical striped regions, each with its own period, and returns their true masks.
+- [x] The report lists each region with its period, angle, modulation depth and bounding box; the frame-level verdict is striped if any region is reported.
+- [x] Mask overlap with the true region (intersection over union) is at least the spec's tolerance at typical noise.
+- [x] Two regions with different periods in one frame are reported separately with the correct periods.
+- [x] A region just below the 3×2-period minimum is not reported; one just above it is.
+- [x] Stripes covering only part of the envelope are found; the dark area outside the envelope is never reported as striped.
+- [x] The CLI writes the mask CSV with the same rows and columns as the input frame.
 
 ## Comments
 
@@ -290,3 +290,7 @@
     `_median_depth`; `tests/regions.py` `TRUTH_LEVEL` / `truth_pixels` name the truth level once.
   - Finding for the orchestrator (not fixed, out of the fix list): the old overlap frame shows two
     same-Period regions 12 deg apart, 8 px apart, merged into one region at a wrong Angle.
+- Closed 2026-11-12 (orchestrator). Gates at `91a7ea0` (fixer handoff `05-fixer.md`): `make check-slow` exit 0, `4 passed, 732 deselected in 343.11s`; `make check` exit 0, `732 passed, 4 deselected in 549.89s`. The second fresh range (94_000-94_999) met every criterion. Code review: F1-F6 fixed. Passed with reasons in the orchestrator log: absorb against the members' extents; the deviation-6 seed subset; four refactor smells.
+- Follow-up, not in scope here: two regions with the **same Period** whose Angles differ by 12°, 8 px apart, were merged into one region at 1.15° (fixer's finding). AC4 covers different Periods only. Fixing this means a detector change and another measure, so it belongs in a later ticket.
+- Known detection limit (owner informed): at low noise with scorched Mottle, 7/30 1.4× size "both" regions are missed.
+- Timing: `test_verdict_is_striped_exactly_when_a_region_is_reported[two-region]` took 59 s against the 60 s timeout under another project's load. That test was not split per deviation 14; the timeout is unchanged.
