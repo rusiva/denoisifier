@@ -220,3 +220,12 @@
   of 800 too tight at the pessimistic end. Per CLAUDE.md, re-deriving the pass counts is the
   owner's decision; pass counts untouched. Committed as is (measurement + stored thresholds, the
   procedure's outcome); `make check-slow` and the final `make check` not run.
+- **STOPPED (implementer 7), owner ruling B not carried out: a detector fix cannot lower held-out
+  False Alarms.** The gate Threshold is the 20th largest of 2000 calibration Stripe-free scores,
+  so any detector's held-out rate is 20/2001 (about 1.0%, expected 10/1000,
+  `betabinom(1000, 20, 1982)`). The operating rule needs at most 8/1000 at the unchanged pass
+  counts, which a measure meets about 38% of the time whatever the detector. Ticket 03's 7/1000
+  was a lucky draw. Re-measuring after a "fix" would only re-roll the held-out draw. The brief's
+  premise ("free score max about 2 to 48") is the `region-calibration.json` *median* (2.1 to 15);
+  the max was 47.9 at the first freeze. No code changed. Owner options (a)-(c) and the numbers:
+  `handoffs/05-implementer-7.md`.
