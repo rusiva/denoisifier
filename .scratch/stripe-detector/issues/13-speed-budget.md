@@ -9,3 +9,7 @@
 - [ ] A marked performance test analyses a generated 1600×400 frame (scorched mottle, stripes, breaks and forks, spikes) in about 5 s or less.
 - [ ] All calibration and accuracy tests still pass after optimisation; stored thresholds are re-calibrated if the detector's output changed.
 - [ ] Timings for each stage are recorded next to the spec.
+
+## Comments
+
+- 2026-11-12, owner ruling after ticket 05: the heavy gates run once, at the end of the ticket, after the code review's fixes (CLAUDE.md, Gates, "When"). A second `make measure` is only for a detector fix that the final measure forces, and its reason goes here.

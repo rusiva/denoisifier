@@ -12,3 +12,7 @@
 - [ ] The report includes the score and the threshold used.
 - [ ] Calibration accepts a folder of frames (synthetic or real) as its stripe-free set.
 - [ ] The statistical tests are marked slow so they can be skipped in quick runs.
+
+## Comments
+
+- 2026-11-12, owner ruling after ticket 05: the heavy gates run once, at the end of the ticket, after the code review's fixes (CLAUDE.md, Gates, "When"). A second `make measure` is only for a detector fix that the final measure forces, and its reason goes here.
