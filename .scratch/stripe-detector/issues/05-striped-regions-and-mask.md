@@ -250,3 +250,43 @@
   `REGRESSION_FREE_RATE_BOUND_QUANTILE = 0.975`, `FREE_RATE_BOUND_COVERAGE_TEST_SEED = 41`,
   `FREE_RATE_BOUND_COVERAGE_TRIALS = 4000`, `FREE_RATE_BOUND_COVERAGE_TOL = 0.01`. Gate quotes:
   `handoffs/05-implementer-8.md`.
+- **Code-review fixes F1-F6 (fixer; disposition in `handoffs/05-orchestrator.md`), commit `0c7caae`.**
+  - F1: `calibrate_regions.py` now measures the plan 2.3 (N9) quantity threshold-free on every
+    tuning frame (90_000-90_399, 689 frames, calibration seeds only, inside
+    `seed_guard.calibrating`): uncapped grown candidates needed to reach the last qualifying group
+    after the `_A0` floor, the size rule and the leakage test (`reach_last_member`, to its last merged
+    member; `reach_last_top` to its top candidate). Max 30 (a `neighbour` frame; two_low 28,
+    depth 26, two 24, single 22; probe 8, free 11, full 4); 22 frames reached past the old cap 20
+    (cap hit in 64). The rule (cap >= 2x) gives **`_MAX_CANDIDATES` 20 -> 60** (36 grown at most,
+    uncapped). Approval used: the orchestrator's F1 ruling under the ticket-05 knob lockfile
+    approval (one lockfile line changed). Effect at cap 60 on the tune: cap hits 0; score and
+    region count unchanged on all 689 frames; region measurements moved slightly on 3 frames
+    (90339 two_low, 90391 neighbour, 90039 depth; every summary figure identical except one depth
+    error at the 1e-8 level). `region-calibration.json` re-written at cap 60. New guard
+    `test_candidate_cap_has_headroom_over_the_calibration_reach` (record at the current knobs, cap >=
+    `CANDIDATE_CAP_HEADROOM` x max reach).
+  - `make measure` at `0c7caae` (background, alone, exit 0, `tests/test_feasibility_gate.py` 14
+    passed): every count and both thresholds identical to `317744b` (gate 49.7159577445053, probe
+    85.17105365821853; held-out False Alarms 12/1000), so `GATE_STORED_THRESHOLD` /
+    `PROBE_STORED_THRESHOLD` unchanged. Full-frame median 7.47 s (was 5.73 s): load, not the cap (the
+    timing frame grows 4 candidates; 6.19 s at cap 20 vs 6.55 s at cap 60 back to back, load
+    average 7-12 from other work on the machine).
+  - F2: the "overlapping-extents" frame did not overlap: it was reported as one merged region
+    (Angle 1.15 deg for truths at -6 and +6 deg) plus a 150 px Period-3.3 noise region. Rebuilt as
+    Periods 8 and 16 at -6/+6 deg whose ellipses overlap by 40 px: two qualifying groups whose grown
+    extents overlap by 2125 px, each measured right. New `test_overlapping_extents_frame_settles_an_overlap`
+    (spy on `_settle_overlaps`: overlap reaches settling, every overlap pixel reported once).
+  - F3: the regression-plan derivation (with the rank-based false-alarm baseline) moved to the
+    tracked `docs/regression-plan.md`; `tests/protected.py`, `test_slow_regression.py` and
+    `test_slow_regression_plan.py` point there. The coverage test takes the rate from the saved
+    `run_info`.
+  - F4: the region-mask tolerances of `test_synthetic.py` moved to `tests/protected.py`
+    (`MASK_SATURATION_TOL`, `MASK_CONTOUR_TOL_PX`, `MASK_EDGE_WIDTH_TOL_PX`, `MASK_AREA_REL_TOL`,
+    `MASK_TAIL`, `OUTSIDE_REGIONS_RTOL`, values unchanged) plus `CANDIDATE_CAP_HEADROOM = 2`: seven
+    lockfile lines added (approval: orchestrator, adding protected numbers is strengthening).
+  - F5: `_MASK_FRACTION` renamed `_LIGHT_FRACTION` (value 0.1 unchanged; its lockfile line renamed
+    under the F5 ruling); "light mask" and "outlier" wording gone.
+  - F6: `_period_and_angle` inlined (`_phase_steps` is the one estimator); `_seed_depth` ->
+    `_median_depth`; `tests/regions.py` `TRUTH_LEVEL` / `truth_pixels` name the truth level once.
+  - Finding for the orchestrator (not fixed, out of the fix list): the old overlap frame shows two
+    same-Period regions 12 deg apart, 8 px apart, merged into one region at a wrong Angle.
