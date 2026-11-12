@@ -229,3 +229,24 @@
   premise ("free score max about 2 to 48") is the `region-calibration.json` *median* (2.1 to 15);
   the max was 47.9 at the first freeze. No code changed. Owner options (a)-(c) and the numbers:
   `handoffs/05-implementer-7.md`.
+- **Owner approval (weakening-class gate-design change), carried out by implementer 8.** Reason:
+  the stored gate threshold is a calibration rank (k = 20 of n = 2000), so the held-out False
+  Alarm count is `betabinom(1000, 20, 1981)` for any detector, and the old false-alarm term
+  (the held-out count's own Clopper-Pearson end) passed the operating rule on only about 38% of
+  measures (implementer 7). Codex adversarial review: pooled-binomial framing wrong, the
+  rank-based bound sound. Approved scope (orchestrator log, last entry): in
+  `test_regression_plan_meets_the_operating_rule`, `fa0 = beta.ppf(0.975, k + x, n + 1 - k + N - x)`
+  with k, n, x, N read from `feasibility-gate.json` (`gate.k`, `gate.calibration_n`,
+  `gate.false_alarms`, `gate.free_n`); today Beta(32, 2969), 1.4636%, false-red term 0.209%.
+  Changed interpretation: the bound holds averaged over calibration draws, not for one fixed
+  threshold, and assumes i.i.d. continuous Stripe-free scores. Pass counts, sample sizes,
+  `REGRESSION_MAX_FALSE_RED`/`_PASS_BAD`, the bad rates, the detection and probe terms and the
+  held-out 3-18 band are unchanged; no re-measure, no detector change (measurement at `317744b`
+  stands). Added: `test_stored_threshold_rank_is_untied` (calibration scores are not saved, so it
+  guards what is: `gate.calibration_above == k - 1`, i.e. no tie with ranks above k; a tie below
+  k is not visible) and `test_free_rate_bound_covers_the_true_rate_for_continuous_scores`
+  (uniform scores, 4000 trials, coverage within 0.01 of 0.975; 0.976 now). Protected numbers
+  added under this approval (`tests/protected.py` and four lockfile lines):
+  `REGRESSION_FREE_RATE_BOUND_QUANTILE = 0.975`, `FREE_RATE_BOUND_COVERAGE_TEST_SEED = 41`,
+  `FREE_RATE_BOUND_COVERAGE_TRIALS = 4000`, `FREE_RATE_BOUND_COVERAGE_TOL = 0.01`. Gate quotes:
+  `handoffs/05-implementer-8.md`.

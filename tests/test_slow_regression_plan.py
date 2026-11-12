@@ -2,23 +2,31 @@
 saved full measurement and the operating rule. Non-slow; runs in `make check`.
 
 The derivation is .scratch/agent-gates/handoffs/05-plan.md ("Exact-binomial
-derivation"). When `make measure` stores a worse baseline, the rule test goes
-red; re-deriving the pass counts is then an owner decision, never a silent edit.
+derivation"; its note on the false-alarm baseline records the owner-approved
+rank-based bound of ticket stripe-detector/05). When `make measure` stores a
+worse baseline, the rule test goes red; re-deriving the pass counts is then an
+owner decision, never a silent edit.
 """
 
 import json
 
-from scipy.stats import binom, binomtest
+import numpy as np
+from scipy.stats import beta, binom, binomtest
 
 import feasibility
 import protected
+from denoisifier._calibration import threshold_for_false_alarm_rate, threshold_rank
 from protected import (
+    FREE_RATE_BOUND_COVERAGE_TEST_SEED,
+    FREE_RATE_BOUND_COVERAGE_TOL,
+    FREE_RATE_BOUND_COVERAGE_TRIALS,
     GATE_SHAPE,
     GATE_STORED_THRESHOLD,
     PROBE_SHAPE,
     PROBE_STORED_THRESHOLD,
     REGRESSION_BAD_DETECTION_RATE,
     REGRESSION_BAD_FALSE_ALARM_RATE,
+    REGRESSION_FREE_RATE_BOUND_QUANTILE,
     REGRESSION_FREE_SEEDS,
     REGRESSION_MAX_FALSE_ALARMS,
     REGRESSION_MAX_FALSE_RED,
@@ -58,13 +66,33 @@ def test_stored_thresholds_are_the_saved_measurement():
     )
 
 
+def _free_rate_bound(k: int, n: int, x: int, n_free: int) -> float:
+    """Upper REGRESSION_FREE_RATE_BOUND_QUANTILE bound on the stored threshold's
+    true Stripe-free exceedance rate (owner approval, ticket stripe-detector/05,
+    Comments; derivation note in .scratch/agent-gates/handoffs/.archived/05-plan.md).
+
+    The threshold is the k-th largest of n calibration scores, so its true
+    exceedance rate is Beta(k, n + 1 - k); x exceedances in n_free held-out
+    frames update it to Beta(k + x, n + 1 - k + n_free - x). The bound covers
+    the true rate with the stated probability averaged over calibration draws
+    (not conditional on one fixed threshold), assuming i.i.d. continuous
+    Stripe-free scores with no tie at rank k.
+    """
+    return float(beta.ppf(REGRESSION_FREE_RATE_BOUND_QUANTILE, k + x, n + 1 - k + n_free - x))
+
+
 def test_regression_plan_meets_the_operating_rule():
     saved = _saved()
     gate, probe = saved["gate"], saved["probe"]
-    # Pessimistic ends of the stored baseline's exact 95% CIs.
+    # Detection: pessimistic ends of the stored baseline's exact 95% CIs.
     det0 = _ci(gate["detected"], gate["striped_n"])[0]
-    fa0 = _ci(gate["false_alarms"], gate["free_n"])[1]
     probe0 = _ci(probe["detected"], probe["striped_n"])[0]
+    # False alarms: the threshold's rank-based bound (owner approval, ticket
+    # stripe-detector/05 Comments). It replaced the held-out count's own
+    # Clopper-Pearson end: the stored threshold is a calibration rank, so the
+    # held-out count is betabinom(N, k, n + 1 - k) for any detector, and that
+    # CI end passed the rule on only about 38% of measures (05-implementer-7.md).
+    fa0 = _free_rate_bound(gate["k"], gate["calibration_n"], gate["false_alarms"], gate["free_n"])
 
     n, c = len(REGRESSION_STRIPED_SEEDS), REGRESSION_MIN_DETECTED
     nf, a = len(REGRESSION_FREE_SEEDS), REGRESSION_MAX_FALSE_ALARMS
@@ -90,6 +118,38 @@ def test_regression_plan_meets_the_operating_rule():
     for name, p in pass_bad.items():
         assert p <= REGRESSION_MAX_PASS_BAD, f"{name}: P(pass a bad detector) {p:.4%}"
     assert 0 < REGRESSION_TIMED_FRAMES <= np_
+
+
+def test_stored_threshold_rank_is_untied():
+    """The rank-based bound assumes no tie at the threshold's rank k. The
+    calibration scores are not saved, only how many lie above the threshold, so
+    this guards the ranks above k: exactly k - 1 calibration scores exceed it. A
+    tie with ranks below k (k + 1, ...) is not visible in the saved measurement."""
+    saved = _saved()
+    gate = saved["gate"]
+    assert gate["k"] == threshold_rank(gate["calibration_n"], saved["run_info"]["rate"])
+    assert gate["calibration_above"] == gate["k"] - 1, (
+        f"{gate['calibration_above']} calibration scores exceed the threshold, "
+        f"not k - 1 = {gate['k'] - 1}: the threshold's rank is tied"
+    )
+
+
+def test_free_rate_bound_covers_the_true_rate_for_continuous_scores():
+    """Uniform (continuous, i.i.d.) scores at the saved measurement's sizes: the
+    true exceedance rate of the order-statistic threshold lies at or below the
+    bound in about REGRESSION_FREE_RATE_BOUND_QUANTILE of calibration draws."""
+    gate = _saved()["gate"]
+    k, n, n_free = gate["k"], gate["calibration_n"], gate["free_n"]
+    rng = np.random.default_rng(FREE_RATE_BOUND_COVERAGE_TEST_SEED)
+    covered = 0
+    for _ in range(FREE_RATE_BOUND_COVERAGE_TRIALS):
+        threshold = threshold_for_false_alarm_rate(rng.random(n), feasibility.RATE)
+        x = int((rng.random(n_free) > threshold).sum())
+        covered += 1.0 - threshold <= _free_rate_bound(k, n, x, n_free)
+    coverage = covered / FREE_RATE_BOUND_COVERAGE_TRIALS
+    assert abs(coverage - REGRESSION_FREE_RATE_BOUND_QUANTILE) <= FREE_RATE_BOUND_COVERAGE_TOL, (
+        f"coverage {coverage:.4f}"
+    )
 
 
 def test_regression_sets_are_balanced_over_the_cases():

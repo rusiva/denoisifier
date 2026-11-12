@@ -52,7 +52,8 @@ TIMING_CASE = Case(period=8, angle_deg=0)
 # at the thresholds stored by the last full measurement (make measure), with no
 # per-run calibration. The pass counts meet the operating rule
 # (test_regression_plan_meets_the_operating_rule): at most REGRESSION_MAX_FALSE_RED
-# chance of any false red at the pessimistic end of the stored baseline's 95% CI,
+# chance of any false red at the pessimistic end of the stored baseline (exact 95%
+# CIs for detection; the threshold's rank-based bound for false alarms),
 # at most REGRESSION_MAX_PASS_BAD chance per check of passing a detector at its
 # bad rate. Never edit the pass counts to make check-slow green.
 GATE_STORED_THRESHOLD = 49.7159577445053  # = feasibility-gate.json gate.threshold
@@ -75,6 +76,15 @@ SLOW_TIMING_LIMIT_S = 30.0  # check-slow: real slowdowns only (owner, 2026-11-10
 BENCH_REPEATS = 5  # make bench: median of this many runs, asserted against TIMING_LIMIT_S
 TARGET_TIMING_S = 5.0  # ticket 13's target; make bench reports it without failing
 BENCH_IDLE_LOAD = 1.0  # make bench warns, without failing, above this 1-min load average
+# False-alarm baseline of the operating rule (owner approval, ticket
+# stripe-detector/05 Comments): the upper quantile of the stored threshold's
+# rank-based rate, Beta(k + x, n + 1 - k + N - x), not the held-out count's CI.
+REGRESSION_FREE_RATE_BOUND_QUANTILE = 0.975
+# test_slow_regression_plan.py: the bound's coverage on uniform scores (sd about
+# 0.0025 at 4000 trials, so the tolerance is 4 sd).
+FREE_RATE_BOUND_COVERAGE_TEST_SEED = 41
+FREE_RATE_BOUND_COVERAGE_TRIALS = 4000
+FREE_RATE_BOUND_COVERAGE_TOL = 0.01
 # test_slow_regression_plan.py: the tiny-plan run of regression_check.
 REGRESSION_TINY_STRIPED_TEST_SEEDS = range(60, 62)
 REGRESSION_TINY_FREE_TEST_SEEDS = range(62, 64)
