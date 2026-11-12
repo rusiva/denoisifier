@@ -72,8 +72,8 @@ MIN_SIDE = 40
 assert _PAD < MIN_SIDE
 
 _ENVELOPE_SIGMA = 10.0
-_MASK_FRACTION = 0.1
-# The light is the smoothed frame (_ENVELOPE_SIGMA) above _MASK_FRACTION of
+_LIGHT_FRACTION = 0.1
+# The light is the smoothed frame (_ENVELOPE_SIGMA) above _LIGHT_FRACTION of
 # the peak of the frame smoothed with this smaller sigma (px). Smoothing at
 # _ENVELOPE_SIGMA flattens the Mottle's bright spots, lowering the maximum
 # about 1.2-2x, while it raises the dark surround near the spot's edge and
@@ -106,8 +106,12 @@ SIZE_ALONG_PERIODS = 0.5
 _PEAK_FOOTPRINT_PX = 9
 # A seed area is the connected part of ratio >= this x its peak ratio.
 _SEED_FRACTION = 0.1
-# At most this many candidates are grown per frame (highest peaks first).
-_MAX_CANDIDATES = 20
+# At most this many candidates are grown per frame (highest peaks first). Plan
+# rule (N9): at least twice the most candidates any region calibration frame
+# needed to reach its last qualifying group, threshold-free and after every
+# filter (30, a two-region frame; 36 grown at most, uncapped; probe-shaped
+# frames needed 8 of at most 11; tests/calibrate_regions.py, ``reach_last_member``).
+_MAX_CANDIDATES = 60
 # A seed area whose bank Periods leave a gap of this many bank steps is split.
 _SPLIT_LOG_STEPS = 2
 # The grown extent keeps depth >= this x the median depth on the seed area.
@@ -124,7 +128,7 @@ _ABSORB_FRACTION = 0.5
 # The size rule's depth peak is looked for on the top candidate's core: the
 # connected part of ratio >= this x its peak ratio (the seed area of
 # prototype P1, where the size constants were fitted; a larger seed area
-# would put the peak on a noise or Mottle outlier).
+# would put the peak on Noise or a bright spot of the Mottle).
 _CORE_FRACTION = 0.5
 # Leakage: a size-qualifying group near a stronger candidate (higher peak
 # ratio, qualifying or not) is that candidate's leakage when its depth on its
@@ -206,7 +210,7 @@ def _light(frame: np.ndarray) -> np.ndarray:
     if env.max() <= 0:
         raise ValueError("envelope max <= 0: frame has no positive light")
     peak = gaussian_filter(frame, sigma=_LIGHT_PEAK_SIGMA).max()
-    return np.asarray(env > _MASK_FRACTION * peak)
+    return np.asarray(env > _LIGHT_FRACTION * peak)
 
 
 @dataclass
@@ -265,7 +269,7 @@ def _qualifying_regions(
     qualifying = [
         g
         for g in groups
-        if _seed_depth(g.tuned_depth, g.top_seed) >= _A0
+        if _median_depth(g.tuned_depth, g.top_seed) >= _A0
         and _passes_size_rule(g, filters)
         and not _is_leakage(g, candidates, frame, filters)
     ]
@@ -344,22 +348,22 @@ def _grow_candidates(local: LocalStripes, light: np.ndarray, filters: _Filters) 
         seed = _component((ratio >= _SEED_FRACTION * peak_ratio) & free, peak)
         seed = _split_by_period(seed, bank_step, peak)
         core = seed & _component((ratio >= _CORE_FRACTION * peak_ratio) & free, peak)
-        period, angle_deg = _period_and_angle(
-            local, seed, float(local.period[peak]), float(local.angle_deg[peak])
+        period, angle_deg = _phase_steps(
+            local.response, seed, float(local.period[peak]), float(local.angle_deg[peak])
         )
         depth = filters.depth(period, angle_deg)
         grown = _grow(depth, seed, seed, light)
         candidates.append(
-            _Candidate(peak_ratio, core, seed, grown, period, angle_deg, _seed_depth(depth, seed))
+            _Candidate(peak_ratio, core, seed, grown, period, angle_deg, _median_depth(depth, seed))
         )
         claimed |= grown
     return candidates
 
 
-def _seed_depth(depth: np.ndarray, seed: np.ndarray) -> float:
-    """Median depth over the lit part of ``seed`` (all of it if none is lit)."""
-    lit = seed & (depth > 0)
-    return float(np.median(depth[lit if lit.any() else seed]))
+def _median_depth(depth: np.ndarray, area: np.ndarray) -> float:
+    """Median depth over the lit part of ``area`` (all of it if none is lit)."""
+    lit = area & (depth > 0)
+    return float(np.median(depth[lit if lit.any() else area]))
 
 
 def _grow(
@@ -367,7 +371,7 @@ def _grow(
 ) -> np.ndarray:
     """The connected parts of ``depth >= _GROW_FRACTION x`` the median depth on
     ``reference``, inside the light, that touch ``seed``."""
-    level = _GROW_FRACTION * _seed_depth(depth, reference)
+    level = _GROW_FRACTION * _median_depth(depth, reference)
     return _touching((depth >= level) & light, seed)
 
 
@@ -394,23 +398,16 @@ def _split_by_period(seed: np.ndarray, bank_step: np.ndarray, peak: tuple[int, i
     return _component(seed & np.isin(bank_step, own), peak)
 
 
-def _period_and_angle(
-    local: LocalStripes, area: np.ndarray, bank_period: float, bank_angle: float
-) -> tuple[float, float]:
-    """Fine Period and Angle over ``area`` from the neighbour-product sum.
-
-    Local frequency from the phase step between neighbours (not np.gradient
-    of the phase: central differences are biased at short Periods). Fewer
-    than _MIN_PAIRS pairs either way: the bank values are returned."""
-    return _phase_steps(local.response, area, bank_period, bank_angle)
-
-
 def _phase_steps(
     response: np.ndarray, area: np.ndarray, period: float, angle_deg: float
 ) -> tuple[float, float]:
-    """Period and Angle from the summed neighbour products of the complex
-    ``response`` over ``area``; ``(period, angle_deg)`` when there are fewer
-    than _MIN_PAIRS pairs either way or no phase step."""
+    """Fine Period and Angle over ``area`` from the summed neighbour products
+    of the complex ``response``.
+
+    Local frequency from the phase step between neighbours (not np.gradient
+    of the phase: central differences are biased at short Periods).
+    ``(period, angle_deg)`` (the starting estimate) is returned when there are
+    fewer than _MIN_PAIRS pairs either way or no phase step."""
     h_pairs = area[:, :-1] & area[:, 1:]
     v_pairs = area[:-1, :] & area[1:, :]
     if h_pairs.sum() < _MIN_PAIRS or v_pairs.sum() < _MIN_PAIRS:
@@ -448,7 +445,7 @@ def _merge(candidates: list[_Candidate], local: LocalStripes, filters: _Filters)
             # member's seed area: a lower member's seed can lie in the skirt
             # of the stripes, where the depth is lower.
             seed = np.logical_or.reduce([m.seed for m in members])
-            period, angle_deg = _period_and_angle(local, seed, top.period, top.angle_deg)
+            period, angle_deg = _phase_steps(local.response, seed, top.period, top.angle_deg)
             tuned_depth = filters.depth(period, angle_deg)
             grown = _grow(tuned_depth, top.seed, seed, filters.light)
         groups.append(
@@ -560,7 +557,7 @@ def _is_leakage(
     group: _Group, candidates: list[_Candidate], frame: np.ndarray, filters: _Filters
 ) -> bool:
     """``group`` is leakage of a stronger candidate near it (see _LEAK_FRACTION)."""
-    own = _seed_depth(group.tuned_depth, group.top_seed)
+    own = _median_depth(group.tuned_depth, group.top_seed)
     for s in candidates:
         if s.peak_ratio <= group.peak_ratio or any(s is m for m in group.members):
             continue
@@ -569,7 +566,7 @@ def _is_leakage(
             continue
         without = np.where(s.grown, filters.mean(s.period), frame)
         rest = _Filters(_Spectrum(without), filters.light)
-        if _seed_depth(rest.depth(group.period, group.angle_deg), group.top_seed) < (
+        if _median_depth(rest.depth(group.period, group.angle_deg), group.top_seed) < (
             _LEAK_FRACTION * own
         ):
             return True
@@ -626,7 +623,7 @@ def _interior_depth(depth: np.ndarray, pixels: np.ndarray) -> float:
     area that reaches into that skirt measured up to 0.18 low (ruling A on the
     fresh-range misses)."""
     distance = ndimage.distance_transform_edt(pixels)
-    return _seed_depth(depth, distance >= _INTERIOR_FRACTION * distance.max())
+    return _median_depth(depth, distance >= _INTERIOR_FRACTION * distance.max())
 
 
 def _bbox(mask: np.ndarray) -> BoundingBox:

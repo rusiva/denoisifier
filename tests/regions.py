@@ -3,7 +3,8 @@
 Frame geometry comes from protected.py: one region of semi-axes
 max(5 P, 45) x max(6.6 P, 60) px, centred in a 512x512 frame, and the
 two-region layout (TWO_REGION_*). ``iou`` and ``match`` compare a report with
-the generator's truth; a truth region's pixels are ``mask >= 0.5``.
+the generator's truth; a truth region's pixels are ``truth_pixels`` (its soft
+mask at or above TRUTH_LEVEL).
 """
 
 from functools import cache
@@ -22,6 +23,14 @@ from protected import (
 )
 
 TYPICAL = dict(noise=Emccd())  # about 100 photons at the peak
+# A truth region's pixels: its soft mask at or above this (the generator's
+# ellipse is the 0.5 contour; ``synthetic.RegionTruth``).
+TRUTH_LEVEL = 0.5
+
+
+def truth_pixels(truth):
+    """The pixels of a truth region (``RegionTruth``): mask >= TRUTH_LEVEL."""
+    return truth.mask >= TRUTH_LEVEL
 
 
 def semi_axes(period):
@@ -117,7 +126,7 @@ def match(report_regions, labels, truth_regions):
     pairs = []
     for region in report_regions:
         own = labels == region.label
-        best = max(truth_regions, key=lambda t: (own & (t.mask >= 0.5)).sum())
+        best = max(truth_regions, key=lambda t: (own & truth_pixels(t)).sum())
         pairs.append((region, best))
     return pairs
 

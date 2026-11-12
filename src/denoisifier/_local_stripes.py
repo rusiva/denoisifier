@@ -45,12 +45,12 @@ class LocalStripes:
     """Per-pixel best match over the filter bank. All arrays have the frame's shape.
 
     ``ratio`` is the local stripe-vs-reference energy ratio, box-averaged
-    around each pixel (0 outside the light mask); ``analyse`` seeds its
+    around each pixel (0 outside the light); ``analyse`` seeds its
     Striped Regions at its local maxima. ``period`` and ``angle_deg`` are the
     bank Period and Angle with the best ratio at each pixel (0 outside light);
     they are the coarse bank grid (Periods x1.12 apart, Angles 5 deg apart).
     Fine Period and Angle over an area come from the neighbour-product sum of
-    ``response`` over that area (``analysis._period_and_angle``), the one
+    ``response`` over that area (``analysis._phase_steps``), the one
     estimator for every region. ``response`` is the complex
     filter response at that Period and Angle (local phase = ``np.angle``);
     ``local_mean`` is the same-window local mean, so the local Modulation

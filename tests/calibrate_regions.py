@@ -42,7 +42,7 @@ from protected import (
     TWO_REGION_SHAPE,
     WEAK_DEPTH,
 )
-from regions import iou, single_region, two_regions
+from regions import iou, single_region, truth_pixels, two_regions
 
 OUT = Path(__file__).parents[1] / ".scratch" / "stripe-detector" / "region-calibration.json"
 TUNE = range(REGION_CALIBRATION_SEEDS.start, REGION_CALIBRATION_SEEDS.start + 400)
@@ -250,10 +250,17 @@ class _CapCounter(logging.Handler):
 
 
 def _candidate_reach(frame):
-    """Candidates (in visiting order, uncapped) needed to reach the top
-    qualifying group and the last qualifying group above THRESHOLD."""
+    """Plan 2.3 (N9), threshold-free: grown candidates (in visiting order,
+    uncapped) needed to reach the frame's last qualifying group, after every
+    filter of ``_qualifying_regions`` (the ``_A0`` floor, the size rule, the
+    leakage test). ``reach_last_top`` counts to the group's top candidate;
+    ``reach_last_member`` to its last merged member, so that every qualifying
+    group (which all take part in settling overlaps) is grown exactly as
+    uncapped. 0 when no group qualifies."""
     light = analysis._light(frame)
     local = estimate_local_stripes(frame, light)
+    if not light.any() or not local.ratio.max() > 0:
+        return {"n_candidates": 0, "reach_last_top": 0, "reach_last_member": 0}
     filters = analysis._Filters(_Spectrum(frame), light)
     cap = analysis._MAX_CANDIDATES
     analysis._MAX_CANDIDATES = 10_000
@@ -262,15 +269,19 @@ def _candidate_reach(frame):
     finally:
         analysis._MAX_CANDIDATES = cap
     groups = analysis._merge(candidates, local, filters)
-    index = {id(c.seed): i + 1 for i, c in enumerate(candidates)}
+    index = {id(c): i + 1 for i, c in enumerate(candidates)}
     qualifying = [
-        (index[id(g.top_seed)], g.peak_ratio)
+        g
         for g in groups
-        if analysis._passes_size_rule(g, filters)
+        if analysis._median_depth(g.tuned_depth, g.top_seed) >= analysis._A0
+        and analysis._passes_size_rule(g, filters)
+        and not analysis._is_leakage(g, candidates, frame, filters)
     ]
-    top = max(qualifying, key=lambda q: q[1])[0] if qualifying else 0
-    above = max((i for i, r in qualifying if r > analysis.THRESHOLD), default=0)
-    return {"n_candidates": len(candidates), "reach_top": top, "reach_reported": above}
+    return {
+        "n_candidates": len(candidates),
+        "reach_last_top": max((index[id(g.members[0])] for g in qualifying), default=0),
+        "reach_last_member": max((index[id(m)] for g in qualifying for m in g.members), default=0),
+    }
 
 
 def run_job(job, overrides):
@@ -307,11 +318,11 @@ def run_job(job, overrides):
     striped_truth = [t for t in s.truth.regions if t.modulation_depth > 0]
     if kind in ("single", "single_weak", "depth", "two", "two_low", "neighbour"):
         rec["iou_union"] = iou(
-            report.mask(), np.logical_or.reduce([t.mask >= 0.5 for t in striped_truth])
+            report.mask(), np.logical_or.reduce([truth_pixels(t) for t in striped_truth])
         )
         rec["per_truth"] = []
         for t in striped_truth:
-            tm = t.mask >= 0.5
+            tm = truth_pixels(t)
             overlapping = [r for r in report.regions if (report.labels == r.label)[tm].any()]
             best = max(
                 overlapping,
@@ -334,7 +345,7 @@ def run_job(job, overrides):
                 seed=seed, shape=TWO_REGION_SHAPE, mottle="none", regions=(), noise=0.0
             ).clean  # the Profile: the spot's half maximum, without the Mottle
             rec["truth_inside_half_envelope"] = bool(
-                all((env[t.mask >= 0.5] >= 0.5 * env.max()).all() for t in striped_truth)
+                all((env[truth_pixels(t)] >= 0.5 * env.max()).all() for t in striped_truth)
             )
     if kind in ("full", "probe"):
         truth = s.truth
@@ -344,8 +355,7 @@ def run_job(job, overrides):
             if abs(r.period_px / truth.period - 1) > 0.05 or abs(r.angle_deg - truth.angle_deg) > 1
         )
         rec["depth_errs"] = [r.modulation_depth - truth.modulation_depth for r in report.regions]
-    if kind in ("probe", "free", "full"):
-        rec.update(_candidate_reach(s.frame))
+    rec.update(_candidate_reach(s.frame))
     return rec
 
 
@@ -456,15 +466,22 @@ def summarise(records):
             "score_min": min(x["score"] for x in by["probe"]),
             "frames_with_mismeasured_region": sum(1 for x in by["probe"] if x["bad_regions"]),
         }
-    reach = [x for k in ("probe", "free", "full") for x in by.get(k, [])]
-    if reach:
-        out["candidates"] = {
-            "cap": analysis._MAX_CANDIDATES,
-            "cap_hit_frames": sum(1 for x in records if x["cap_hit"]),
-            "reach_top_max": max(x["reach_top"] for x in reach),
-            "reach_reported_max": max(x["reach_reported"] for x in reach),
-            "n_candidates_max_uncapped": max(x["n_candidates"] for x in reach),
-        }
+    # Plan 2.3 (N9): the cap must be at least twice the largest reach.
+    reach_max = max(x["reach_last_member"] for x in records)
+    out["candidates"] = {
+        "cap": analysis._MAX_CANDIDATES,
+        "cap_hit_frames": sum(1 for x in records if x["cap_hit"]),
+        "reach_last_top_max": max(x["reach_last_top"] for x in records),
+        "reach_last_member_max": reach_max,
+        "reach_last_member_max_by_kind": {
+            k: max(x["reach_last_member"] for x in v) for k, v in sorted(by.items())
+        },
+        "frames_reaching_past_cap": sum(
+            1 for x in records if x["reach_last_member"] > analysis._MAX_CANDIDATES
+        ),
+        "n_candidates_max_uncapped": max(x["n_candidates"] for x in records),
+        "cap_meets_plan_rule": analysis._MAX_CANDIDATES >= 2 * reach_max,
+    }
     if "size_typical" in by:
         table = defaultdict(lambda: [0, 0])
         for x in by["size_typical"]:

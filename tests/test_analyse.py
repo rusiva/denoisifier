@@ -3,18 +3,20 @@ import json
 import re
 from functools import cache
 from itertools import combinations
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from borderline import BORDERLINE, borderline_frame
 from cases import CASES
-from denoisifier import Report, analyse
+from denoisifier import Report, analyse, analysis
 from denoisifier.analysis import THRESHOLD
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
     BBOX_TOL_PERIODS,
     BORDERLINE_SCORE_WINDOW,
+    CANDIDATE_CAP_HEADROOM,
     DARK_FRACTION,
     DARK_REGRESSION_CASES,
     DEPTH_REGRESSION_CASES,
@@ -47,6 +49,7 @@ from regions import (
     single_region,
     single_region_case,
     truth_bbox,
+    truth_pixels,
     two_regions,
 )
 from truth_match import assert_depth_matches, assert_matches_truth
@@ -325,7 +328,7 @@ def test_partial_region_is_reported_with_its_measurements(seed):
     (truth,) = s.truth.regions
     assert_matches_truth(region.period_px, region.angle_deg, truth)
     assert_depth_matches(region.modulation_depth, truth)
-    r0, r1, c0, c1 = truth_bbox(truth.mask >= 0.5)
+    r0, r1, c0, c1 = truth_bbox(truth_pixels(truth))
     b = region.bbox
     tol = BBOX_TOL_PERIODS * period
     for got, want in ((b.row_start, r0), (b.row_stop, r1), (b.col_start, c0), (b.col_stop, c1)):
@@ -350,7 +353,7 @@ def test_mask_overlaps_the_true_region(seed, mottle):
     period, angle_deg = CASES[seed % len(CASES)]
     s, report = single_region_case(seed, period, angle_deg, mottle)
     (truth,) = s.truth.regions
-    assert iou(report.mask(), truth.mask >= 0.5) >= MASK_IOU_MIN
+    assert iou(report.mask(), truth_pixels(truth)) >= MASK_IOU_MIN
 
 
 @pytest.mark.parametrize(("left", "right"), TWO_REGION_PAIRS)
@@ -369,7 +372,7 @@ def test_two_regions_with_different_periods_are_reported_separately(seed, left, 
     assert {id(t) for _, t in pairs} == {id(t) for t in s.truth.regions}
     for region, truth in pairs:
         assert_matches_truth(region.period_px, region.angle_deg, truth)
-        assert iou(report.labels == region.label, truth.mask >= 0.5) >= MASK_IOU_MIN
+        assert iou(report.labels == region.label, truth_pixels(truth)) >= MASK_IOU_MIN
     assert_labels_consistent(report)
 
 
@@ -474,14 +477,40 @@ def test_dark_area_is_never_reported_as_striped(seed, case):
 
 
 def _overlap_frame():
-    """Two same-Period regions with Angles 12 deg apart, 8 px apart: their
-    grown extents overlap, and they are not merged."""
-    common = dict(semi_axes=(50.0, 60.0), rotation_deg=0.0, edge_px=4.0, period=8.0)
+    """Two regions, Periods 8 and 16 (so not merged) and Angles -6 and 6 deg,
+    whose ellipses overlap by 40 px across: their grown extents overlap
+    (test_overlapping_extents_frame_settles_an_overlap)."""
+    common = dict(semi_axes=(50.0, 60.0), rotation_deg=0.0, edge_px=4.0, modulation_depth=0.5)
     regions = [
-        StripedRegion(center=(127.5, 186.0), angle_deg=-6.0, modulation_depth=0.5, **common),
-        StripedRegion(center=(127.5, 314.0), angle_deg=6.0, modulation_depth=0.5, **common),
+        StripedRegion(center=(127.5, 215.5), period=8.0, angle_deg=-6.0, **common),
+        StripedRegion(center=(127.5, 295.5), period=16.0, angle_deg=6.0, **common),
     ]
     return generate(seed=TWO_REGION_TEST_SEEDS[0], shape=(256, 512), regions=regions).frame
+
+
+def test_overlapping_extents_frame_settles_an_overlap(monkeypatch):
+    """The "overlapping-extents" sweep frame does what its name says: two
+    qualifying groups whose grown extents overlap reach the overlap settling,
+    and each overlap pixel goes to exactly one reported region."""
+    settled = []
+    settle = analysis._settle_overlaps
+
+    def spy(groups):
+        survivors = settle(groups)
+        settled.append((list(groups), survivors))
+        return survivors
+
+    monkeypatch.setattr(analysis, "_settle_overlaps", spy)
+    report = analyse(_overlap_frame(), threshold=0.0)
+    ((groups, survivors),) = settled
+    overlaps = [a.grown & b.grown for a, b in combinations(groups, 2)]
+    overlap = np.logical_or.reduce(overlaps) if overlaps else np.zeros(report.labels.shape, bool)
+    assert overlap.any(), "no two qualifying groups' grown extents overlap"
+    assert len(report.regions) == len(survivors) >= 2
+    # Settled: the overlap is reported, and each pixel under one label only.
+    assert report.mask()[overlap].all()
+    assert sum(s.area_px for s in survivors) == report.mask().sum()
+    assert_labels_consistent(report)
 
 
 SWEEP_FRAMES = {
@@ -605,3 +634,23 @@ def test_lowering_the_threshold_keeps_reported_regions_unchanged(name, kind_a, k
 def test_rejects_negative_or_nan_threshold(threshold):
     with pytest.raises(ValueError, match="^" + re.escape("threshold must be >= 0")):
         analyse(np.ones((64, 64)), threshold=threshold)
+
+
+REGION_CALIBRATION = Path(__file__).parents[1] / ".scratch/stripe-detector/region-calibration.json"
+
+
+def test_candidate_cap_has_headroom_over_the_calibration_reach():
+    """Plan 2.3 (N9): _MAX_CANDIDATES is at least CANDIDATE_CAP_HEADROOM x the
+    most grown candidates any region calibration frame needed to reach its last
+    qualifying group (tests/calibrate_regions.py ``tune``, recorded at the
+    current knobs)."""
+    saved = json.loads(REGION_CALIBRATION.read_text())
+    assert saved["mode"] == "tune"
+    assert not saved["overrides"]
+    assert saved["knobs"] == {k: getattr(analysis, k) for k in saved["knobs"]}, (
+        "region-calibration.json is not at the current knobs: re-run the tune"
+    )
+    reach = max(r["reach_last_member"] for r in saved["records"])
+    assert analysis._MAX_CANDIDATES >= CANDIDATE_CAP_HEADROOM * reach, (
+        f"cap {analysis._MAX_CANDIDATES} < {CANDIDATE_CAP_HEADROOM} x reach {reach}"
+    )

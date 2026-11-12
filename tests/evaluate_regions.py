@@ -49,7 +49,7 @@ from protected import (
     TWO_REGION_PAIRS,
     TWO_REGION_SHAPE,
 )
-from regions import iou, match, single_region, truth_bbox, two_regions
+from regions import iou, match, single_region, truth_bbox, truth_pixels, two_regions
 
 TYPICAL = dict(noise=Emccd())
 SHAPE = (256, 256)
@@ -117,7 +117,7 @@ def run(job) -> dict:
         )
         r = analyse(s.frame)
         (truth,) = s.truth.regions
-        tm = truth.mask >= 0.5
+        tm = truth_pixels(truth)
         rec["iou"] = iou(r.mask(), tm)
         rec["iou_ok"] = rec["iou"] >= MASK_IOU_MIN
         ok = r.striped and len(r.regions) == 1 and _matches(r.regions[0], truth)
@@ -143,7 +143,7 @@ def run(job) -> dict:
         ok = ok and all(_matches(reg, t, depth=False) for reg, t in pairs)
         if kind == "two":
             ok = ok and all(
-                iou(r.labels == reg.label, t.mask >= 0.5) >= MASK_IOU_MIN for reg, t in pairs
+                iou(r.labels == reg.label, truth_pixels(t)) >= MASK_IOU_MIN for reg, t in pairs
             )
         rec["ok"] = bool(ok)
         rec["n_regions"] = len(r.regions)

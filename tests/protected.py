@@ -48,7 +48,7 @@ TIMING_SEED = 40_000
 TIMING_CASE = Case(period=8, angle_deg=0)
 
 # Slow-tier regression check (ticket agent-gates/05; derivation:
-# .scratch/agent-gates/handoffs/05-plan.md). make check-slow scores fresh seeds
+# docs/regression-plan.md). make check-slow scores fresh seeds
 # at the thresholds stored by the last full measurement (make measure), with no
 # per-run calibration. The pass counts meet the operating rule
 # (test_regression_plan_meets_the_operating_rule): at most REGRESSION_MAX_FALSE_RED
@@ -145,13 +145,21 @@ BORDERLINE_TEST_CASES = [(22, 20), (13, 5), (13, 8), (12, 20), (16, 8)]
 # Ticket 05 (Striped Regions): generator tests.
 DIGEST_TEST_SEEDS = range(30, 33)  # test_default_frames_are_unchanged_by_regions
 REGION_GENERATOR_TEST_SEED = 33  # the generator's region-mask tests
+# test_synthetic.py, the generator's region masks (a region of semi-axes a x b):
+MASK_SATURATION_TOL = 1e-6  # the mask is 1 at the centre and 0 far out, within this
+MASK_CONTOUR_TOL_PX = 1.0  # the 0.5 contour vs the ellipse, along the minor axis
+MASK_EDGE_WIDTH_TOL_PX = 1.0  # the 0.9 -> 0.1 band's width vs edge_px
+MASK_AREA_REL_TOL = 0.02  # truth pixels (mask >= 0.5) vs pi a b
+MASK_TAIL = 1e-12  # outside a region: mask below this (tanh never reaches 0)
+OUTSIDE_REGIONS_RTOL = 1e-9  # clean frame outside every region vs the region-free one
 
 # Ticket 05 (Striped Regions): acceptance tests (tests/regions.py builds the frames).
 MASK_IOU_MIN = 0.8  # spec Further Notes: mask IoU >= 0.8
+CANDIDATE_CAP_HEADROOM = 2  # plan 2.3 (N9): _MAX_CANDIDATES >= this x calibration reach
 BBOX_TOL_PERIODS = 1.0  # reported bbox vs the truth's (mask >= 0.5), per side, in Periods
 MIN_SIZE_BELOW_FACTOR = 0.8  # x the 3x2-Period minimum: never reported (low noise)
 MIN_SIZE_ABOVE_FACTOR = 1.4  # x the minimum: always reported (low noise)
-DARK_FRACTION = 0.05  # "dark": envelope below this x its max (light mask is at 0.1)
+DARK_FRACTION = 0.05  # "dark": envelope below this x its max (the light: _LIGHT_FRACTION 0.1)
 # Test region: semi-axes max(5 P, 45) x max(6.6 P, 60) px (rows x cols), centred.
 REGION_SEMI_AXES_PERIODS = (5.0, 6.6)
 REGION_SEMI_AXES_FLOOR_PX = (45, 60)

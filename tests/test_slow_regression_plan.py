@@ -1,11 +1,11 @@
 """The slow tier's regression plan (ticket agent-gates/05): consistency with the
 saved full measurement and the operating rule. Non-slow; runs in `make check`.
 
-The derivation is .scratch/agent-gates/handoffs/05-plan.md ("Exact-binomial
-derivation"; its note on the false-alarm baseline records the owner-approved
-rank-based bound of ticket stripe-detector/05). When `make measure` stores a
-worse baseline, the rule test goes red; re-deriving the pass counts is then an
-owner decision, never a silent edit.
+The derivation is docs/regression-plan.md (its section "The false-alarm
+baseline" records the owner-approved rank-based bound of ticket
+stripe-detector/05). When `make measure` stores a worse baseline, the rule test
+goes red; re-deriving the pass counts is then an owner decision, never a silent
+edit.
 """
 
 import json
@@ -69,7 +69,7 @@ def test_stored_thresholds_are_the_saved_measurement():
 def _free_rate_bound(k: int, n: int, x: int, n_free: int) -> float:
     """Upper REGRESSION_FREE_RATE_BOUND_QUANTILE bound on the stored threshold's
     true Stripe-free exceedance rate (owner approval, ticket stripe-detector/05,
-    Comments; derivation note in .scratch/agent-gates/handoffs/.archived/05-plan.md).
+    Comments; derivation in docs/regression-plan.md, "The false-alarm baseline").
 
     The threshold is the k-th largest of n calibration scores, so its true
     exceedance rate is Beta(k, n + 1 - k); x exceedances in n_free held-out
@@ -88,10 +88,10 @@ def test_regression_plan_meets_the_operating_rule():
     det0 = _ci(gate["detected"], gate["striped_n"])[0]
     probe0 = _ci(probe["detected"], probe["striped_n"])[0]
     # False alarms: the threshold's rank-based bound (owner approval, ticket
-    # stripe-detector/05 Comments). It replaced the held-out count's own
-    # Clopper-Pearson end: the stored threshold is a calibration rank, so the
-    # held-out count is betabinom(N, k, n + 1 - k) for any detector, and that
-    # CI end passed the rule on only about 38% of measures (05-implementer-7.md).
+    # stripe-detector/05 Comments; docs/regression-plan.md). It replaced the
+    # held-out count's own Clopper-Pearson end: the stored threshold is a
+    # calibration rank, so the held-out count is betabinom(N, k, n + 1 - k) for
+    # any detector, and that CI end passed the rule on only about 38% of measures.
     fa0 = _free_rate_bound(gate["k"], gate["calibration_n"], gate["false_alarms"], gate["free_n"])
 
     n, c = len(REGRESSION_STRIPED_SEEDS), REGRESSION_MIN_DETECTED
@@ -137,13 +137,15 @@ def test_stored_threshold_rank_is_untied():
 def test_free_rate_bound_covers_the_true_rate_for_continuous_scores():
     """Uniform (continuous, i.i.d.) scores at the saved measurement's sizes: the
     true exceedance rate of the order-statistic threshold lies at or below the
-    bound in about REGRESSION_FREE_RATE_BOUND_QUANTILE of calibration draws."""
-    gate = _saved()["gate"]
+    bound in about REGRESSION_FREE_RATE_BOUND_QUANTILE of calibration draws. The
+    rate is the saved measurement's, like the threshold's rank."""
+    saved = _saved()
+    gate, rate = saved["gate"], saved["run_info"]["rate"]
     k, n, n_free = gate["k"], gate["calibration_n"], gate["free_n"]
     rng = np.random.default_rng(FREE_RATE_BOUND_COVERAGE_TEST_SEED)
     covered = 0
     for _ in range(FREE_RATE_BOUND_COVERAGE_TRIALS):
-        threshold = threshold_for_false_alarm_rate(rng.random(n), feasibility.RATE)
+        threshold = threshold_for_false_alarm_rate(rng.random(n), rate)
         x = int((rng.random(n_free) > threshold).sum())
         covered += 1.0 - threshold <= _free_rate_bound(k, n, x, n_free)
     coverage = covered / FREE_RATE_BOUND_COVERAGE_TRIALS

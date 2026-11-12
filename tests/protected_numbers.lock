@@ -21,7 +21,7 @@ denoisifier._local_stripes :: _A0 :: 0.003
 denoisifier.analysis :: THRESHOLD :: 154.0
 denoisifier.analysis :: MIN_SIDE :: 40
 denoisifier.analysis :: _ENVELOPE_SIGMA :: 10.0
-denoisifier.analysis :: _MASK_FRACTION :: 0.1
+denoisifier.analysis :: _LIGHT_FRACTION :: 0.1
 denoisifier.analysis :: _LIGHT_PEAK_SIGMA :: 3.0
 denoisifier.analysis :: _MIN_PAIRS :: 8
 denoisifier.analysis :: MIN_HALF_DEPTH_WIDTH_PERIODS :: 3.24
@@ -29,7 +29,7 @@ denoisifier.analysis :: MIN_HALF_DEPTH_HEIGHT_PERIODS :: 1.93
 denoisifier.analysis :: SIZE_ALONG_PERIODS :: 0.5
 denoisifier.analysis :: _PEAK_FOOTPRINT_PX :: 9
 denoisifier.analysis :: _SEED_FRACTION :: 0.1
-denoisifier.analysis :: _MAX_CANDIDATES :: 20
+denoisifier.analysis :: _MAX_CANDIDATES :: 60
 denoisifier.analysis :: _SPLIT_LOG_STEPS :: 2
 denoisifier.analysis :: _GROW_FRACTION :: 0.6
 denoisifier.analysis :: _MERGE_PERIOD_RATIO :: 1.2
@@ -118,11 +118,18 @@ protected :: SCORE_AND_THRESHOLD_TEST_SEED :: 27
 protected :: BORDERLINE_TEST_CASES :: [(22, 20), (13, 5), (13, 8), (12, 20), (16, 8)]
 protected :: DIGEST_TEST_SEEDS :: range(30, 33)
 protected :: REGION_GENERATOR_TEST_SEED :: 33
+protected :: MASK_SATURATION_TOL :: 1e-06
+protected :: MASK_CONTOUR_TOL_PX :: 1.0
+protected :: MASK_EDGE_WIDTH_TOL_PX :: 1.0
+protected :: MASK_AREA_REL_TOL :: 0.02
+protected :: MASK_TAIL :: 1e-12
+protected :: OUTSIDE_REGIONS_RTOL :: 1e-09
 protected :: MEASURE_PLAN_FREE_TEST_SEEDS :: range(40, 50)
 protected :: MEASURE_PLAN_STRIPED_TEST_SEEDS :: range(50, 60)
 protected :: FEASIBILITY_SCRIPT_TIMEOUT_S :: 45
 protected :: REGION_CALIBRATION_SEEDS :: range(90000, 90600)
 protected :: MASK_IOU_MIN :: 0.8
+protected :: CANDIDATE_CAP_HEADROOM :: 2
 protected :: BBOX_TOL_PERIODS :: 1.0
 protected :: MIN_SIZE_BELOW_FACTOR :: 0.8
 protected :: MIN_SIZE_ABOVE_FACTOR :: 1.4

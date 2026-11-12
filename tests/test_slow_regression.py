@@ -2,7 +2,7 @@
 thresholds stored by the last full measurement (ticket agent-gates/05).
 
 It scores fresh seeds at fixed stored thresholds, with no per-run calibration,
-and asserts the pass counts derived in .scratch/agent-gates/handoffs/05-plan.md.
+and asserts the pass counts derived in docs/regression-plan.md.
 A detector change that moves the score scale is expected to go red here: run
 `make measure` (the full ticket-03 measurement), then re-store the thresholds
 (an approved lockfile edit); never edit the pass counts.

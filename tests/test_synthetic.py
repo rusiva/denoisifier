@@ -7,12 +7,19 @@ import pytest
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
     DIGEST_TEST_SEEDS,
+    MASK_AREA_REL_TOL,
+    MASK_CONTOUR_TOL_PX,
+    MASK_EDGE_WIDTH_TOL_PX,
+    MASK_SATURATION_TOL,
+    MASK_TAIL,
     MOTTLE_NONE_TEST_SEED,
+    OUTSIDE_REGIONS_RTOL,
     REGION_GENERATOR_TEST_SEED,
     SAME_SEED_TEST_SEEDS,
     SINGLE_FRAME_TEST_SEED,
     STRIPE_FREE_SPECTRUM_TEST_SEEDS,
 )
+from regions import truth_pixels
 from spectrum import band_peak
 from truth_match import assert_matches_truth
 
@@ -200,19 +207,19 @@ def test_regions_have_soft_edged_elliptical_masks():
     (truth,) = s.truth.regions
     mask = truth.mask
     assert mask.shape == (128, 160)
-    assert mask[64, 80] == pytest.approx(1.0, abs=1e-6)
-    assert mask[0, 0] < 1e-6
+    assert mask[64, 80] == pytest.approx(1.0, abs=MASK_SATURATION_TOL)
+    assert mask[0, 0] < MASK_SATURATION_TOL
     # A ray along the minor axis (rows), downward from the centre.
     ray = mask[64:, 80]
     assert np.all(np.diff(ray) <= 0)
-    # The 0.5 contour is at the ellipse, within 1 px.
+    # The 0.5 contour is at the ellipse.
     crossing = np.interp(0.5, ray[::-1], np.arange(len(ray))[::-1])
-    assert abs(crossing - a) <= 1.0
-    # The 0.9 -> 0.1 band is edge_px wide along the minor axis, +-1 px.
+    assert abs(crossing - a) <= MASK_CONTOUR_TOL_PX
+    # The 0.9 -> 0.1 band is edge_px wide along the minor axis.
     r90 = np.interp(0.9, ray[::-1], np.arange(len(ray))[::-1])
     r10 = np.interp(0.1, ray[::-1], np.arange(len(ray))[::-1])
-    assert abs((r10 - r90) - edge) <= 1.0
-    assert (mask >= 0.5).sum() == pytest.approx(np.pi * a * b, rel=0.02)
+    assert abs((r10 - r90) - edge) <= MASK_EDGE_WIDTH_TOL_PX
+    assert truth_pixels(truth).sum() == pytest.approx(np.pi * a * b, rel=MASK_AREA_REL_TOL)
 
 
 def test_each_region_has_its_own_period_and_angle():
@@ -224,10 +231,10 @@ def test_each_region_has_its_own_period_and_angle():
         peak = band_peak(s.frame[64:192, cols])
         assert_matches_truth(peak.period, peak.angle_deg, region)
     plain = generate(**common, regions=())
-    far = (s.truth.regions[0].mask < 1e-12) & (s.truth.regions[1].mask < 1e-12)
+    far = (s.truth.regions[0].mask < MASK_TAIL) & (s.truth.regions[1].mask < MASK_TAIL)
     assert far.any()
-    # tanh never reaches 0, so equal up to the mask's 1e-12 tail.
-    assert np.allclose(s.clean[far], plain.clean[far], rtol=1e-9, atol=0)
+    # tanh never reaches 0, so equal up to the mask's tail.
+    assert np.allclose(s.clean[far], plain.clean[far], rtol=OUTSIDE_REGIONS_RTOL, atol=0)
 
 
 def test_ground_truth_lists_regions():
