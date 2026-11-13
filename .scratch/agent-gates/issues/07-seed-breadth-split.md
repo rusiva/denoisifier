@@ -18,7 +18,7 @@ The inner loop was nearly half of it. Each fast run grew from about 6-7 min to a
 
 **Blocked by:** none
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Step 0, before any change: a `--durations=0` run of the fast tier on an idle machine (background, log, 1-minute load below 2). The per-test times go in Comments and set the subset below.
 - [ ] A `wide` marker is registered in `[tool.pytest.ini_options]` (`strict_markers` is on). A small helper marks the extra parameters, so `parametrize("seed", inner(SEEDS))` leaves the first seeds unmarked and gives the others `pytest.mark.wide`. The number of unmarked seeds (start: 2) is a named constant in `tests/protected.py`.
