@@ -3,6 +3,20 @@
 Method: local periodicity plus a near-vertical Angle, not feature size
 (ADR 0001); the filter bank lives in ``_local_stripes``.
 
+Data quality comes first (``_data_quality``). Spike pixels (cosmic-ray hits
+and hot pixels: single pixels and short streaks, at least the frame's
+peak-over-baseline scale brighter than their column neighbours) are found and
+replaced by their column neighbours' median in a working copy; every later
+step runs on that copy, and the caller's frame is never changed. Clipped
+Pixels (at or above the clip level: by default a plateau of at least
+``_MIN_CLIPPED_PIXELS`` equal values at the frame's maximum, or the caller's
+``clip_level``) that are not Spike pixels are left out of the Modulation
+Depth only; detection, Period, Angle, region growth and the mask use them as
+they are. This does not recover the depth when a large share of a region is
+clipped (above about a fifth): the reported depth then drifts toward the
+flattened value, silently per region, and ``Report.clipped_pixels`` is the
+frame-level warning.
+
 Regions are built without reference to the threshold, so the verdict, the
 score and the reported regions always agree:
 
@@ -28,7 +42,8 @@ score and the reported regions always agree:
    ratio over what is left (0.0 if nothing), and the reported regions are
    those whose peak ratio is above the threshold. Each one's Period and Angle
    are refined on its pixels with a filter re-tuned to them; its depth is the
-   median over its interior (``_INTERIOR_FRACTION``).
+   median over its interior (``_INTERIOR_FRACTION``), leaving out interior
+   pixels near Clipped Pixels (``_CLIPPED_WEIGHT_MAX``).
 """
 
 from __future__ import annotations
@@ -163,9 +178,22 @@ def analyse(
     which a region is reported; it changes which regions are reported, never
     their pixels, bounding boxes or measurements, nor the score.
 
-    ``clip_level`` overrides the automatic clip detection: pixels at or above
-    it are Clipped Pixels; ``inf`` means nothing is clipped; ``None`` (the
-    default) detects a plateau of equal values at the frame's maximum.
+    Spike pixels are always rejected first: replaced by the median of their
+    column neighbours in a working copy that every later step uses. The count
+    is reliable from about 30 photons at the peak; hot pixels dimmer than
+    the frame's peak-over-baseline scale and long tracks are not rejected.
+
+    ``clip_level`` (frame units) overrides the automatic clip detection:
+    pixels at or above it are Clipped Pixels; ``inf`` means nothing is
+    clipped; ``NaN`` raises ``ValueError``. ``None`` (the default) detects a
+    plateau of equal values at the frame's maximum; a constant frame shows no
+    level, and a per-pixel dark subtraction breaks the plateau (give the
+    level then). Clipped Pixels are left out of the Modulation Depth only.
+
+    ``Report.spike_pixels`` counts the pixels rejected as Spikes;
+    ``Report.clipped_pixels`` the Clipped Pixels that are not Spike pixels,
+    so a Spike saturated inside the clip plateau of a bright region is
+    counted as clipped.
     """
     frame = np.asarray(frame, dtype=float)
     if frame.ndim != 2:

@@ -16,6 +16,14 @@ Angle and depth under a soft elliptical mask, sharing ``phase0``:
 Noise is either additive Gaussian (``noise`` a float) or the EMCCD chain
 (``noise`` an ``Emccd``): Poisson photons plus spurious charge, EM gain as a
 Gamma distribution, Gaussian read noise, divided back by the gain.
+
+Data-quality problems come last (``spikes``, ``clip_level``): Spikes add
+short bright streaks on top of the noisy frame, then the frame is clipped:
+
+    frame = min(clean + noise + spikes, clip_level)
+
+``GroundTruth.spike_mask`` and ``clipped_mask`` record which pixels each one
+touched.
 """
 
 from __future__ import annotations
