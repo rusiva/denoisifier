@@ -235,3 +235,10 @@ The slowest test is 6.82 s, under the 10 s limit. The time, about 3 min, is what
 - `uv run --locked pytest --collect-only -q` → `1032/1036 tests collected (4 deselected)`. None of the 1009 before-ids is removed; the 23 added ids are all in `tests/test_inner_loop.py`.
 - `uv run --locked pytest -m slow --collect-only -q` → `4/1036 tests collected (1032 deselected)`; the ids are identical to before.
 - `uv run --locked pytest -m "not slow and not wide" --collect-only -q` → `558/1036 tests collected (478 deselected)`. Every one of these ids is in `check`, and the set of test functions (ids cut at `[`) is the same as `check`'s.
+
+### 2026-11-14 — closing gates (fixer)
+
+Both at `3f09325-dirty` (dirty only in unrelated `.scratch/stripe-detector/issues/` files, none stamped). Each ran in the background and started when the 1-min load was below 1.0:
+
+- `make check-slow` → `EXIT=0`, `4 passed, 1032 deselected in 310.85s (0:05:10)`, `make check-slow: green; wrote .gate/check-slow-stamp.json`. Log: `.scratch/agent-gates/handoffs/07-check-slow.log`. Load before 0.97, after 12.91: an unexplained WSL spike, with no heavy process in `ps`.
+- `make check` → `EXIT=0`, `1032 passed, 4 deselected in 535.91s (0:08:55)`, and the slow-tier stamp check passed. Log: `.scratch/agent-gates/handoffs/07-check.log`. Load before 0.88, after 1.31.
