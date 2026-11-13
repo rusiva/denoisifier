@@ -43,6 +43,8 @@ denoisifier.analysis :: _REFINE_STEPS :: 2
 denoisifier.analysis :: _INTERIOR_FRACTION :: 0.5
 
 denoisifier.synthetic :: _TYPICAL_MOTTLE_STRENGTH :: {'scorched': 0.4, 'multiscale': 0.35}
+denoisifier.synthetic :: _SPIKE_MAX_LENGTH :: 3
+denoisifier.synthetic :: _SPIKE_BRIGHTNESS :: (2.0, 10.0)
 denoisifier.synthetic :: Emccd.photons_peak :: 100.0
 denoisifier.synthetic :: Emccd.em_gain :: 300.0
 denoisifier.synthetic :: Emccd.read_noise_e :: 50.0

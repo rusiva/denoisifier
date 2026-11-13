@@ -34,6 +34,14 @@ MottleKind = Literal["none", "scorched", "multiscale"]
 
 _TYPICAL_MOTTLE_STRENGTH = {"scorched": 0.4, "multiscale": 0.35}
 
+# Spikes (ticket 06): each event is a straight streak of 1 to this many pixels
+# (cosmic-ray hits and hot pixels as single pixels and short streaks).
+_SPIKE_MAX_LENGTH = 3
+# Each hit pixel gains a brightness uniform in this range times the clean
+# frame's maximum: bright only (evidence/06-prototype-p1.md checked the 2.0
+# lower end; dim hot pixels are out of the model).
+_SPIKE_BRIGHTNESS = (2.0, 10.0)
+
 
 @dataclass(frozen=True)
 class Emccd:
@@ -96,9 +104,25 @@ class GroundTruth:
     ``period``, ``angle_deg`` and ``modulation_depth`` are the single
     region's values (Period in pixels; Angle in degrees, sign convention in
     GLOSSARY.md); they raise ``ValueError`` unless there is exactly one region.
+
+    ``spike_mask`` (bool, frame shape) holds every pixel a Spike hit, clipped
+    or not. ``clipped_mask`` holds the pixels of the spike-free frame at or
+    above the clip level that no Spike hit, so the two are disjoint. Both are
+    all False without spikes or without a clip level; ``spike_pixels`` and
+    ``clipped_pixels`` are their counts.
     """
 
     regions: tuple[RegionTruth, ...]
+    spike_mask: np.ndarray
+    clipped_mask: np.ndarray
+
+    @property
+    def spike_pixels(self) -> int:
+        return int(self.spike_mask.sum())
+
+    @property
+    def clipped_pixels(self) -> int:
+        return int(self.clipped_mask.sum())
 
     def _only(self) -> RegionTruth:
         if len(self.regions) != 1:
@@ -123,9 +147,10 @@ class GroundTruth:
 
 @dataclass(frozen=True)
 class Synthetic:
-    """A generated frame, its ground truth, and ``clean``: the noise-free
-    frame in the same units as ``frame``, so ``frame - clean`` is pure noise
-    (spurious charge included)."""
+    """A generated frame, its ground truth, and ``clean``: the noise-, spike-
+    and clip-free frame in the same units as ``frame``, so ``frame - clean`` is
+    pure noise (spurious charge included) when ``spikes == 0`` and
+    ``clip_level is None``."""
 
     frame: np.ndarray
     truth: GroundTruth
@@ -144,6 +169,8 @@ def generate(
     noise: float | Emccd = 0.01,
     peak: float = 1000.0,
     regions: Sequence[StripedRegion] | None = None,
+    spikes: int = 0,
+    clip_level: float | None = None,
 ) -> Synthetic:
     """Generate one frame: profile times full-frame stripes, plus noise.
 
@@ -167,6 +194,17 @@ def generate(
     strength 0.4) or ``"multiscale"`` (power-law; typical strength 0.35).
     ``mottle_strength`` is the std of the log-mottle; ``None`` takes the
     typical value. Mottle is isotropic (ADR 0001).
+
+    ``spikes`` (a non-negative int) adds that many Spike events after the
+    noise, for either noise model: each a straight streak of 1 to
+    ``_SPIKE_MAX_LENGTH`` pixels in a uniform direction, each pixel brighter by
+    ``_SPIKE_BRIGHTNESS`` times ``clean.max()``. Dim hot pixels and long tracks
+    are not modelled. ``clip_level`` (finite, frame units, the meaning of
+    ``analyse(..., clip_level=)``) then clips the frame to at most that value;
+    ``None`` means no clipping (``inf`` is rejected; ``analyse`` accepts it).
+    With ``spikes=0`` and ``clip_level=None`` the frame is bit-identical to a
+    call without them, and a spiked frame equals the same seed's spike-free
+    frame outside the hit pixels.
 
     Once the arguments are valid, the seed is raised as the audit event
     ``denoisifier.synthetic.generate`` (``sys.audit``) just before it seeds the
@@ -205,13 +243,18 @@ def generate(
         _check_emccd(noise)
     elif noise < 0:
         raise ValueError(f"noise must be >= 0, got {noise!r}")
+    if isinstance(spikes, bool) or not isinstance(spikes, int | np.integer) or spikes < 0:
+        raise ValueError(f"spikes must be a non-negative int, got {spikes!r}")
+    if clip_level is not None and not np.isfinite(clip_level):
+        raise ValueError(f"clip_level must be finite (None for no clipping), got {clip_level!r}")
 
     sys.audit("denoisifier.synthetic.generate", seed)
     rng = np.random.default_rng(seed)
     rows, cols = shape
     y, x = np.mgrid[0:rows, 0:cols].astype(float)
 
-    # RNG draw order is fixed: profile, stripe phase offset, mottle, noise.
+    # RNG draw order is fixed: profile, stripe phase offset, mottle, noise,
+    # then spikes (only when spikes > 0).
     # So for one seed and shape, profile and mottle do not depend on the
     # stripe or noise settings.
     # The Gaussian path scales the profile first, as ticket 01 did, so
@@ -268,11 +311,53 @@ def generate(
         frame = _emccd(rng, clean, noise)
     else:
         frame = clean + rng.normal(0.0, noise * peak, size=shape)
+
+    spike_mask = np.zeros(shape, dtype=bool)
+    clipped_mask = np.zeros(shape, dtype=bool)
+    if spikes > 0:
+        added = _spikes(rng, shape, spikes, float(clean.max()))
+        spike_mask = added > 0
+    if clip_level is not None:
+        # Clipped Pixels: the spike-free frame at or above the level, where no
+        # spike hit (a hit pixel is a spike pixel, clipped or not).
+        clipped_mask = (frame >= clip_level) & ~spike_mask
+    if spikes > 0:
+        frame = frame + added
+    if clip_level is not None:
+        frame = np.minimum(frame, clip_level)
     return Synthetic(
         frame=frame,
-        truth=GroundTruth(regions=truths),
+        truth=GroundTruth(regions=truths, spike_mask=spike_mask, clipped_mask=clipped_mask),
         clean=clean,
     )
+
+
+def _spikes(rng: np.random.Generator, shape: tuple[int, int], count: int, top: float) -> _F64:
+    """The brightness ``count`` spike events add (frame shape, 0 where none hit).
+
+    Draw order: start rows, start columns, lengths, directions in [0, pi), then
+    a brightness for ``_SPIKE_MAX_LENGTH`` pixels per event (unused ones are
+    discarded). A streak steps one pixel at a time along its dominant axis, so
+    a streak of length L covers L distinct pixels; pixels off the frame are
+    dropped, and overlapping hits add.
+    """
+    rows, cols = shape
+    starts_r = rng.integers(0, rows, size=count)
+    starts_c = rng.integers(0, cols, size=count)
+    lengths = rng.integers(1, _SPIKE_MAX_LENGTH + 1, size=count)
+    directions = rng.uniform(0.0, np.pi, size=count)
+    low, high = _SPIKE_BRIGHTNESS
+    brightness = rng.uniform(low, high, size=(count, _SPIKE_MAX_LENGTH)) * top
+    added = np.zeros(shape)
+    for i in range(count):
+        dr, dc = np.sin(directions[i]), np.cos(directions[i])
+        step = max(abs(dr), abs(dc))
+        for k in range(int(lengths[i])):
+            r = int(starts_r[i] + np.rint(k * dr / step))
+            c = int(starts_c[i] + np.rint(k * dc / step))
+            if 0 <= r < rows and 0 <= c < cols:
+                added[r, c] += brightness[i, k]
+    return added
 
 
 def _check_stripes(period: float, modulation_depth: float) -> None:

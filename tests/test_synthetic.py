@@ -3,7 +3,10 @@ import re
 
 import numpy as np
 import pytest
+from scipy import ndimage
 
+from cases import CASES
+from denoisifier import synthetic
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
     DIGEST_TEST_SEEDS,
@@ -12,11 +15,15 @@ from protected import (
     MASK_EDGE_WIDTH_TOL_PX,
     MASK_SATURATION_TOL,
     MASK_TAIL,
+    MILD_CLIP_LEVEL_FRACTION,
     MOTTLE_NONE_TEST_SEED,
     OUTSIDE_REGIONS_RTOL,
     REGION_GENERATOR_TEST_SEED,
     SAME_SEED_TEST_SEEDS,
+    SATURATING_CLIP_FACTOR,
     SINGLE_FRAME_TEST_SEED,
+    SPIKE_GENERATOR_TEST_SEED,
+    SPIKE_TEST_COUNT,
     STRIPE_FREE_SPECTRUM_TEST_SEEDS,
 )
 from regions import truth_pixels
@@ -114,6 +121,10 @@ def test_emccd_spurious_charge_adds_its_mean():
         (dict(noise=Emccd(em_gain=0.5)), "em_gain must be >= 1"),
         (dict(noise=Emccd(read_noise_e=-1)), "read_noise_e must be >= 0"),
         (dict(noise=Emccd(cic=-0.1)), "cic must be >= 0"),
+        (dict(spikes=-1), "spikes must be a non-negative int"),
+        (dict(spikes=1.5), "spikes must be a non-negative int"),
+        (dict(clip_level=np.nan), "clip_level must be finite"),
+        (dict(clip_level=np.inf), "clip_level must be finite"),
     ],
 )
 def test_rejects_invalid_settings(kwargs, message):
@@ -274,3 +285,103 @@ def test_ground_truth_lists_regions():
 def test_rejects_invalid_regions(kwargs, message):
     with pytest.raises(ValueError, match="^" + re.escape(message)):
         generate(seed=REGION_GENERATOR_TEST_SEED, shape=(128, 160), **kwargs)
+
+
+# --- Spikes and Clipped Pixels (ticket 06) -----------------------------------
+
+
+def _typical(seed, **kwargs):
+    """256x256, scorched Mottle, EMCCD at 100 photons, m 0.5, CASES[seed % 10]."""
+    case = CASES[seed % 10]
+    return generate(
+        seed=seed,
+        period=case.period,
+        angle_deg=case.angle_deg,
+        modulation_depth=0.5,
+        mottle="scorched",
+        noise=Emccd(),
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize("kind", list(_BASE_DIGESTS))
+def test_spike_free_unclipped_frames_are_unchanged(kind):
+    """spikes=0, clip_level=None is the default call, bit for bit, with empty masks."""
+    for seed in DIGEST_TEST_SEEDS:
+        default = generate(seed=seed, **_DIGEST_KWARGS[kind])
+        explicit = generate(seed=seed, spikes=0, clip_level=None, **_DIGEST_KWARGS[kind])
+        assert np.array_equal(default.frame, explicit.frame)
+        assert np.array_equal(default.clean, explicit.clean)
+        for truth in (default.truth, explicit.truth):
+            assert truth.spike_mask.shape == truth.clipped_mask.shape == default.frame.shape
+            assert truth.spike_pixels == truth.clipped_pixels == 0
+
+
+def test_spikes_add_bright_streaks_and_are_in_the_truth():
+    seed = SPIKE_GENERATOR_TEST_SEED
+    free = _typical(seed)
+    spiked = _typical(seed, spikes=SPIKE_TEST_COUNT)
+    mask = spiked.truth.spike_mask
+    assert mask.dtype == bool
+    assert np.array_equal(spiked.frame[~mask], free.frame[~mask])
+    assert np.array_equal(spiked.clean, free.clean)
+    excess = (spiked.frame - free.frame)[mask]
+    assert excess.min() >= synthetic._SPIKE_BRIGHTNESS[0] * spiked.clean.max()
+    n = spiked.truth.spike_pixels
+    assert n == mask.sum()
+    assert SPIKE_TEST_COUNT <= n <= synthetic._SPIKE_MAX_LENGTH * SPIKE_TEST_COUNT
+    _, components = ndimage.label(mask, structure=np.ones((3, 3)))
+    assert components <= SPIKE_TEST_COUNT
+    assert spiked.truth.clipped_pixels == 0
+    assert not spiked.truth.clipped_mask.any()
+
+
+def test_streaks_cover_their_length():
+    """A streak inside the frame covers as many distinct pixels as its length,
+    whatever its direction (no pixel is hit twice near 45 degrees)."""
+    lengths = []
+    for seed in range(SPIKE_GENERATOR_TEST_SEED, SPIKE_GENERATOR_TEST_SEED + 6):
+        s = generate(seed=seed, shape=(64, 64), modulation_depth=0.0, noise=0.0, spikes=1)
+        free = generate(seed=seed, shape=(64, 64), modulation_depth=0.0, noise=0.0)
+        hit = s.frame > free.frame
+        assert np.array_equal(hit, s.truth.spike_mask)
+        rows, cols = np.nonzero(hit)
+        assert 1 <= hit.sum() <= synthetic._SPIKE_MAX_LENGTH
+        # One straight 8-connected run: one step per pixel along the longer extent.
+        extent = max(np.ptp(rows), np.ptp(cols)) + 1
+        if rows.min() > 0 and cols.min() > 0 and rows.max() < 63 and cols.max() < 63:
+            assert extent == hit.sum()
+        lengths.append(int(hit.sum()))
+    assert len(set(lengths)) > 1
+
+
+def test_clip_level_saturates_the_frame_and_is_in_the_truth():
+    seed = SPIKE_GENERATOR_TEST_SEED
+    unclipped = _typical(seed)
+    level = MILD_CLIP_LEVEL_FRACTION * unclipped.clean.max()
+    clipped = _typical(seed, clip_level=level)
+    assert clipped.frame.max() == level
+    assert np.array_equal(clipped.truth.clipped_mask, unclipped.frame >= level)
+    rest = ~clipped.truth.clipped_mask
+    assert np.array_equal(clipped.frame[rest], unclipped.frame[rest])
+    assert np.all(clipped.frame[~rest] == level)
+    assert clipped.truth.clipped_pixels > 0
+    assert clipped.truth.spike_pixels == 0
+    assert np.array_equal(clipped.clean, unclipped.clean)
+
+
+def test_spike_and_clipped_masks_are_disjoint():
+    """Every hit pixel is in spike_mask, clipped or not; clipped_mask holds the
+    spike-free frame's pixels at or above the level that no spike hit."""
+    seed = SPIKE_GENERATOR_TEST_SEED
+    free = _typical(seed)
+    level = SATURATING_CLIP_FACTOR * free.clean.max()
+    spiked = _typical(seed, spikes=SPIKE_TEST_COUNT)
+    both = _typical(seed, spikes=SPIKE_TEST_COUNT, clip_level=level)
+    spikes, clipped = both.truth.spike_mask, both.truth.clipped_mask
+    assert np.array_equal(spikes, spiked.truth.spike_mask)
+    assert not (spikes & clipped).any()
+    assert np.array_equal(clipped, (free.frame >= level) & ~spikes)
+    assert np.array_equal(both.frame, np.minimum(spiked.frame, level))
+    assert (both.frame[spikes] == level).any()
+    assert (both.frame[spikes] < level).any()
