@@ -16,3 +16,5 @@
 ## Comments
 
 - 2026-11-12, owner ruling after ticket 05: the heavy gates run once, at the end of the ticket, after the code review's fixes (CLAUDE.md, Gates, "When"). A second `make measure` is only for a detector fix that the final measure forces, and its reason goes here.
+- 2026-11-13, from ticket 06 (`.scratch/stripe-detector/handoffs/06-critic-2.md` item 2): clipped stripe-free frames score both higher and lower than unclipped ones (mean change near zero), and one frame per signal level crossed 49.7 (seeds 396_085, 396_078); either measure the stripe-free rate on clipped frames (a few hundred, at ticket 06's `CLIP_LEVEL_FRACTION`) or state that the 1% rate holds for unclipped frames.
+- 2026-11-13, from ticket 06 (`.scratch/stripe-detector/handoffs/06-critic-3.md`): the hard group gating (size and leakage rules on the best surviving group) makes the score jump under small pixel changes: replacing about 0.3% of a stripe-free frame's pixels with their column median moves it between 0 and 15-39, and once from 39.0 to 79.4, across `GATE_STORED_THRESHOLD`.
