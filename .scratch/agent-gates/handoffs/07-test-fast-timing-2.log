@@ -1,0 +1,60 @@
+HEAD ee2f774
+BEFORE 23:07:25  23:07:25 up 4 days,  4:18,  4 users,  load average: 0.81, 2.70, 3.85
+uv run --locked pytest -x --ff -m "not slow and not wide"
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 1032 items / 476 deselected / 556 selected
+run-last-failure: 121 known failures not in selected tests
+
+tests/test_analyse.py .................................................. [  8%]
+........................................................................ [ 21%]
+........................................................................ [ 34%]
+..............................................                           [ 43%]
+tests/test_bench.py .....                                                [ 44%]
+tests/test_calibration.py ........                                       [ 45%]
+tests/test_cli.py ..............................                         [ 50%]
+tests/test_data_quality.py ................                              [ 53%]
+tests/test_feasibility_gate.py ..............                            [ 56%]
+tests/test_glossary_terms.py ......                                      [ 57%]
+tests/test_inner_loop.py ...................                             [ 60%]
+tests/test_protected_numbers.py ..........                               [ 62%]
+tests/test_read_frame.py ............................................... [ 71%]
+.....                                                                    [ 71%]
+tests/test_require_background_gate.py ..........................         [ 76%]
+tests/test_seed_guard.py ............                                    [ 78%]
+tests/test_slow_regression_plan.py ........                              [ 80%]
+tests/test_slow_stamp.py .................................               [ 86%]
+tests/test_synthetic.py ................................................ [ 94%]
+.............................                                            [100%]
+
+============================= slowest 10 durations =============================
+8.21s call     tests/test_analyse.py::test_two_regions_with_different_periods_are_reported_separately[76-5-12]
+5.33s call     tests/test_analyse.py::test_heavily_clipped_partial_region_is_no_worse_than_no_exclusion[83]
+5.27s call     tests/test_analyse.py::test_partial_region_is_reported_with_its_measurements[67]
+5.07s call     tests/test_analyse.py::test_partial_region_is_reported_with_its_measurements[66]
+4.86s call     tests/test_analyse.py::test_heavily_clipped_partial_region_is_no_worse_than_no_exclusion[81]
+4.36s call     tests/test_analyse.py::test_depth_is_measured_on_the_region_interior[93024-20--10-scorched]
+3.74s call     tests/test_analyse.py::test_depth_is_measured_on_the_region_interior[93048-10-3-multiscale]
+3.58s call     tests/test_slow_regression_plan.py::test_regression_check_runs_on_a_tiny_plan
+3.00s call     tests/test_analyse.py::test_report_counts_spike_pixels[gaussian-m0.5-81]
+2.92s call     tests/test_analyse.py::test_stripes_on_one_flank_of_the_envelope_are_found[66]
+=============== 556 passed, 476 deselected in 252.89s (0:04:12) ================
+AFTER 23:11:31  23:11:31 up 4 days,  4:22,  4 users,  load average: 1.57, 2.38, 3.48
+WALL 246 s
+LOAD 23:07:25 0.81 2.70 3.85 3/1144 2249450
+LOAD 23:07:54 1.51 2.69 3.81 2/1175 2249568
+LOAD 23:08:23 3.35 3.04 3.89 3/1174 2249622
+LOAD 23:08:52 3.09 2.99 3.85 2/1181 2249683
+LOAD 23:09:21 3.23 3.02 3.83 3/1176 2249752
+LOAD 23:09:50 2.35 2.83 3.74 2/1178 2249834
+LOAD 23:10:19 1.88 2.67 3.65 3/1176 2249905
+LOAD 23:10:48 1.53 2.51 3.57 2/1178 2249971
+LOAD 23:11:17 1.32 2.36 3.49 4/1173 2250151
+EXIT=0

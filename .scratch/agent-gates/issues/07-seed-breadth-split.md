@@ -158,3 +158,40 @@ The totals that set the subset:
 Collected ids before any change (for "same ids before and after"), in `.scratch/agent-gates/handoffs/`: `07-ids-check-before.txt` (`uv run --locked pytest --collect-only -q`: `1009/1013 tests collected (4 deselected)`, 713 of them in `tests/test_analyse.py`) and `07-ids-check-slow-before.txt` (`uv run --locked pytest -m slow --collect-only -q`: `4/1013 tests collected (1009 deselected)`).
 
 The plan: `.scratch/agent-gates/handoffs/07-plan.md`.
+
+### 2026-11-13 — implementation and the measured inner loop (implementer)
+
+Commit `ee2f774` (plan `07-plan.md` at `69c8730`, review notes B1-B4, N1-N6 applied; N6: the `--lf` case plants its failing mixed function alone, in its own `tmp_path` subdirectory). New: `tests/inner_loop.py` (`WIDE`, `inner`, `diagonal`), `tests/test_inner_loop.py` (helpers, the all-`wide` check in 4 subprocess cases, the coverage asserts, the `make -n test-fast` assert), `regions.two_region_case` (cached, read-only arrays; `analyse` accepted the read-only frame at every threshold kind), `_free_score` in `tests/test_analyse.py`. Gate config, inside the approval: the `test-fast` recipe, the `wide` marker line, the hook in `tests/conftest.py`, one added lockfile line (`protected :: INNER_LOOP_SEED_COUNT :: 2`; `git diff 21487c9 -- tests/protected_numbers.lock` adds that line only). `check`/`check-slow` recipes and `tests/slow_stamp.py` unchanged. No tolerance, expected value, timeout, seed range or pass count changed; the `git diff` of `tests/` adds no `timeout`, `skip`, `xfail`, `slow`, `noqa` or `type: ignore`.
+
+**Measured `make test-fast`** (`PYTEST_ADDOPTS="--durations=10" make test-fast`, background, started when the 1-min load was below 1.0, `uptime` logged every 30 s), at `ee2f774` (tree clean in `CLAUDE.md`, `Makefile`, `pyproject.toml`, `tests`, `src`):
+
+- Run 1, log `.scratch/agent-gates/handoffs/07-test-fast-timing-1.log`: `EXIT=0`, `556 passed, 476 deselected in 336.30s (0:05:36)`, wall 327 s. Load 0.95 at start, 5.86 at peak, 5.21 at end. Slowest items 11.51 s and 11.03 s (`test_report_counts_clipped_pixels[91]`, `[92]`), over 10 s while the load was above 2, so rerun once (B4).
+- Run 2, log `.scratch/agent-gates/handoffs/07-test-fast-timing-2.log`: `EXIT=0`, `556 passed, 476 deselected in 252.89s (0:04:12)`, wall 246 s. Load 0.81 at start, 3.35 at peak, 1.57 at end (1/5/15-min at end: 1.57 / 2.38 / 3.48). Top 10:
+
+| s | test |
+|---|---|
+| 8.21 | `test_two_regions_with_different_periods_are_reported_separately[76-5-12]` |
+| 5.33 | `test_heavily_clipped_partial_region_is_no_worse_than_no_exclusion[83]` |
+| 5.27 | `test_partial_region_is_reported_with_its_measurements[67]` |
+| 5.07 | `test_partial_region_is_reported_with_its_measurements[66]` |
+| 4.86 | `test_heavily_clipped_partial_region_is_no_worse_than_no_exclusion[81]` |
+| 4.36 | `test_depth_is_measured_on_the_region_interior[93024-20--10-scorched]` |
+| 3.74 | `test_depth_is_measured_on_the_region_interior[93048-10-3-multiscale]` |
+| 3.58 | `test_slow_regression_plan.py::test_regression_check_runs_on_a_tiny_plan` |
+| 3.00 | `test_report_counts_spike_pixels[gaussian-m0.5-81]` |
+| 2.92 | `test_stripes_on_one_flank_of_the_envelope_are_found[66]` |
+
+**Result: the slowest test (8.21 s) meets "about 10 s or less"; the time (about 4 min) misses "about 2 minutes".** Per plan section 9 nothing further was cut and `INNER_LOOP_SEED_COUNT` stays 2; the owner question (accept, or approve Q3 (b)) is the orchestrator's. Neither run was idle throughout: the load rose above 2 during both, with no other CPU-heavy process in `ps`.
+
+**Same ids for `check` and `check-slow`** (diffed against `07-ids-check-before.txt` and `07-ids-check-slow-before.txt`, sorted):
+- `uv run --locked pytest --collect-only -q` → `1028/1032 tests collected (4 deselected)`. The diff is 19 added ids, all in the new `tests/test_inner_loop.py`; every one of the 1009 before-ids is present, none removed or renamed.
+- `uv run --locked pytest -m slow --collect-only -q` → `4/1032 tests collected (1028 deselected)`; ids identical to before.
+- `uv run --locked pytest -m "not slow and not wide" --collect-only -q` → `556/1032 tests collected (476 deselected)`; `comm -23` of its ids against `check`'s is empty, and the set of test functions (ids cut at `[`) is the same as `check`'s. 241 of the 556 are in `tests/test_analyse.py`.
+
+**Analysed once:** a scratchpad `-p` plugin wrapping `denoisifier.analyse` and `denoisifier.analysis.analyse` counted `640x1024 analyse calls: 1` over `-m "not slow and not wide" -k "two_region or verdict or lowering" tests/test_analyse.py` (`80 passed`). 512x512 region tests in the inner loop: two items each for `test_partial_region_*` (66, 67), `test_mask_overlaps_*` (66-scorched, 67-multiscale), `test_stripes_on_one_flank_*` (66, 67), `test_clipping_does_not_harm_*` (81, 83), `test_heavily_clipped_*` (81, 83).
+
+**"Every frame kind" reading (N4): sweep frame kind = family.** The verdict test's inner items keep every family (`free`, `striped`, `borderline`, `two-region`, `overlapping-extents`, `constant`) and every threshold kind: `free-10`, `striped-10`, `borderline-22-20`, `constant` at all 6 kinds; `free-11`, `striped-11`, `borderline-13-5`, `overlapping-extents` at `zero` and `THRESHOLD`; `two-region` at `THRESHOLD` (33 items). The Period-8 borderline frames (13-8, 16-8) and 12-20 leave the verdict inner set, but all 5 borderline frames stay in the inner loop through `test_borderline_striped_frame_has_finite_measurements`. Lowering inner items: `striped-10-zero-THRESHOLD`, `striped-10-zero-below-score`, `striped-10-score-below-score`, `striped-10-above-score-inf`, `striped-11-zero-THRESHOLD`, `overlapping-extents-zero-THRESHOLD`.
+
+**Correction to the step-0 Comment:** "10.4 s and 16.7 s for the Period 3 and 5 cases" and "8.8-25.6 s at seed 77" are load spikes, not detector cost (review B4): the same 512x512 frame took 2.62 s under another cache key in the same run.
+
+Not run here (the fixer's): `make check-slow`, then `make check`. `Makefile`, `pyproject.toml`, `tests/protected.py` and `tests/conftest.py` are stamped, so `make check-slow` is due first. The CLAUDE.md Gates text (plan section 8) is in `ee2f774`.
