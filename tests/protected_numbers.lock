@@ -50,7 +50,7 @@ denoisifier._data_quality :: _SPIKE_BASELINE_PERCENTILE :: 5.0
 denoisifier._data_quality :: _NOISE_TILE_PX :: 16
 denoisifier._data_quality :: _MAD_TO_SIGMA :: 1.4826
 denoisifier._data_quality :: _MIN_CLIPPED_PIXELS :: 4
-denoisifier._data_quality :: _CLIPPED_WEIGHT_MAX :: 0.1
+denoisifier._data_quality :: _CLIPPED_WEIGHT_MAX :: 0.05
 
 denoisifier.synthetic :: _TYPICAL_MOTTLE_STRENGTH :: {'scorched': 0.4, 'multiscale': 0.35}
 denoisifier.synthetic :: _SPIKE_MAX_LENGTH :: 3
@@ -175,6 +175,10 @@ protected :: MILD_CLIP_LEVEL_FRACTION :: 0.8
 protected :: OVERRIDE_LEVEL_FRACTION :: 0.9
 protected :: BASELINE_OFFSET :: 1000.0
 protected :: AC4_MIN_CLIPPED_PIXELS :: 30
+protected :: CLIP_LEVEL_FRACTION :: 0.4
+protected :: CLIP_MIN_SHARE :: 0.02
+protected :: CLIP_DEPTH_EPS :: 0.01
+protected :: SPIKE_SCORE_MEDIAN_TOL :: 5
 protected :: REGION_EVALUATION_SEEDS :: range(93000, 94000)
 protected :: REGION_EVALUATION_2_SEEDS :: range(94000, 95000)
 protected :: DEPTH_REGRESSION_CASES :: ((93024, 20, -10, 'scorched'), (93048, 10, 3, 'multiscale'))

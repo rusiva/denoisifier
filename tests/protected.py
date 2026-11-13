@@ -203,6 +203,13 @@ BASELINE_OFFSET = 1000.0  # a bias offset of the order of Solis frames (B3)
 # Clipped pixels inside the truth region of a partial-region depth test (B4, N7):
 # below P2's minimum at 0.8 (37 at 100 photons).
 AC4_MIN_CLIPPED_PIXELS = 30
+# Frozen at step 5c from the pre-freeze check P3 (evidence/06-prototype-p3.md).
+CLIP_LEVEL_FRACTION = 0.4  # AC 4 clip at 0.4 x clean max (P3 margin: worst error 0.060 <= 0.08)
+CLIP_MIN_SHARE = 0.02  # AC 4 precondition: clipped share of the frame (P3 minimum 2.07%)
+CLIP_DEPTH_EPS = 0.01  # depth error vs clip_level=inf: max(0.01, P3 largest excess + 0.005)
+# AC 3: median paired |score change| over the stripe-free pairs (ticket 06 Comments,
+# ruling after critic 3): P3 block medians 0.18-1.35; 58.5 with rejection off.
+SPIKE_SCORE_MEDIAN_TOL = 5
 
 # test_seed_guard.py (ticket agent-gates/04). The held-out free and striped
 # seeds of test_measure_calibrates_inside_the_block_and_evaluates_outside's

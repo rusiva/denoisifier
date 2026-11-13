@@ -62,9 +62,9 @@ _MIN_CLIPPED_PIXELS = 4
 # The Modulation Depth leaves out interior pixels where the clipped share,
 # smoothed over the bank's local-mean window (sigma _ALONG x _ACROSS
 # Periods), reaches this (analysis._interior_depth; prototype P2's
-# d9_inner_g10, the best of the tested estimators). Start value: the
-# pre-freeze check P3 sweeps 0.05, 0.10 and 0.20.
-_CLIPPED_WEIGHT_MAX = 0.10
+# d9_inner_g10, the best of the tested estimators). Set by the pre-freeze
+# check P3 from 0.05, 0.10 and 0.20 (evidence/06-prototype-p3.md).
+_CLIPPED_WEIGHT_MAX = 0.05
 
 
 def find_clipped(frame: np.ndarray, clip_level: float | None) -> np.ndarray:
