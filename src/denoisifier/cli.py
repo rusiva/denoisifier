@@ -1,9 +1,12 @@
 """Command line: read a CSV frame, write the JSON report and, on request, the Mask.
 
-The JSON report holds ``striped``, ``score``, ``threshold``, ``transposed`` and
-``regions``: one entry per Striped Region with its ``label``, ``period_px``,
-``angle_deg``, ``modulation_depth``, ``bbox`` and ``area_px`` (ticket 05 moved
-the Period, Angle and depth from the top level into the regions). With
+The JSON report holds ``striped``, ``score``, ``threshold``, ``transposed``,
+``regions``, ``spike_pixels`` and ``clipped_pixels``. ``regions`` has one entry
+per Striped Region with its ``label``, ``period_px``, ``angle_deg``,
+``modulation_depth``, ``bbox`` and ``area_px`` (ticket 05 moved the Period,
+Angle and depth from the top level into the regions). ``spike_pixels`` counts
+the pixels rejected as Spikes, ``clipped_pixels`` the Clipped Pixels that were
+not (``--clip-level`` overrides the clip detection). With
 ``--mask PATH`` the Mask is written as a CSV laid out like the input grid:
 0 outside every region, k inside the region whose ``label`` is k. Under
 ``--transpose`` the Mask and the bboxes follow the file's layout
@@ -28,7 +31,8 @@ def main(argv: list[str] | None = None) -> int:
         prog="denoisifier",
         description="Decide whether a frame is striped and report each Striped Region's "
         "period, angle, modulation depth and bounding box as JSON (per-region values under "
-        '"regions"; "transposed" records --transpose).',
+        '"regions"; "transposed" records --transpose; "spike_pixels" and "clipped_pixels" '
+        "count the pixels rejected as spikes and the clipped pixels).",
     )
     parser.add_argument(
         "frame",
@@ -54,6 +58,15 @@ def main(argv: list[str] | None = None) -> int:
         help="transpose the frame after reading (and after --drop-axis-column), for exports "
         "that write one sensor column per file row; never done without this flag",
     )
+    parser.add_argument(
+        "--clip-level",
+        type=float,
+        metavar="LEVEL",
+        help="pixels at or above LEVEL that are not rejected as spikes are clipped (saturated) "
+        "and left out of the modulation depth; default: detected as a plateau of equal values "
+        "at the frame's maximum; 'inf' turns clipping off; use it after per-pixel dark "
+        "subtraction, which breaks the plateau",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -64,7 +77,9 @@ def main(argv: list[str] | None = None) -> int:
         frame_file = read_frame(
             args.frame, drop_axis_column=args.drop_axis_column, transpose=args.transpose
         )
-        report = dataclasses.replace(analyse(frame_file.frame), reader_notes=frame_file.notes)
+        report = dataclasses.replace(
+            analyse(frame_file.frame, clip_level=args.clip_level), reader_notes=frame_file.notes
+        )
         if args.transpose:
             report = report.in_file_layout()
         text = report.to_json() + "\n"

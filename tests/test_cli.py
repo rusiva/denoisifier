@@ -9,15 +9,20 @@ import numpy as np
 import pytest
 
 from borderline import BORDERLINE, borderline_frame
+from cases import CASES
 from denoisifier import analyse, read_frame
 from denoisifier.frame_io import write_frame_csv
-from denoisifier.synthetic import StripedRegion, generate
+from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
+    CLI_CLIP_TEST_SEED,
     CLI_MASK_TEST_SEED,
     CLI_MISSING_OUTPUT_DIR_TEST_SEED,
+    CLI_SPIKE_COUNT,
     CLI_STDOUT_TEST_SEED,
     CLI_STRIPED_CSV_TEST_SEED,
     DEPTH_TOL,
+    OVERRIDE_LEVEL_FRACTION,
+    SATURATING_CLIP_FACTOR,
 )
 from regions import truth_bbox
 from truth_match import assert_matches_truth
@@ -337,3 +342,60 @@ def test_cli_refuses_a_mask_path_that_aliases_the_input_or_output(tmp_path, clas
         assert out.read_text() == "previous report\n"
     else:
         assert not out.exists()
+
+
+# --- Spikes and Clipped Pixels (ticket 06) -----------------------------------
+
+
+def _spiked_clipped_csv(tmp_path):
+    """96x160 typical frame (scorched Mottle, EMCCD at 100 photons, m 0.5) with
+    spikes, clipped at SATURATING_CLIP_FACTOR x the clean maximum, as CSV."""
+    seed = CLI_CLIP_TEST_SEED
+    case = CASES[seed % 10]
+    common = dict(
+        seed=seed,
+        shape=(96, 160),
+        period=case.period,
+        angle_deg=case.angle_deg,
+        modulation_depth=0.5,
+        mottle="scorched",
+        noise=Emccd(),
+    )
+    top = generate(**common).clean.max()
+    s = generate(**common, spikes=CLI_SPIKE_COUNT, clip_level=SATURATING_CLIP_FACTOR * top)
+    path = tmp_path / "frame.csv"
+    write_frame_csv(s.frame, path)
+    return path, top
+
+
+def _cli_report(path, *flags):
+    result = _run(path, *flags)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    report.pop("reader_notes", None)
+    return report
+
+
+def test_cli_reports_spike_and_clipped_pixels(tmp_path):
+    path, _ = _spiked_clipped_csv(tmp_path)
+    report = _cli_report(path)
+    expected = analyse(read_frame(path).frame)
+    assert expected.spike_pixels > 0
+    assert report["spike_pixels"] == expected.spike_pixels
+    assert report["clipped_pixels"] == expected.clipped_pixels
+
+
+@pytest.mark.parametrize("level", ["override", "inf"])
+def test_cli_clip_level_flag_overrides_detection(tmp_path, level):
+    path, top = _spiked_clipped_csv(tmp_path)
+    clip_level = OVERRIDE_LEVEL_FRACTION * top if level == "override" else np.inf
+    report = _cli_report(path, "--clip-level", str(float(clip_level)))
+    expected = analyse(read_frame(path).frame, clip_level=clip_level).to_dict()
+    expected.pop("reader_notes", None)
+    assert report == expected
+    assert (report["clipped_pixels"] > 0) == (level == "override")
+
+
+def test_cli_fails_cleanly_on_nan_clip_level(tmp_path):
+    path, _ = _spiked_clipped_csv(tmp_path)
+    _assert_clean_failure(_run(path, "--clip-level", "nan"), "clip_level", "nan")

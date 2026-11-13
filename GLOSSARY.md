@@ -38,6 +38,10 @@ _Avoid_: grain
 A single bright pixel or short bright streak from a cosmic-ray hit or a hot pixel, unrelated to the scene.
 _Avoid_: outlier, glitch, hot spot
 
+**Clipped Pixel**:
+A pixel at or above the clip level, whose true value the frame does not show.
+_Avoid_: overexposed
+
 ### Stripe structure
 
 **Period**:
