@@ -7,9 +7,6 @@ the generator's truth; a truth region's pixels are ``truth_pixels`` (its soft
 mask at or above TRUTH_LEVEL).
 """
 
-import dataclasses
-from functools import cache
-
 import numpy as np
 
 from denoisifier import analyse
@@ -22,6 +19,7 @@ from protected import (
     TWO_REGION_GAP_WINDOWS,
     TWO_REGION_SHAPE,
 )
+from shared_cache import normalised_cache
 
 TYPICAL = dict(noise=Emccd())  # about 100 photons at the peak
 # A truth region's pixels: its soft mask at or above this (the generator's
@@ -97,9 +95,10 @@ def two_regions(
     ]
 
 
-@cache
+@normalised_cache
 def single_region_case(seed, period, angle_deg, mottle="scorched"):
-    """(Synthetic, Report) for one typical-noise single-region frame, cached per run."""
+    """(Synthetic, Report) for one typical-noise single-region frame, cached per run
+    (``shared_cache.normalised_cache``: any spelling of one call is one entry, read-only)."""
     s = generate(
         seed=seed,
         shape=REGION_FRAME_SHAPE,
@@ -110,24 +109,13 @@ def single_region_case(seed, period, angle_deg, mottle="scorched"):
     return s, analyse(s.frame)
 
 
-def _freeze(value):
-    """Make every array of a (nested) dataclass or tuple read-only, in place."""
-    if isinstance(value, np.ndarray):
-        value.setflags(write=False)
-    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
-        for field in dataclasses.fields(value):
-            _freeze(getattr(value, field.name))
-    elif isinstance(value, tuple):
-        for item in value:
-            _freeze(item)
-
-
-@cache
+@normalised_cache
 def two_region_case(seed, left_period, right_period):
     """(Synthetic, Report) for one typical-noise two-region frame (TWO_REGION_SHAPE, scorched
     Mottle), cached per run: the 640x1024 frame is the slowest to analyse, and several tests
-    read it (ticket agent-gates/07). Call it positionally, so every caller shares one key.
-    Every array it returns is read-only, so no test can change what another test reads."""
+    read it (ticket agent-gates/07). ``shared_cache.normalised_cache``: any spelling of one
+    call is one entry, and every array it returns is read-only, so no test can change what
+    another test reads."""
     s = generate(
         seed=seed,
         shape=TWO_REGION_SHAPE,
@@ -135,9 +123,7 @@ def two_region_case(seed, left_period, right_period):
         regions=two_regions(left_period, right_period),
         **TYPICAL,
     )
-    report = analyse(s.frame)
-    _freeze((s, report))
-    return s, report
+    return s, analyse(s.frame)
 
 
 def iou(a, b):

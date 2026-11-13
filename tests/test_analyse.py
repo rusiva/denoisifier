@@ -81,6 +81,7 @@ from regions import (
     truth_pixels,
     two_region_case,
 )
+from shared_cache import analysed
 from truth_match import assert_depth_matches, assert_matches_truth
 
 SHAPE = (256, 256)
@@ -95,8 +96,7 @@ TYPICAL_NOISE = dict(noise=Emccd())
 
 @pytest.mark.parametrize("seed", inner(SEEDS))
 def test_stripe_free_mottled_frames_are_not_striped(seed):
-    s = generate(seed=seed, shape=SHAPE, modulation_depth=0.0, **TYPICAL)
-    report = analyse(s.frame)
+    _, report = analysed(seed=seed, shape=SHAPE, modulation_depth=0.0, **TYPICAL)
     assert report.striped is False
     assert report.regions == ()
     assert not report.mask().any()
@@ -109,10 +109,9 @@ CLEAR_STRIPES_PARAMS = inner(SEEDS, keep=len(CASES))
 @pytest.mark.parametrize("seed", CLEAR_STRIPES_PARAMS)
 def test_clear_stripes_in_mottle_are_found_and_measured(seed):
     period, angle_deg = CASES[seed % len(CASES)]
-    s = generate(
+    s, report = analysed(
         seed=seed, shape=SHAPE, period=period, angle_deg=angle_deg, modulation_depth=0.5, **TYPICAL
     )
-    report = analyse(s.frame)
     assert_every_region_matches(report, s.truth)
 
 
@@ -366,8 +365,7 @@ def test_borderline_striped_frame_has_finite_measurements(seed, period):
 @pytest.mark.parametrize("seed", inner(REGION_TEST_SEEDS))
 def test_partial_region_is_reported_with_its_measurements(seed):
     period, angle_deg = CASES[seed % len(CASES)]
-    # "scorched" spelt out: the same cache key as test_mask_overlaps_the_true_region.
-    s, report = single_region_case(seed, period, angle_deg, "scorched")
+    s, report = single_region_case(seed, period, angle_deg)
     assert report.striped is True
     (region,) = report.regions
     (truth,) = s.truth.regions
@@ -446,26 +444,23 @@ SIZE_SHAPES = {
     "four_by_one": lambda p, _f: (0.5 * p, 2.0 * p),  # 1p tall, 4p wide
     "narrow_tall": lambda p, f: (2.0 * p, 1.5 * f * p),  # 4p tall, 3fp wide: width only
 }
-SIZE_CASES = [(p, a) for p in (3, 8, 20) for a in (-10, 10)]
 SIZE_PERIODS = (3, 8, 20)
+SIZE_ANGLES = (-10, 10)
+SIZE_CASES = [(p, a) for p in SIZE_PERIODS for a in SIZE_ANGLES]
 
 
 def _size_params(shapes):
     """(seed, Period, Angle, shape) over every seed, SIZE_CASE and shape. The inner loop keeps
-    each (shape i, Period j) once, at Angle (-10, 10)[(i + j) % 2] and seed
-    MIN_SIZE_TEST_SEEDS[i % 2]: every shape meets every Period, and every Period both Angles."""
-    params = []
-    for seed in MIN_SIZE_TEST_SEEDS:
-        for period, angle_deg in SIZE_CASES:
-            for i, shape in enumerate(shapes):
-                j = SIZE_PERIODS.index(period)
-                kept = (
-                    angle_deg == (-10, 10)[(i + j) % 2]
-                    and seed == MIN_SIZE_TEST_SEEDS[i % INNER_LOOP_SEED_COUNT]
-                )
-                value = (seed, period, angle_deg, shape)
-                params.append(value if kept else pytest.param(*value, marks=WIDE))
-    return params
+    each (shape i, Period j) once, at Angle SIZE_ANGLES[(i + j) % 2], on the first seeds in
+    turn: every shape meets every Period, and every Period both Angles."""
+
+    def cover(case):
+        period, angle_deg, shape = case
+        i, j = shapes.index(shape), SIZE_PERIODS.index(period)
+        return angle_deg == SIZE_ANGLES[(i + j) % len(SIZE_ANGLES)]
+
+    cases = [(period, angle_deg, shape) for period, angle_deg in SIZE_CASES for shape in shapes]
+    return diagonal(MIN_SIZE_TEST_SEEDS, cases, seed_first=True, cover=cover)
 
 
 BELOW_SIZE_PARAMS = _size_params(list(SIZE_SHAPES))
@@ -584,37 +579,50 @@ def test_overlapping_extents_frame_settles_an_overlap(monkeypatch):
     assert_labels_consistent(report)
 
 
+def _frame_and_report(case):
+    """(frame, Report) of a cached (Synthetic, Report)."""
+    s, report = case
+    return s.frame, report
+
+
+def _typical_sweep_frame(seed, **kwargs):
+    return _frame_and_report(analysed(seed=seed, shape=SHAPE, **kwargs, **TYPICAL))
+
+
+def _analysed_frame(frame):
+    return frame, analyse(frame)
+
+
+# Each sweep frame by name: a function giving (frame, its Report at THRESHOLD). The free and
+# striped frames share that analysis with the other tests of the same generate call
+# (shared_cache.analysed); the two-region frame with test_two_regions_* (two_region_case).
 SWEEP_FRAMES = {
     **{
-        f"free-{seed}": (
-            lambda seed=seed: (
-                generate(seed=seed, shape=SHAPE, modulation_depth=0.0, **TYPICAL).frame
-            )
-        )
+        f"free-{seed}": (lambda seed=seed: _typical_sweep_frame(seed, modulation_depth=0.0))
         for seed in MOTTLED_TEST_SEEDS[:5]
     },
     **{
         f"striped-{seed}": (
-            lambda seed=seed: (
-                generate(
-                    seed=seed,
-                    shape=SHAPE,
-                    period=CASES[seed % len(CASES)].period,
-                    angle_deg=CASES[seed % len(CASES)].angle_deg,
-                    modulation_depth=0.5,
-                    **TYPICAL,
-                ).frame
+            lambda seed=seed: _typical_sweep_frame(
+                seed,
+                period=CASES[seed % len(CASES)].period,
+                angle_deg=CASES[seed % len(CASES)].angle_deg,
+                modulation_depth=0.5,
             )
         )
         for seed in MOTTLED_TEST_SEEDS[:5]
     },
     **{
-        f"borderline-{seed}-{period}": (lambda c=(seed, period): borderline_frame(*c))
+        f"borderline-{seed}-{period}": (
+            lambda c=(seed, period): _analysed_frame(borderline_frame(*c))
+        )
         for seed, period in BORDERLINE
     },
-    "two-region": lambda: two_region_case(TWO_REGION_TEST_SEEDS[0], *TWO_REGION_PAIRS[0])[0].frame,
-    "overlapping-extents": _overlap_frame,
-    "constant": lambda: np.ones((64, 64)),
+    "two-region": lambda: _frame_and_report(
+        two_region_case(TWO_REGION_TEST_SEEDS[0], *TWO_REGION_PAIRS[0])
+    ),
+    "overlapping-extents": lambda: _analysed_frame(_overlap_frame()),
+    "constant": lambda: _analysed_frame(np.ones((64, 64))),
 }
 
 
@@ -639,33 +647,54 @@ def _sweep_threshold(name, kind):
 
 
 @cache
+def _sweep_frame(name):
+    """(frame, Report at THRESHOLD) of sweep frame ``name``, built once per run."""
+    return SWEEP_FRAMES[name]()
+
+
+@cache
 def _sweep_report(name, kind):
     """``analyse`` of sweep frame ``name`` at threshold ``kind``, on the real path."""
+    frame, report = _sweep_frame(name)
     if kind == "THRESHOLD":
-        if name == "two-region":  # shared with test_two_regions_*: analysed once
-            return two_region_case(TWO_REGION_TEST_SEEDS[0], *TWO_REGION_PAIRS[0])[1]
-        return analyse(SWEEP_FRAMES[name]())
-    return analyse(SWEEP_FRAMES[name](), threshold=_sweep_threshold(name, kind))
+        return report
+    return analyse(frame, threshold=_sweep_threshold(name, kind))
 
 
-# The inner loop: every sweep frame family (seed repetition cut to its first two frames) and
-# every threshold kind, not their product. Each kind runs on 4 frames; the two-region frame
-# only at THRESHOLD, its one shared analysis.
-_FIRST, _SECOND = MOTTLED_TEST_SEEDS[:2]
-SWEEP_INNER_KINDS = {
-    f"free-{_FIRST}": SWEEP_THRESHOLDS,
-    f"free-{_SECOND}": ("zero", "THRESHOLD"),
-    f"striped-{_FIRST}": SWEEP_THRESHOLDS,
-    f"striped-{_SECOND}": ("zero", "THRESHOLD"),
-    "borderline-{}-{}".format(*BORDERLINE[0]): SWEEP_THRESHOLDS,
-    "borderline-{}-{}".format(*BORDERLINE[1]): ("zero", "THRESHOLD"),
-    "two-region": ("THRESHOLD",),
-    "overlapping-extents": ("zero", "THRESHOLD"),
-    "constant": SWEEP_THRESHOLDS,
+# The inner loop's striped sweep frames: the first INNER_LOOP_SEED_COUNT seeds.
+_INNER_STRIPED = [f"striped-{seed}" for seed in MOTTLED_TEST_SEEDS[:INNER_LOOP_SEED_COUNT]]
+# The lowering test's inner pairs: every threshold kind, on frames the verdict sweep analyses.
+# Only a pair whose high side is below the score has regions to compare, so (zero, THRESHOLD)
+# and (zero, below-score) carry the teeth; (below-score, score) and (above-score, inf) are
+# there for kind coverage. The two-region frame is wide: the inner loop analyses it once.
+_ZERO_VS_THRESHOLD = frozenset(("zero", "THRESHOLD"))
+LOWERING_INNER_PAIRS = {
+    _INNER_STRIPED[0]: {
+        _ZERO_VS_THRESHOLD,
+        frozenset(("zero", "below-score")),
+        frozenset(("below-score", "score")),
+        frozenset(("above-score", "inf")),
+    },
+    **{name: {_ZERO_VS_THRESHOLD} for name in _INNER_STRIPED[1:]},
+    "overlapping-extents": {_ZERO_VS_THRESHOLD},
 }
+
+
+def _verdict_runs_in_the_inner_loop(name, kind):
+    """Every sweep frame at THRESHOLD (one analysis, mostly shared); every threshold kind on
+    the constant frame and on the analyses the lowering test's inner pairs read; and the first
+    stripe-free frame at zero, where it reports groups below THRESHOLD."""
+    return (
+        kind == "THRESHOLD"
+        or name == "constant"
+        or any(kind in pair for pair in LOWERING_INNER_PAIRS.get(name, ()))
+        or (name, kind) == (f"free-{MOTTLED_TEST_SEEDS[0]}", "zero")
+    )
+
+
 VERDICT_PARAMS = [
     (name, kind)
-    if kind in SWEEP_INNER_KINDS.get(name, ())
+    if _verdict_runs_in_the_inner_loop(name, kind)
     else pytest.param(name, kind, marks=WIDE)
     for name in SWEEP_FRAMES
     for kind in SWEEP_THRESHOLDS
@@ -700,21 +729,6 @@ def _regions_by_bbox(report):
     return {r.bbox: (r, report.labels == r.label) for r in report.regions}
 
 
-# The inner loop: every threshold kind, on the frames the verdict sweep already analysed. Only
-# a pair whose high side is below the score has regions to compare, so (zero, THRESHOLD) and
-# (zero, below-score) carry the teeth; (below-score, score) and (above-score, inf) are there
-# for kind coverage. The two-region frame is wide: the inner loop analyses it once.
-_WIDE_DROP = frozenset(("zero", "THRESHOLD"))
-LOWERING_INNER_PAIRS = {
-    f"striped-{_FIRST}": {
-        _WIDE_DROP,
-        frozenset(("zero", "below-score")),
-        frozenset(("below-score", "score")),
-        frozenset(("above-score", "inf")),
-    },
-    f"striped-{_SECOND}": {_WIDE_DROP},
-    "overlapping-extents": {_WIDE_DROP},
-}
 LOWERING_PARAMS = [
     (name, a, b)
     if frozenset((a, b)) in LOWERING_INNER_PAIRS.get(name, ())
@@ -862,9 +876,9 @@ def _phase_break_frame(period):
     return frame
 
 
-def _per_seed(seeds, params_of):
-    """The pytest.params ``params_of(seed)`` for every seed; those of seeds beyond the inner
-    loop's first ones are WIDE."""
+def _params_per_seed(seeds, params_of):
+    """The pytest.params ``params_of(seed)`` for every seed, in seed order; those of seeds
+    beyond the inner loop's first ones are WIDE."""
     params = []
     for value in inner(seeds):
         if isinstance(value, int):
@@ -874,12 +888,21 @@ def _per_seed(seeds, params_of):
     return params
 
 
+def _case_report(seed, **kwargs):
+    """``analyse`` of ``_case_frame(seed, **kwargs)``, shared with every test of the same
+    generate call (shared_cache.analysed)."""
+    case = CASES[seed % len(CASES)]
+    s_kwargs = dict(period=case.period, angle_deg=case.angle_deg, **kwargs)
+    return analysed(seed=seed, shape=SHAPE, **s_kwargs)[1]
+
+
+# Each spike-free frame: a function giving its Report at the defaults.
 SPIKE_FREE_FRAMES = [
-    *_per_seed(
+    *_params_per_seed(
         MOTTLED_TEST_SEEDS,
         lambda seed: [
             pytest.param(
-                lambda seed=seed, m=m: _case_frame(seed, modulation_depth=m, **TYPICAL).frame,
+                lambda seed=seed, m=m: _case_report(seed, modulation_depth=m, **TYPICAL),
                 id=f"mottled-{seed}-m{m}",
             )
             for m in (0.0, 0.5)
@@ -887,7 +910,7 @@ SPIKE_FREE_FRAMES = [
     ),
     *[
         pytest.param(
-            lambda seed=seed, case=case, noise=noise: (
+            lambda seed=seed, case=case, noise=noise: analyse(
                 generate(
                     seed=seed,
                     shape=SHAPE,
@@ -902,24 +925,27 @@ SPIKE_FREE_FRAMES = [
         for seed, case in zip(FULL_FRAME_TEST_SEEDS, FULL_FRAME_CASES, strict=True)
         for noise in (0.0, 0.01)
     ],
-    *_per_seed(
+    *_params_per_seed(
         PROFILE_ONLY_TEST_SEEDS,
         lambda seed: [
             pytest.param(
-                lambda seed=seed: (
+                lambda seed=seed: analyse(
                     generate(seed=seed, shape=SHAPE, modulation_depth=0.0, noise=0.0).frame
                 ),
                 id=f"profile-only-{seed}",
             )
         ],
     ),
-    *[pytest.param(lambda p=p: _phase_break_frame(p), id=f"phase-break-P{p}") for p in (3, 20)],
+    *[
+        pytest.param(lambda p=p: analyse(_phase_break_frame(p)), id=f"phase-break-P{p}")
+        for p in (3, 20)
+    ],
 ]
 
 
-@pytest.mark.parametrize("make_frame", SPIKE_FREE_FRAMES)
-def test_spike_free_frames_report_no_spikes(make_frame):
-    report = analyse(make_frame())
+@pytest.mark.parametrize("make_report", SPIKE_FREE_FRAMES)
+def test_spike_free_frames_report_no_spikes(make_report):
+    report = make_report()
     assert report.spike_pixels <= SPIKE_PIXELS_ABS_TOL
     assert report.clipped_pixels == 0
 
@@ -955,21 +981,17 @@ def test_clipped_and_spike_totals_match_at_a_peak_level_clip(seed):
 
 
 @cache
-def _free_score(seed):
-    """The score of the stripe-free frame of _spike_pair_scores, shared by its two clips."""
-    return analyse(generate(seed=seed, shape=SHAPE, modulation_depth=0.0, **TYPICAL).frame).score
-
-
-@cache
 def _spike_pair_scores(seed, clip):
     """Paired per seed: the scores of the same stripe-free frame without and with
     SPIKE_STRESS_COUNT Spikes (with ``clip``, the spiked frame is also clipped at
-    SATURATING_CLIP_FACTOR x the clean maximum, auto detection)."""
+    SATURATING_CLIP_FACTOR x the clean maximum, auto detection). The stripe-free frame is
+    generated and analysed once per seed, shared by both clips and the other tests of the same
+    generate call (shared_cache.analysed)."""
     kwargs = dict(modulation_depth=0.0, **TYPICAL)
-    free = generate(seed=seed, shape=SHAPE, **kwargs)
+    free, free_report = analysed(seed=seed, shape=SHAPE, **kwargs)
     level = SATURATING_CLIP_FACTOR * free.clean.max() if clip else None
     spiked = generate(seed=seed, shape=SHAPE, spikes=SPIKE_STRESS_COUNT, clip_level=level, **kwargs)
-    return _free_score(seed), analyse(spiked.frame).score
+    return free_report.score, analyse(spiked.frame).score
 
 
 SPIKE_PAIRS = [(seed, clip) for clip in (False, True) for seed in SEEDS]

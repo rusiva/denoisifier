@@ -3,17 +3,18 @@ parameters `wide`, the collection-time check that no test function is all `wide`
 subsets the inner loop keeps."""
 
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import test_analyse
 from cases import CASES
 from inner_loop import diagonal, inner
 from protected import DARK_REGRESSION_CASES, TWO_REGION_PAIRS, TWO_REGION_TEST_SEEDS
+from shared_cache import analysed, normalised_cache
 
 
 def _is_wide(param):
@@ -78,6 +79,42 @@ def test_diagonal_keeps_each_case_once_on_the_first_seeds_in_turn():
     plain = [p for p in params if not _is_wide(p)]
     assert plain == [("p", 81), ("q", 83), ("r", 81)]
     assert len(params) - len(plain) == 6
+
+
+def test_diagonal_keeps_only_the_covered_cases_on_the_first_seeds_in_turn():
+    cases = [("p",), ("q",), ("r",), ("s",)]
+    params = diagonal((81, 83, 84), cases, keep=2, cover=lambda case: case[0] in "qrs")
+    assert [_values(p) for p in params if not _is_wide(p)] == [("q", 81), ("r", 83), ("s", 81)]
+    assert len(params) == 12
+
+
+# --- The shared caches (tests/shared_cache.py) ---------------------------------------------
+
+
+def test_a_normalised_cache_shares_one_entry_across_spellings():
+    calls = []
+
+    @normalised_cache
+    def make(seed, mottle="scorched", *, scale=1.0):
+        calls.append((seed, mottle))
+        return (np.full(2, seed * scale),)
+
+    first = make(66)
+    assert make(66, "scorched") is first
+    assert make(seed=66, mottle="scorched", scale=1.0) is first
+    assert make(67) is not first
+    assert calls == [(66, "scorched"), (67, "scorched")]
+    assert not first[0].flags.writeable
+
+
+def test_analysed_shares_one_analysis_across_spellings_of_generate():
+    s, report = analysed(seed=12, modulation_depth=0.0, noise=0.0)
+    again = analysed(noise=0.0, shape=(256, 256), seed=12, modulation_depth=0.0)
+    assert again[0] is s
+    assert again[1] is report
+    assert analysed(seed=12, modulation_depth=0.0, noise=0.0, mottle="none")[1] is report
+    assert not s.frame.flags.writeable
+    assert not report.labels.flags.writeable
 
 
 # --- The collection-time all-`wide` check (tests/conftest.py) ------------------------------
@@ -210,18 +247,11 @@ def test_clear_stripes_run_every_case_in_the_inner_loop():
     assert {seed % len(CASES) for seed in seeds} == set(range(len(CASES)))
 
 
-def test_the_verdict_sweep_keeps_every_threshold_kind_and_frame_family():
+def test_the_verdict_sweep_keeps_every_frame_and_every_threshold_kind():
     pairs = _inner(test_analyse.VERDICT_PARAMS)
+    assert {name for name, _ in pairs} == set(test_analyse.SWEEP_FRAMES)
+    assert len(test_analyse.SWEEP_FRAMES) == 18
     assert {kind for _, kind in pairs} == set(test_analyse.SWEEP_THRESHOLDS)
-    families = {re.sub(r"(-\d+)+$", "", name) for name, _ in pairs}
-    assert families == {
-        "free",
-        "striped",
-        "borderline",
-        "two-region",
-        "overlapping-extents",
-        "constant",
-    }
     all_names = {_values(p)[0] for p in test_analyse.VERDICT_PARAMS}
     assert all_names == set(test_analyse.SWEEP_FRAMES)
 

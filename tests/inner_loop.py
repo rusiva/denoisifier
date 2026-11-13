@@ -56,17 +56,21 @@ def diagonal(
     *,
     keep: int = INNER_LOOP_SEED_COUNT,
     seed_first: bool = False,
+    cover: Callable[[tuple[Any, ...]], bool] | None = None,
 ) -> list[Any]:
     """The full cross-product of ``cases`` and ``seeds`` as multi-argname tuples,
     ``(*case, seed)`` or, with ``seed_first``, ``(seed, *case)``, in the order and with the ids
     of the stacked parametrize it replaces (the first argname varies slowest). The inner loop
-    keeps case i once, at ``seeds[i % keep]``; every other pair is WIDE."""
-    inner_seed = {i: seeds[i % min(keep, len(seeds))] for i in range(len(cases))}
-    pairs = [(i, seed) for seed in seeds for i in range(len(cases))]
-    if not seed_first:
+    keeps each case that ``cover`` accepts (default: every case) once; the k-th kept case runs
+    at ``seeds[k % keep]``. Every other pair is WIDE."""
+    covered = [i for i, case in enumerate(cases) if cover is None or cover(case)]
+    inner_seed = {i: seeds[k % min(keep, len(seeds))] for k, i in enumerate(covered)}
+    if seed_first:
+        pairs = [(i, seed) for seed in seeds for i in range(len(cases))]
+    else:
         pairs = [(i, seed) for i in range(len(cases)) for seed in seeds]
     out = []
     for i, seed in pairs:
         value = (seed, *cases[i]) if seed_first else (*cases[i], seed)
-        out.append(value if inner_seed[i] == seed else _wide(value, multi=True))
+        out.append(value if inner_seed.get(i) == seed else _wide(value, multi=True))
     return out
