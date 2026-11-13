@@ -164,6 +164,15 @@ def test_an_explicit_item_selection_is_exempt(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_a_file_arg_next_to_an_item_arg_is_still_checked(tmp_path):
+    root = _plant(tmp_path / "planted", PLANTED_MIXED + PLANTED_ALL_WIDE)
+    (root / "test_other.py").write_text("def test_other():\n    pass\n")
+    args = ["test_planted.py", "test_other.py::test_other"]
+    result = _pytest(root, "--collect-only", "-q", "-p", "no:cacheprovider", *args)
+    assert result.returncode == 4, result.stdout + result.stderr
+    assert "test_planted.py::test_all_wide_params" in result.stderr
+
+
 def test_a_last_failed_rerun_of_a_wide_seed_runs_it(tmp_path):
     root = _plant(tmp_path / "lf", PLANTED_WIDE_FAILURE)
     assert _pytest(root, "-q").returncode == 1

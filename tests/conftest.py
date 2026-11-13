@@ -32,8 +32,10 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     a test function whose every item is `wide` would leave the inner loop silently, so the
     full collection refuses it, before -m, -k or --deselect remove any item."""
     # Partial collections are exempt: --lf drops passed items while collecting
-    # (cacheprovider's LFPluginCollWrapper), and a "file::test[id]" arg selects items.
-    if config.getoption("lf", False) or any("::" in arg for arg in config.args):
+    # (cacheprovider's LFPluginCollWrapper), and "file::test[id]" args select items. A
+    # file or directory arg next to them still collects whole functions, so it is checked.
+    node_args = bool(config.args) and all("::" in arg for arg in config.args)
+    if config.getoption("lf", False) or node_args:
         return
     only_wide = _functions_with_only_wide_items(items)
     if only_wide:
