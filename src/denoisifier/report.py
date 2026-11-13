@@ -77,12 +77,19 @@ class Report:
     always in the analysed frame's convention. ``reader_notes`` are the
     frame reader's notes when the frame came from a file (the CLI sets them),
     and ``None`` otherwise.
+
+    ``spike_pixels`` counts the pixels rejected as Spikes; ``clipped_pixels``
+    counts the Clipped Pixels that were not rejected as Spikes, so the two
+    never count a pixel twice (a Spike saturated inside the clip plateau is
+    counted as clipped).
     """
 
     striped: bool
     score: float
     threshold: float
     regions: tuple[Region, ...]
+    spike_pixels: int
+    clipped_pixels: int
     labels: np.ndarray = field(compare=False, repr=False)
     transposed: bool = False
     reader_notes: tuple[str, ...] | None = None
@@ -112,6 +119,8 @@ class Report:
             "threshold": float(self.threshold),
             "transposed": bool(self.transposed),
             "regions": [r.to_dict() for r in self.regions],
+            "spike_pixels": int(self.spike_pixels),
+            "clipped_pixels": int(self.clipped_pixels),
         }
         if self.reader_notes is not None:
             d["reader_notes"] = list(self.reader_notes)

@@ -190,7 +190,18 @@ def test_report_converts_to_json(modulation_depth):
         ).frame
     )
     data = json.loads(report.to_json())
-    assert list(data) == ["striped", "score", "threshold", "transposed", "regions"]
+    assert list(data) == [
+        "striped",
+        "score",
+        "threshold",
+        "transposed",
+        "regions",
+        "spike_pixels",
+        "clipped_pixels",
+    ]
+    for key in ("spike_pixels", "clipped_pixels"):
+        assert type(data[key]) is int
+        assert data[key] == getattr(report, key)
     assert type(data["striped"]) is bool
     assert type(data["score"]) is float
     assert type(data["threshold"]) is float
@@ -634,6 +645,13 @@ def test_lowering_the_threshold_keeps_reported_regions_unchanged(name, kind_a, k
 def test_rejects_negative_or_nan_threshold(threshold):
     with pytest.raises(ValueError, match="^" + re.escape("threshold must be >= 0")):
         analyse(np.ones((64, 64)), threshold=threshold)
+
+
+def test_rejects_nan_clip_level():
+    with pytest.raises(
+        ValueError, match="^" + re.escape("clip_level must be a number or inf, got nan")
+    ):
+        analyse(np.ones((64, 64)), clip_level=np.nan)
 
 
 REGION_CALIBRATION = Path(__file__).parents[1] / ".scratch/stripe-detector/region-calibration.json"

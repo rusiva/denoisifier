@@ -151,13 +151,19 @@ _EIGHT = np.ones((3, 3), dtype=bool)
 _LOG_BANK_STEP = float(np.log(_PERIODS[1] / _PERIODS[0]))
 
 
-def analyse(frame: np.ndarray, *, threshold: float = THRESHOLD) -> Report:
+def analyse(
+    frame: np.ndarray, *, threshold: float = THRESHOLD, clip_level: float | None = None
+) -> Report:
     """Find the Striped Regions of ``frame`` and measure each one's Period, Angle and depth.
 
     ``frame`` is a 2D array of intensities, shape ``(rows, cols)``. It is not
     modified. ``threshold`` (>= 0, may be ``inf``) is the stripe score above
     which a region is reported; it changes which regions are reported, never
     their pixels, bounding boxes or measurements, nor the score.
+
+    ``clip_level`` overrides the automatic clip detection: pixels at or above
+    it are Clipped Pixels; ``inf`` means nothing is clipped; ``None`` (the
+    default) detects a plateau of equal values at the frame's maximum.
     """
     frame = np.asarray(frame, dtype=float)
     if frame.ndim != 2:
@@ -172,6 +178,10 @@ def analyse(frame: np.ndarray, *, threshold: float = THRESHOLD) -> Report:
     threshold = float(threshold)
     if not threshold >= 0:
         raise ValueError(f"threshold must be >= 0 (or inf), got {threshold!r}")
+    if clip_level is not None:
+        clip_level = float(clip_level)
+        if np.isnan(clip_level):
+            raise ValueError(f"clip_level must be a number or inf, got {clip_level!r}")
 
     light = _light(frame)
     local = estimate_local_stripes(frame, light)
@@ -199,6 +209,8 @@ def analyse(frame: np.ndarray, *, threshold: float = THRESHOLD) -> Report:
         score=float(score),
         threshold=threshold,
         regions=tuple(regions),
+        spike_pixels=0,
+        clipped_pixels=0,
         labels=labels,
     )
 
