@@ -41,9 +41,11 @@ import numpy as np
 from scipy import ndimage
 from scipy.ndimage import gaussian_filter
 
+from denoisifier._data_quality import _CLIPPED_WEIGHT_MAX, find_clipped, reject_spikes
 from denoisifier._local_stripes import (
     _A0,
     _ACROSS,
+    _ALONG,
     _PAD,
     _PERIODS,
     LocalStripes,
@@ -183,9 +185,11 @@ def analyse(
         if np.isnan(clip_level):
             raise ValueError(f"clip_level must be a number or inf, got {clip_level!r}")
 
-    light = _light(frame)
-    local = estimate_local_stripes(frame, light)
-    survivors = _qualifying_regions(frame, light, local)
+    work, spikes = reject_spikes(frame)
+    clipped = find_clipped(frame, clip_level) & ~spikes
+    light = _light(work)
+    local = estimate_local_stripes(work, light)
+    survivors = _qualifying_regions(work, light, local, clipped)
     score = max((g.peak_ratio for g in survivors), default=0.0)
     reported = [g for g in survivors if g.peak_ratio > threshold]
     reported.sort(key=lambda g: (-g.area_px, -g.peak_ratio, g.first_pixel))
@@ -209,8 +213,8 @@ def analyse(
         score=float(score),
         threshold=threshold,
         regions=tuple(regions),
-        spike_pixels=0,
-        clipped_pixels=0,
+        spike_pixels=int(spikes.sum()),
+        clipped_pixels=int(clipped.sum()),
         labels=labels,
     )
 
@@ -267,9 +271,10 @@ class _Survivor:
 
 
 def _qualifying_regions(
-    frame: np.ndarray, light: np.ndarray, local: LocalStripes
+    frame: np.ndarray, light: np.ndarray, local: LocalStripes, clipped: np.ndarray
 ) -> list[_Survivor]:
-    """Every size-qualifying group after overlaps are settled (threshold-free)."""
+    """Every size-qualifying group after overlaps are settled (threshold-free).
+    ``clipped`` (bool, frame shape) is left out of each region's depth only."""
     if not light.any() or not local.ratio.max() > 0:
         return []
     filters = _Filters(_Spectrum(frame), light)
@@ -285,7 +290,7 @@ def _qualifying_regions(
         and _passes_size_rule(g, filters)
         and not _is_leakage(g, candidates, frame, filters)
     ]
-    return [_refined(s, filters) for s in _settle_overlaps(qualifying)]
+    return [_refined(s, filters) for s in _settle_overlaps(qualifying, clipped)]
 
 
 class _Filters:
@@ -597,7 +602,7 @@ def _refined(region: _Survivor, filters: _Filters) -> _Survivor:
     return dataclasses.replace(region, period=period, angle_deg=angle_deg)
 
 
-def _settle_overlaps(groups: list[_Group]) -> list[_Survivor]:
+def _settle_overlaps(groups: list[_Group], clipped: np.ndarray) -> list[_Survivor]:
     """Give each pixel claimed by several groups to the one with the highest
     depth there; drop groups left empty; measure the rest."""
     if not groups:
@@ -617,7 +622,7 @@ def _settle_overlaps(groups: list[_Group]) -> list[_Survivor]:
                 peak_ratio=g.peak_ratio,
                 period=g.period,
                 angle_deg=g.angle_deg,
-                depth=_interior_depth(g.tuned_depth, pixels),
+                depth=_interior_depth(g.tuned_depth, pixels, clipped, g.period),
                 pixels=pixels,
                 bbox=_bbox(pixels),
                 area_px=int(flat.size),
@@ -627,15 +632,30 @@ def _settle_overlaps(groups: list[_Group]) -> list[_Survivor]:
     return survivors
 
 
-def _interior_depth(depth: np.ndarray, pixels: np.ndarray) -> float:
+def _interior_depth(
+    depth: np.ndarray, pixels: np.ndarray, clipped: np.ndarray, period: float
+) -> float:
     """Median depth over the interior of a region: its pixels at least
     _INTERIOR_FRACTION of the deepest pixel's distance from the region's edge.
 
     The across window (sigma 1 Period) blurs the depth near the edge; a seed
     area that reaches into that skirt measured up to 0.18 low (ruling A on the
-    fresh-range misses)."""
+    fresh-range misses).
+
+    Clipped Pixels: interior pixels where the clipped share, smoothed over the
+    local-mean window at ``period``, reaches _CLIPPED_WEIGHT_MAX are left out;
+    when that leaves nothing, the plain interior is used. This does not
+    recover the depth when a large share of a region is clipped (above about a
+    fifth): the reported depth then drifts toward the flattened value, with
+    no per-region flag; ``Report.clipped_pixels`` is the frame-level warning."""
     distance = ndimage.distance_transform_edt(pixels)
-    return _median_depth(depth, distance >= _INTERIOR_FRACTION * distance.max())
+    interior = distance >= _INTERIOR_FRACTION * distance.max()
+    if clipped.any():
+        weight = gaussian_filter(clipped.astype(float), sigma=(_ALONG * period, _ACROSS * period))
+        unclipped = interior & (weight < _CLIPPED_WEIGHT_MAX)
+        if unclipped.any():
+            return _median_depth(depth, unclipped)
+    return _median_depth(depth, interior)
 
 
 def _bbox(mask: np.ndarray) -> BoundingBox:

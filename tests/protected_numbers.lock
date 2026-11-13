@@ -42,6 +42,16 @@ denoisifier.analysis :: _LEAK_FRACTION :: 0.5
 denoisifier.analysis :: _REFINE_STEPS :: 2
 denoisifier.analysis :: _INTERIOR_FRACTION :: 0.5
 
+denoisifier._data_quality :: _SPIKE_NEIGHBOUR_ROWS :: 3
+denoisifier._data_quality :: _SPIKE_SIGMAS :: 8.0
+denoisifier._data_quality :: _SPIKE_FLOOR_FRACTION :: 1.0
+denoisifier._data_quality :: _SPIKE_PEAK_RANK :: 10
+denoisifier._data_quality :: _SPIKE_BASELINE_PERCENTILE :: 5.0
+denoisifier._data_quality :: _NOISE_TILE_PX :: 16
+denoisifier._data_quality :: _MAD_TO_SIGMA :: 1.4826
+denoisifier._data_quality :: _MIN_CLIPPED_PIXELS :: 4
+denoisifier._data_quality :: _CLIPPED_WEIGHT_MAX :: 0.1
+
 denoisifier.synthetic :: _TYPICAL_MOTTLE_STRENGTH :: {'scorched': 0.4, 'multiscale': 0.35}
 denoisifier.synthetic :: _SPIKE_MAX_LENGTH :: 3
 denoisifier.synthetic :: _SPIKE_BRIGHTNESS :: (2.0, 10.0)

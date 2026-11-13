@@ -506,8 +506,8 @@ def test_overlapping_extents_frame_settles_an_overlap(monkeypatch):
     settled = []
     settle = analysis._settle_overlaps
 
-    def spy(groups):
-        survivors = settle(groups)
+    def spy(groups, *rest):
+        survivors = settle(groups, *rest)
         settled.append((list(groups), survivors))
         return survivors
 
