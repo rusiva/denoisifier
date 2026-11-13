@@ -1,0 +1,6 @@
+tests/test_slow_regression.py::test_full_frame_is_analysed_within_30_s
+tests/test_slow_regression.py::test_regression_weak_stripes_detected_at_256
+tests/test_slow_regression.py::test_regression_false_alarms_at_256
+tests/test_slow_regression.py::test_regression_full_frame_detected
+
+4/1013 tests collected (1009 deselected) in 0.45s
