@@ -184,8 +184,11 @@ SPIKE_GENERATOR_TEST_SEED = 34  # the generator's spike and clip tests
 CLI_CLIP_TEST_SEED = 35  # the CLI's spike and clip tests
 SPIKE_BOUNDARY_TEST_SEED = 36  # hand-placed spikes at the dimmest generated brightness
 PHASE_BREAK_TEST_SEED = 37  # hand-made Phase Break frames, spike-free
-SPIKE_TEST_SEEDS = range(81, 91)
-CLIP_TEST_SEEDS = range(81, 91)  # shared with SPIKE_TEST_SEEDS (allowed for test seeds)
+# The first ten seeds from 81 whose spike truth is in the model (no 8-connected
+# hit run longer than _SPIKE_MAX_LENGTH vertically) for every spike-count test
+# configuration; 82 and 87 fail it (plan step 5a, generator only; ticket Comments).
+SPIKE_TEST_SEEDS = (81, 83, 84, 85, 86, 88, 89, 90, 91, 92)
+CLIP_TEST_SEEDS = SPIKE_TEST_SEEDS  # shared (allowed for test seeds)
 SPIKE_TEST_COUNT = 30  # spike events per frame in the spike-count tests
 SPIKE_STRESS_COUNT = 100  # spike events per frame in the stripe-free verdict test
 CLI_SPIKE_COUNT = 5  # spike events in the CLI's 96x160 frame

@@ -162,8 +162,8 @@ protected :: SPIKE_GENERATOR_TEST_SEED :: 34
 protected :: CLI_CLIP_TEST_SEED :: 35
 protected :: SPIKE_BOUNDARY_TEST_SEED :: 36
 protected :: PHASE_BREAK_TEST_SEED :: 37
-protected :: SPIKE_TEST_SEEDS :: range(81, 91)
-protected :: CLIP_TEST_SEEDS :: range(81, 91)
+protected :: SPIKE_TEST_SEEDS :: (81, 83, 84, 85, 86, 88, 89, 90, 91, 92)
+protected :: CLIP_TEST_SEEDS :: (81, 83, 84, 85, 86, 88, 89, 90, 91, 92)
 protected :: SPIKE_TEST_COUNT :: 30
 protected :: SPIKE_STRESS_COUNT :: 100
 protected :: CLI_SPIKE_COUNT :: 5
