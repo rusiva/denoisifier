@@ -38,6 +38,10 @@ _Avoid_: grain
 A single bright pixel or short bright streak from a cosmic-ray hit or a hot pixel, unrelated to the scene.
 _Avoid_: outlier, glitch, hot spot
 
+**Pedestal**:
+The constant level that a frame's unlit pixels sit at, such as a camera's bias offset; it carries no light. Constant dark subtraction moves it, even below zero.
+_Avoid_: baseline, background
+
 **Clipped Pixel**:
 A pixel at or above the clip level, whose true value the frame does not show.
 _Avoid_: overexposed

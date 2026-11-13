@@ -9,7 +9,7 @@ Modulation Depth only.
 A pixel is a Spike pixel when its excess over the median of its column
 neighbours (rows +-1 to +-``_SPIKE_NEIGHBOUR_ROWS``, itself excluded) is both
 ``_SPIKE_SIGMAS`` times the local noise scale and at least
-``_SPIKE_FLOOR_FRACTION`` times the frame's peak-over-baseline scale. Every
+``_SPIKE_FLOOR_FRACTION`` times the frame's peak-over-pedestal scale. Every
 pixel is tested, clipped or not, so a saturated Spike on a dim column is a
 Spike; a Spike saturated inside the clip plateau of a bright region cannot
 exceed its neighbours by the floor and stays a Clipped Pixel.
@@ -39,18 +39,24 @@ _SPIKE_NEIGHBOUR_ROWS = 3
 # every typical setting within max(2, 5%) of the truth.
 _SPIKE_SIGMAS = 8.0
 # Excess over the column median, as a fraction of the frame's scale (peak
-# over baseline). P1: 1.0 keeps Phase Break and P 3 stripe frames at noise 0
+# over Pedestal). P1: 1.0 keeps Phase Break and P 3 stripe frames at noise 0
 # free of false spike pixels; the dimmest generated Spikes (2x the clean
 # maximum) still pass (2.0-2.2x boundary run).
 _SPIKE_FLOOR_FRACTION = 1.0
 # The scale's peak: this-th largest value of the 3x3-median frame, so
 # overlapping hits cannot lift it (P1, "rank10" against "max3").
 _SPIKE_PEAK_RANK = 10
-# The scale's baseline: this percentile of the 3x3-median frame (bias offsets
-# and constant dark subtraction leave the scale unchanged; plan B3).
-_SPIKE_BASELINE_PERCENTILE = 5.0
+# The scale's Pedestal: this percentile of the 3x3-median frame, so bias
+# offsets and constant dark subtraction leave the scale unchanged (plan B3).
+# Not swept: P1 ran every setting with 5 and found 0 false spike pixels on 80
+# typical spike-free frames (100 photons, m 0 and 0.5) and 0 flags on the
+# Solis crop raw (bias 713 counts), +1000 and minus half its median.
+_SPIKE_PEDESTAL_PERCENTILE = 5.0
 # The local noise scale: median |excess| over tiles of this side (px),
-# bilinearly interpolated to the frame.
+# bilinearly interpolated to the frame. Not swept: P1 ran every setting with
+# 16 (256 pixels per tile median); with it, 0 false spike pixels on 80 typical
+# spike-free frames and on 30-photon m 0 frames (0.25 per frame, max 2, at
+# m 0.5), recall >= 0.9996 from 30 photons up.
 _NOISE_TILE_PX = 16
 # Median absolute deviation to Gaussian standard deviation.
 _MAD_TO_SIGMA = 1.4826
@@ -59,12 +65,6 @@ _MAD_TO_SIGMA = 1.4826
 # this many pixels share it (an unclipped frame's maximum is almost always
 # unique; prototype P2, evidence/06-prototype-p2.md).
 _MIN_CLIPPED_PIXELS = 4
-# The Modulation Depth leaves out interior pixels where the clipped share,
-# smoothed over the bank's local-mean window (sigma _ALONG x _ACROSS
-# Periods), reaches this (analysis._interior_depth; prototype P2's
-# d9_inner_g10, the best of the tested estimators). Set by the pre-freeze
-# check P3 from 0.05, 0.10 and 0.20 (evidence/06-prototype-p3.md).
-_CLIPPED_WEIGHT_MAX = 0.05
 
 
 def find_clipped(frame: np.ndarray, clip_level: float | None) -> np.ndarray:
@@ -94,7 +94,7 @@ def reject_spikes(frame: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     noise = _MAD_TO_SIGMA * _tile_median(np.abs(excess))
     smooth = median_filter(frame, size=3, mode="mirror").ravel()
     peak = np.partition(smooth, smooth.size - _SPIKE_PEAK_RANK)[smooth.size - _SPIKE_PEAK_RANK]
-    scale = peak - np.percentile(smooth, _SPIKE_BASELINE_PERCENTILE)
+    scale = peak - np.percentile(smooth, _SPIKE_PEDESTAL_PERCENTILE)
     spikes = (excess > _SPIKE_SIGMAS * noise) & (excess > _SPIKE_FLOOR_FRACTION * scale)
     work = frame.copy()
     work[spikes] = med[spikes]

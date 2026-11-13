@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import re
 
@@ -5,17 +6,17 @@ import numpy as np
 import pytest
 from scipy import ndimage
 
-from cases import CASES
+from cases import case_frame, clipped_at
 from denoisifier import synthetic
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
+    CLIP_LEVEL_FRACTION,
     DIGEST_TEST_SEEDS,
     MASK_AREA_REL_TOL,
     MASK_CONTOUR_TOL_PX,
     MASK_EDGE_WIDTH_TOL_PX,
     MASK_SATURATION_TOL,
     MASK_TAIL,
-    MILD_CLIP_LEVEL_FRACTION,
     MOTTLE_NONE_TEST_SEED,
     OUTSIDE_REGIONS_RTOL,
     REGION_GENERATOR_TEST_SEED,
@@ -24,6 +25,7 @@ from protected import (
     SINGLE_FRAME_TEST_SEED,
     SPIKE_GENERATOR_TEST_SEED,
     SPIKE_TEST_COUNT,
+    STREAK_TEST_SEEDS,
     STRIPE_FREE_SPECTRUM_TEST_SEEDS,
 )
 from regions import truth_pixels
@@ -290,18 +292,12 @@ def test_rejects_invalid_regions(kwargs, message):
 # --- Spikes and Clipped Pixels (ticket 06) -----------------------------------
 
 
+_TYPICAL = dict(modulation_depth=0.5, mottle="scorched", noise=Emccd())
+
+
 def _typical(seed, **kwargs):
     """256x256, scorched Mottle, EMCCD at 100 photons, m 0.5, CASES[seed % 10]."""
-    case = CASES[seed % 10]
-    return generate(
-        seed=seed,
-        period=case.period,
-        angle_deg=case.angle_deg,
-        modulation_depth=0.5,
-        mottle="scorched",
-        noise=Emccd(),
-        **kwargs,
-    )
+    return case_frame(seed, **_TYPICAL, **kwargs)
 
 
 @pytest.mark.parametrize("kind", list(_BASE_DIGESTS))
@@ -336,30 +332,71 @@ def test_spikes_add_bright_streaks_and_are_in_the_truth():
     assert not spiked.truth.clipped_mask.any()
 
 
-def test_streaks_cover_their_length():
-    """A streak inside the frame covers as many distinct pixels as its length,
-    whatever its direction (no pixel is hit twice near 45 degrees)."""
+def test_streaks_cover_their_length(monkeypatch):
+    """A streak inside the frame covers exactly as many distinct pixels as the
+    length the generator drew for it, in one straight 8-connected run."""
+    drawn = []
+
+    def spy(rng, shape, count, top):
+        replay = copy.deepcopy(rng)  # draw order D2: start rows, start columns, lengths
+        replay.integers(0, shape[0], size=count)
+        replay.integers(0, shape[1], size=count)
+        drawn.append(replay.integers(1, synthetic._SPIKE_MAX_LENGTH + 1, size=count))
+        return original(rng, shape, count, top)
+
+    original = synthetic._spikes
+    monkeypatch.setattr(synthetic, "_spikes", spy)
     lengths = []
-    for seed in range(SPIKE_GENERATOR_TEST_SEED, SPIKE_GENERATOR_TEST_SEED + 6):
+    for seed in STREAK_TEST_SEEDS:
         s = generate(seed=seed, shape=(64, 64), modulation_depth=0.0, noise=0.0, spikes=1)
         free = generate(seed=seed, shape=(64, 64), modulation_depth=0.0, noise=0.0)
+        (length,) = drawn.pop()
         hit = s.frame > free.frame
         assert np.array_equal(hit, s.truth.spike_mask)
         rows, cols = np.nonzero(hit)
-        assert 1 <= hit.sum() <= synthetic._SPIKE_MAX_LENGTH
-        # One straight 8-connected run: one step per pixel along the longer extent.
-        extent = max(np.ptp(rows), np.ptp(cols)) + 1
         if rows.min() > 0 and cols.min() > 0 and rows.max() < 63 and cols.max() < 63:
-            assert extent == hit.sum()
-        lengths.append(int(hit.sum()))
+            assert hit.sum() == length
+            # One straight 8-connected run: one step per pixel along the longer extent.
+            assert max(np.ptp(rows), np.ptp(cols)) + 1 == length
+        else:
+            assert 1 <= hit.sum() <= length
+        lengths.append(int(length))
     assert len(set(lengths)) > 1
+
+
+class _Draws:
+    """Stands in for the RNG of one Spike event: start (32, 32), the longest
+    length, the given direction and brightness 1 (x top)."""
+
+    def __init__(self, direction):
+        n = synthetic._SPIKE_MAX_LENGTH
+        self._draws = iter([[32], [32], [n], [direction], np.ones((1, n))])
+
+    def integers(self, _low, _high, size):
+        draw = np.asarray(next(self._draws))
+        assert draw.shape == np.shape(np.empty(size))
+        return draw
+
+    uniform = integers
+
+
+@pytest.mark.parametrize("direction_deg", [0, 30, 42, 45, 48, 60, 90, 132, 135, 138, 179])
+def test_streaks_cover_their_length_in_every_direction(direction_deg):
+    """Hand-built draws: a streak of _SPIKE_MAX_LENGTH covers that many distinct pixels
+    in every direction, near 45 and 135 degrees too (rounding k x (cos, sin) hits
+    one pixel twice there, N1)."""
+    n = synthetic._SPIKE_MAX_LENGTH
+    added = synthetic._spikes(_Draws(np.deg2rad(direction_deg)), (64, 64), 1, 1.0)
+    rows, cols = np.nonzero(added)
+    assert len(rows) == n
+    assert np.all(added[rows, cols] == 1.0)
+    assert max(np.ptp(rows), np.ptp(cols)) + 1 == n
 
 
 def test_clip_level_saturates_the_frame_and_is_in_the_truth():
     seed = SPIKE_GENERATOR_TEST_SEED
     unclipped = _typical(seed)
-    level = MILD_CLIP_LEVEL_FRACTION * unclipped.clean.max()
-    clipped = _typical(seed, clip_level=level)
+    clipped, level = clipped_at(CLIP_LEVEL_FRACTION, _typical, seed=seed)
     assert clipped.frame.max() == level
     assert np.array_equal(clipped.truth.clipped_mask, unclipped.frame >= level)
     rest = ~clipped.truth.clipped_mask

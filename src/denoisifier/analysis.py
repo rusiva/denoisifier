@@ -5,7 +5,7 @@ Method: local periodicity plus a near-vertical Angle, not feature size
 
 Data quality comes first (``_data_quality``). Spike pixels (cosmic-ray hits
 and hot pixels: single pixels and short streaks, at least the frame's
-peak-over-baseline scale brighter than their column neighbours) are found and
+peak-over-pedestal scale brighter than their column neighbours) are found and
 replaced by their column neighbours' median in a working copy; every later
 step runs on that copy, and the caller's frame is never changed. Clipped
 Pixels (at or above the clip level: by default a plateau of at least
@@ -56,7 +56,7 @@ import numpy as np
 from scipy import ndimage
 from scipy.ndimage import gaussian_filter
 
-from denoisifier._data_quality import _CLIPPED_WEIGHT_MAX, find_clipped, reject_spikes
+from denoisifier._data_quality import find_clipped, reject_spikes
 from denoisifier._local_stripes import (
     _A0,
     _ACROSS,
@@ -163,6 +163,12 @@ _REFINE_STEPS = 2
 # -0.044 to +0.023, against -0.177 to +0.018 for the median over the top
 # seed area (33 beyond DEPTH_TOL).
 _INTERIOR_FRACTION = 0.5
+# The Modulation Depth leaves out interior pixels where the clipped share,
+# smoothed over the bank's local-mean window (sigma _ALONG x _ACROSS
+# Periods), reaches this (_interior_depth; prototype P2's d9_inner_g10, the
+# best of the tested estimators). Set by the pre-freeze check P3 from 0.05,
+# 0.10 and 0.20 (evidence/06-prototype-p3.md).
+_CLIPPED_WEIGHT_MAX = 0.05
 
 _EIGHT = np.ones((3, 3), dtype=bool)
 _LOG_BANK_STEP = float(np.log(_PERIODS[1] / _PERIODS[0]))
@@ -181,7 +187,7 @@ def analyse(
     Spike pixels are always rejected first: replaced by the median of their
     column neighbours in a working copy that every later step uses. The count
     is reliable from about 30 photons at the peak; hot pixels dimmer than
-    the frame's peak-over-baseline scale and long tracks are not rejected.
+    the frame's peak-over-pedestal scale and long tracks are not rejected.
 
     ``clip_level`` (frame units) overrides the automatic clip detection:
     pixels at or above it are Clipped Pixels; ``inf`` means nothing is

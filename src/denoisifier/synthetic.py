@@ -320,24 +320,36 @@ def generate(
     else:
         frame = clean + rng.normal(0.0, noise * peak, size=shape)
 
-    spike_mask = np.zeros(shape, dtype=bool)
-    clipped_mask = np.zeros(shape, dtype=bool)
-    if spikes > 0:
-        added = _spikes(rng, shape, spikes, float(clean.max()))
-        spike_mask = added > 0
-    if clip_level is not None:
-        # Clipped Pixels: the spike-free frame at or above the level, where no
-        # spike hit (a hit pixel is a spike pixel, clipped or not).
-        clipped_mask = (frame >= clip_level) & ~spike_mask
-    if spikes > 0:
-        frame = frame + added
-    if clip_level is not None:
-        frame = np.minimum(frame, clip_level)
+    frame, spike_mask, clipped_mask = _spike_and_clip(rng, frame, clean, spikes, clip_level)
     return Synthetic(
         frame=frame,
         truth=GroundTruth(regions=truths, spike_mask=spike_mask, clipped_mask=clipped_mask),
         clean=clean,
     )
+
+
+def _spike_and_clip(
+    rng: np.random.Generator,
+    frame: _F64,
+    clean: _F64,
+    spikes: int,
+    clip_level: float | None,
+) -> tuple[_F64, np.ndarray, np.ndarray]:
+    """``(frame, spike_mask, clipped_mask)``: ``spikes`` Spike events added to
+    the noisy ``frame``, then the clip at ``clip_level``.
+
+    The clipped mask is taken on the spike-free frame (plan D4): its pixels at
+    or above the level that no Spike hit (a hit pixel is a Spike pixel,
+    clipped or not), so the two masks are disjoint. Without spikes and clip
+    the frame is returned as it is (bit-identical; no RNG draw)."""
+    spiked, spike_mask = frame, np.zeros(frame.shape, dtype=bool)
+    if spikes > 0:
+        added = _spikes(rng, frame.shape, spikes, float(clean.max()))
+        spiked, spike_mask = frame + added, added > 0
+    if clip_level is None:
+        return spiked, spike_mask, np.zeros(frame.shape, dtype=bool)
+    clipped_mask = (frame >= clip_level) & ~spike_mask
+    return np.minimum(spiked, clip_level), spike_mask, clipped_mask
 
 
 def _spikes(rng: np.random.Generator, shape: tuple[int, int], count: int, top: float) -> _F64:

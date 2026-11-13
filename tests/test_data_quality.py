@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from denoisifier._data_quality import find_clipped, reject_spikes
+from protected import REJECTED_VALUE_TOL_FRACTION
 
 
 def _smooth(shape=(64, 80), base=0.0):
@@ -81,7 +82,7 @@ def test_bright_single_pixels_and_streaks_are_rejected():
     assert np.array_equal(spiked, before)  # the input is never modified
     assert np.array_equal(work[~hits], frame[~hits])
     # Each rejected pixel takes a value from its own column, near the true one.
-    assert np.all(np.abs(work[hits] - frame[hits]) < 0.2 * frame.max())
+    assert np.all(np.abs(work[hits] - frame[hits]) < REJECTED_VALUE_TOL_FRACTION * frame.max())
 
 
 @pytest.mark.parametrize("row", [0, 1, 2, 61, 62, 63])
@@ -107,7 +108,7 @@ def test_saturated_spikes_are_still_spikes():
     assert np.array_equal(spikes, hits)
 
 
-def test_a_baseline_offset_does_not_change_the_spikes():
+def test_a_pedestal_offset_does_not_change_the_spikes():
     frame = _smooth()
     hits = np.zeros(frame.shape, dtype=bool)
     hits[30, 40] = hits[20:22, 20] = True
@@ -119,7 +120,7 @@ def test_a_baseline_offset_does_not_change_the_spikes():
 
 def test_excess_below_the_scale_of_the_frame_is_not_a_spike():
     """The floor: a pixel must exceed its column neighbours by the frame's
-    peak-over-baseline scale, so a narrow bright feature of the scene stays."""
+    peak-over-pedestal scale, so a narrow bright feature of the scene stays."""
     frame = _smooth()
     frame[30, 40] += 0.5 * frame.max()
     _, spikes = reject_spikes(frame)

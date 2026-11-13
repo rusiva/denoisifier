@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from borderline import BORDERLINE, borderline_frame
-from cases import CASES
+from cases import case_frame, clipped_at
 from denoisifier import analyse, read_frame
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import Emccd, StripedRegion, generate
@@ -21,8 +21,8 @@ from protected import (
     CLI_STDOUT_TEST_SEED,
     CLI_STRIPED_CSV_TEST_SEED,
     DEPTH_TOL,
+    MILD_CLIP_LEVEL_FRACTION,
     OVERRIDE_LEVEL_FRACTION,
-    SATURATING_CLIP_FACTOR,
 )
 from regions import truth_bbox
 from truth_match import assert_matches_truth
@@ -349,23 +349,22 @@ def test_cli_refuses_a_mask_path_that_aliases_the_input_or_output(tmp_path, clas
 
 def _spiked_clipped_csv(tmp_path):
     """96x160 typical frame (scorched Mottle, EMCCD at 100 photons, m 0.5) with
-    spikes, clipped at SATURATING_CLIP_FACTOR x the clean maximum, as CSV."""
-    seed = CLI_CLIP_TEST_SEED
-    case = CASES[seed % 10]
-    common = dict(
-        seed=seed,
+    spikes, clipped at MILD_CLIP_LEVEL_FRACTION x the clean maximum, as CSV:
+    (path, clip level). The plateau is small, so auto-detection finds Clipped
+    Pixels and the Spikes on dim columns stay Spikes."""
+    s, level = clipped_at(
+        MILD_CLIP_LEVEL_FRACTION,
+        case_frame,
+        seed=CLI_CLIP_TEST_SEED,
         shape=(96, 160),
-        period=case.period,
-        angle_deg=case.angle_deg,
         modulation_depth=0.5,
         mottle="scorched",
         noise=Emccd(),
+        spikes=CLI_SPIKE_COUNT,
     )
-    top = generate(**common).clean.max()
-    s = generate(**common, spikes=CLI_SPIKE_COUNT, clip_level=SATURATING_CLIP_FACTOR * top)
     path = tmp_path / "frame.csv"
     write_frame_csv(s.frame, path)
-    return path, top
+    return path, level
 
 
 def _cli_report(path, *flags):
@@ -381,18 +380,23 @@ def test_cli_reports_spike_and_clipped_pixels(tmp_path):
     report = _cli_report(path)
     expected = analyse(read_frame(path).frame)
     assert expected.spike_pixels > 0
+    assert expected.clipped_pixels > 0
     assert report["spike_pixels"] == expected.spike_pixels
     assert report["clipped_pixels"] == expected.clipped_pixels
 
 
 @pytest.mark.parametrize("level", ["override", "inf"])
 def test_cli_clip_level_flag_overrides_detection(tmp_path, level):
-    path, top = _spiked_clipped_csv(tmp_path)
-    clip_level = OVERRIDE_LEVEL_FRACTION * top if level == "override" else np.inf
+    """Each level changes the report from auto-detection's (an override below the
+    plateau clips more pixels, inf none), so the flag must reach analyse."""
+    path, clip = _spiked_clipped_csv(tmp_path)
+    clip_level = OVERRIDE_LEVEL_FRACTION * clip if level == "override" else np.inf
     report = _cli_report(path, "--clip-level", str(float(clip_level)))
-    expected = analyse(read_frame(path).frame, clip_level=clip_level).to_dict()
+    frame = read_frame(path).frame
+    expected = analyse(frame, clip_level=clip_level).to_dict()
     expected.pop("reader_notes", None)
     assert report == expected
+    assert expected["clipped_pixels"] != analyse(frame).clipped_pixels
     assert (report["clipped_pixels"] > 0) == (level == "override")
 
 

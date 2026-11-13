@@ -41,16 +41,16 @@ denoisifier.analysis :: _LOG_BANK_STEP :: 0.11159529322858125
 denoisifier.analysis :: _LEAK_FRACTION :: 0.5
 denoisifier.analysis :: _REFINE_STEPS :: 2
 denoisifier.analysis :: _INTERIOR_FRACTION :: 0.5
+denoisifier.analysis :: _CLIPPED_WEIGHT_MAX :: 0.05
 
 denoisifier._data_quality :: _SPIKE_NEIGHBOUR_ROWS :: 3
 denoisifier._data_quality :: _SPIKE_SIGMAS :: 8.0
 denoisifier._data_quality :: _SPIKE_FLOOR_FRACTION :: 1.0
 denoisifier._data_quality :: _SPIKE_PEAK_RANK :: 10
-denoisifier._data_quality :: _SPIKE_BASELINE_PERCENTILE :: 5.0
+denoisifier._data_quality :: _SPIKE_PEDESTAL_PERCENTILE :: 5.0
 denoisifier._data_quality :: _NOISE_TILE_PX :: 16
 denoisifier._data_quality :: _MAD_TO_SIGMA :: 1.4826
 denoisifier._data_quality :: _MIN_CLIPPED_PIXELS :: 4
-denoisifier._data_quality :: _CLIPPED_WEIGHT_MAX :: 0.05
 
 denoisifier.synthetic :: _TYPICAL_MOTTLE_STRENGTH :: {'scorched': 0.4, 'multiscale': 0.35}
 denoisifier.synthetic :: _SPIKE_MAX_LENGTH :: 3
@@ -164,6 +164,8 @@ protected :: SPIKE_BOUNDARY_TEST_SEED :: 36
 protected :: PHASE_BREAK_TEST_SEED :: 37
 protected :: SPIKE_TEST_SEEDS :: (81, 83, 84, 85, 86, 88, 89, 90, 91, 92)
 protected :: CLIP_TEST_SEEDS :: (81, 83, 84, 85, 86, 88, 89, 90, 91, 92)
+protected :: PARTIAL_CLIP_TEST_SEEDS :: (81, 83, 84, 85, 86)
+protected :: STREAK_TEST_SEEDS :: range(93, 99)
 protected :: SPIKE_TEST_COUNT :: 30
 protected :: SPIKE_STRESS_COUNT :: 100
 protected :: CLI_SPIKE_COUNT :: 5
@@ -173,7 +175,8 @@ protected :: SPIKE_PIXELS_REL_TOL :: 0.05
 protected :: SATURATING_CLIP_FACTOR :: 3.0
 protected :: MILD_CLIP_LEVEL_FRACTION :: 0.8
 protected :: OVERRIDE_LEVEL_FRACTION :: 0.9
-protected :: BASELINE_OFFSET :: 1000.0
+protected :: REJECTED_VALUE_TOL_FRACTION :: 0.2
+protected :: PEDESTAL_OFFSET :: 1000.0
 protected :: AC4_MIN_CLIPPED_PIXELS :: 30
 protected :: CLIP_LEVEL_FRACTION :: 0.4
 protected :: CLIP_MIN_SHARE :: 0.02

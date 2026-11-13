@@ -189,6 +189,12 @@ PHASE_BREAK_TEST_SEED = 37  # hand-made Phase Break frames, spike-free
 # configuration; 82 and 87 fail it (plan step 5a, generator only; ticket Comments).
 SPIKE_TEST_SEEDS = (81, 83, 84, 85, 86, 88, 89, 90, 91, 92)
 CLIP_TEST_SEEDS = SPIKE_TEST_SEEDS  # shared (allowed for test seeds)
+# The partial-region depth tests (512x512, three analyses per seed): the first
+# five clip seeds.
+PARTIAL_CLIP_TEST_SEEDS = CLIP_TEST_SEEDS[:5]
+# The generator's streak test, one Spike event per frame; its own seeds from the
+# free end of TEST_SEED_BLOCK (reserved in USED_SEEDS through the block).
+STREAK_TEST_SEEDS = range(93, 99)
 SPIKE_TEST_COUNT = 30  # spike events per frame in the spike-count tests
 SPIKE_STRESS_COUNT = 100  # spike events per frame in the stripe-free verdict test
 CLI_SPIKE_COUNT = 5  # spike events in the CLI's 96x160 frame
@@ -197,9 +203,15 @@ SPIKE_PASS_MARK_PHOTONS = 30.0  # spec.md:141 low end; evidence/06-prototype-p1.
 SPIKE_PIXELS_ABS_TOL = 2
 SPIKE_PIXELS_REL_TOL = 0.05
 SATURATING_CLIP_FACTOR = 3.0  # clip at 3 x clean max: every bright spike saturates (P1)
-MILD_CLIP_LEVEL_FRACTION = 0.8  # clip at 0.8 x clean max: the no-harm guard (P2)
+# A mild clip near the light peak, 0.8 x clean max: a small plateau. The
+# partial-region no-harm guard (P2), and the CLI frame, whose auto-detected
+# plateau is small enough that Spikes on dim columns stay Spikes.
+MILD_CLIP_LEVEL_FRACTION = 0.8
 OVERRIDE_LEVEL_FRACTION = 0.9  # an override below the clip plateau
-BASELINE_OFFSET = 1000.0  # a bias offset of the order of Solis frames (B3)
+# test_data_quality.py: a rejected Spike pixel's working value is within this
+# fraction of the frame's maximum of its spike-free value.
+REJECTED_VALUE_TOL_FRACTION = 0.2
+PEDESTAL_OFFSET = 1000.0  # a Pedestal of the order of Solis frames' bias offset (B3)
 # Clipped pixels inside the truth region of a partial-region depth test (B4, N7):
 # below P2's minimum at 0.8 (37 at 100 photons).
 AC4_MIN_CLIPPED_PIXELS = 30
