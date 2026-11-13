@@ -1,0 +1,368 @@
+HEAD 72e67e2
+load before:  00:04:07 up 4 days,  5:16,  4 users,  load average: 0.99, 1.54, 2.04
+start 00:04:07
+uv run --locked pytest -x --ff -m "not slow and not wide"
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 1036 items / 478 deselected / 558 selected
+run-last-failure: 121 known failures not in selected tests
+
+tests/test_analyse.py .................................................. [  8%]
+........................................................................ [ 21%]
+........................................................................ [ 34%]
+............................................                             [ 42%]
+tests/test_bench.py .....                                                [ 43%]
+tests/test_calibration.py ........                                       [ 44%]
+tests/test_cli.py ..............................                         [ 50%]
+tests/test_data_quality.py ................                              [ 53%]
+tests/test_feasibility_gate.py ..............                            [ 55%]
+tests/test_glossary_terms.py ......                                      [ 56%]
+tests/test_inner_loop.py .......................                         [ 60%]
+tests/test_protected_numbers.py ..........                               [ 62%]
+tests/test_read_frame.py ............................................... [ 71%]
+.....                                                                    [ 72%]
+tests/test_require_background_gate.py ..........................         [ 76%]
+tests/test_seed_guard.py ............                                    [ 78%]
+tests/test_slow_regression_plan.py ........                              [ 80%]
+tests/test_slow_stamp.py .................................               [ 86%]
+tests/test_synthetic.py ................................................ [ 94%]
+.............................                                            [100%]
+
+============================== slowest durations ===============================
+6.82s call     tests/test_analyse.py::test_two_regions_with_different_periods_are_reported_separately[76-5-12]
+4.61s call     tests/test_analyse.py::test_heavily_clipped_partial_region_is_no_worse_than_no_exclusion[83]
+4.20s call     tests/test_analyse.py::test_heavily_clipped_partial_region_is_no_worse_than_no_exclusion[81]
+3.51s call     tests/test_slow_regression_plan.py::test_regression_check_runs_on_a_tiny_plan
+3.20s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[15-spikes]
+2.73s call     tests/test_analyse.py::test_partial_region_is_reported_with_its_measurements[66]
+2.52s call     tests/test_analyse.py::test_stripes_on_one_flank_of_the_envelope_are_found[66]
+2.49s call     tests/test_analyse.py::test_depth_is_measured_on_the_region_interior[93024-20--10-scorched]
+2.40s call     tests/test_analyse.py::test_mask_overlaps_the_true_region[67-multiscale]
+2.35s call     tests/test_analyse.py::test_report_counts_spike_pixels[pass-mark-m0.5-83]
+2.32s call     tests/test_analyse.py::test_report_counts_spike_pixels[typical-m0.5-83]
+2.29s call     tests/test_analyse.py::test_stripes_on_one_flank_of_the_envelope_are_found[67]
+2.28s call     tests/test_analyse.py::test_clipping_does_not_harm_a_partial_region[83]
+2.24s call     tests/test_analyse.py::test_report_counts_spike_pixels[gaussian-m0.5-81]
+2.24s call     tests/test_analyse.py::test_clipping_does_not_harm_a_partial_region[81]
+2.22s call     tests/test_analyse.py::test_depth_is_measured_on_the_region_interior[93048-10-3-multiscale]
+2.19s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[overlapping-extents-zero]
+2.08s call     tests/test_analyse.py::test_partial_region_is_reported_with_its_measurements[67]
+1.60s call     tests/test_slow_regression_plan.py::test_an_unchanged_detector_passes_the_rule_on_most_measures
+1.56s call     tests/test_analyse.py::test_spike_count_ignores_the_pedestal
+1.53s call     tests/test_seed_guard.py::test_feasibility_script_guards_itself_and_its_workers
+1.48s call     tests/test_seed_guard.py::test_guard_reaches_the_feasibility_workers
+1.22s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[17-spikes]
+1.19s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[26-spikes]
+1.19s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[19-spikes]
+1.15s call     tests/test_analyse.py::test_report_counts_clipped_pixels[83]
+1.12s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[20-spikes]
+1.12s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[21-spikes]
+1.11s call     tests/test_analyse.py::test_report_counts_clipped_pixels[92]
+1.11s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[16-spikes]
+1.11s call     tests/test_analyse.py::test_report_counts_clipped_pixels[90]
+1.10s call     tests/test_analyse.py::test_report_counts_clipped_pixels[86]
+1.10s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[23-spikes]
+1.10s call     tests/test_analyse.py::test_overlapping_extents_frame_settles_an_overlap
+1.09s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[18-spikes]
+1.08s call     tests/test_analyse.py::test_report_counts_clipped_pixels[84]
+1.07s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[22-spikes]
+1.06s call     tests/test_analyse.py::test_report_counts_clipped_pixels[89]
+1.06s call     tests/test_analyse.py::test_report_counts_clipped_pixels[85]
+1.06s call     tests/test_analyse.py::test_report_counts_clipped_pixels[91]
+1.06s call     tests/test_analyse.py::test_report_counts_clipped_pixels[88]
+1.05s call     tests/test_analyse.py::test_report_counts_clipped_pixels[81]
+1.05s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[24-spikes]
+1.05s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[25-spikes]
+1.05s call     tests/test_analyse.py::test_multiscale_mottle_is_handled[20]
+1.03s call     tests/test_analyse.py::test_report_has_score_and_threshold
+0.98s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[27-spikes]
+0.97s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[28-spikes]
+0.97s call     tests/test_analyse.py::test_multiscale_mottle_is_handled[21]
+0.97s call     tests/test_inner_loop.py::test_a_last_failed_rerun_of_a_wide_seed_runs_it
+0.91s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[29-spikes]
+0.81s call     tests/test_cli.py::test_cli_clip_level_flag_overrides_detection[inf]
+0.78s call     tests/test_cli.py::test_cli_prints_json_to_stdout_without_output_flag
+0.78s call     tests/test_cli.py::test_cli_clip_level_flag_overrides_detection[override]
+0.73s call     tests/test_cli.py::test_cli_reports_borderline_frame
+0.72s call     tests/test_cli.py::test_cli_fails_cleanly_when_output_dir_missing
+0.70s call     tests/test_cli.py::test_cli_writes_json_report_for_striped_csv
+0.70s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[14-spikes-clipped]
+0.69s call     tests/test_analyse.py::test_profile_only_frame_is_not_striped[20-0.01]
+0.67s call     tests/test_analyse.py::test_period_and_angle_extremes_are_detected[27-20--5]
+0.66s call     tests/test_cli.py::test_cli_mask_and_bboxes_follow_the_file_layout_when_transposing
+0.65s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[11-spikes-clipped]
+0.63s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[78-20-10-wide_short]
+0.62s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[11-spikes]
+0.62s call     tests/test_analyse.py::test_region_above_the_minimum_is_reported[78-8-10-both]
+0.62s call     tests/test_analyse.py::test_region_above_the_minimum_is_reported[78-20--10-both]
+0.61s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[14-spikes]
+0.61s call     tests/test_analyse.py::test_region_above_the_minimum_is_reported[78-20-10-wide_short]
+0.61s call     tests/test_analyse.py::test_saturated_spikes_are_counted_as_spikes[typical-m0.5-83]
+0.60s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[mottled-11-m0.0]
+0.60s call     tests/test_cli.py::test_cli_reports_spike_and_clipped_pixels
+0.60s call     tests/test_analyse.py::test_region_above_the_minimum_is_reported[79-20--10-narrow_tall]
+0.59s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[10-spikes-clipped]
+0.58s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[12-spikes]
+0.58s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[15-spikes-clipped]
+0.58s call     tests/test_analyse.py::test_region_above_the_minimum_is_reported[79-8--10-wide_short]
+0.58s call     tests/test_analyse.py::test_stripe_free_mottled_frames_are_not_striped[10]
+0.58s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[13-spikes]
+0.58s call     tests/test_analyse.py::test_period_and_angle_extremes_are_detected[24-20-0]
+0.57s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[21-spikes-clipped]
+0.57s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[13-spikes-clipped]
+0.57s call     tests/test_analyse.py::test_clipped_and_spike_totals_match_at_a_peak_level_clip[83]
+0.57s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[17-spikes-clipped]
+0.56s call     tests/test_analyse.py::test_clear_stripes_in_mottle_are_found_and_measured[16]
+0.56s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[78-20--10-both]
+0.56s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-20-P5-0deg-noise0.0]
+0.56s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[10-spikes]
+0.56s call     tests/test_analyse.py::test_dimmest_spikes_are_found
+0.56s call     tests/test_analyse.py::test_profile_only_frame_is_not_striped[20-0.001]
+0.55s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-23-P18-3deg-noise0.0]
+0.55s call     tests/test_analyse.py::test_stripe_free_mottled_frames_are_not_striped[11]
+0.55s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[mottled-10-m0.0]
+0.55s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[23-spikes-clipped]
+0.55s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-24-P4--4deg-noise0.0]
+0.55s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[12-spikes-clipped]
+0.55s call     tests/test_analyse.py::test_region_above_the_minimum_is_reported[79-3--10-narrow_tall]
+0.55s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[20-spikes-clipped]
+0.55s call     tests/test_analyse.py::test_profile_only_frame_is_not_striped[21-0.01]
+0.54s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[79-8-10-four_by_one]
+0.54s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[79-20-10-narrow_tall]
+0.54s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[16-spikes-clipped]
+0.54s call     tests/test_cli.py::test_cli_reads_real_solis_export_and_reports_reader_notes
+0.54s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[26-spikes-clipped]
+0.54s call     tests/test_analyse.py::test_profile_only_frame_is_not_striped[21-0.001]
+0.54s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[79-3-10-narrow_tall]
+0.54s call     tests/test_analyse.py::test_report_converts_to_json[0.0]
+0.54s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[79-3--10-four_by_one]
+0.54s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[78-8-10-both]
+0.54s call     tests/test_analyse.py::test_clear_stripes_in_mottle_are_found_and_measured[12]
+0.54s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[79-20--10-four_by_one]
+0.54s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[18-spikes-clipped]
+0.53s call     tests/test_cli.py::test_cli_drops_axis_column_on_request_and_reports_reader_notes
+0.53s call     tests/test_analyse.py::test_clipped_and_spike_totals_match_at_a_peak_level_clip[81]
+0.53s call     tests/test_cli.py::test_cli_transposes_real_solis_export_on_request
+0.53s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[24-spikes-clipped]
+0.53s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[19-spikes-clipped]
+0.53s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-21-P8-6deg-noise0.01]
+0.53s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[free-13-THRESHOLD]
+0.53s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[free-10-zero]
+0.53s call     tests/test_analyse.py::test_period_and_angle_extremes_are_detected[26-3-5]
+0.53s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[free-14-THRESHOLD]
+0.53s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[25-spikes-clipped]
+0.53s call     tests/test_analyse.py::test_region_above_the_minimum_is_reported[78-3--10-both]
+0.53s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[79-8--10-narrow_tall]
+0.53s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-24-P4--4deg-noise0.01]
+0.53s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-21-P8-6deg-noise0.0]
+0.53s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-20-P5-0deg-noise0.01]
+0.52s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-26-P20--10deg-noise0.0]
+0.52s call     tests/test_analyse.py::test_saturated_spikes_are_counted_as_spikes[typical-m0-81]
+0.52s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-23-P18-3deg-noise0.01]
+0.52s call     tests/test_analyse.py::test_profile_only_frame_is_not_striped[21-0.0]
+0.52s call     tests/test_analyse.py::test_report_counts_spike_pixels[typical-m0-81]
+0.52s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-22-P12--8deg-noise0.01]
+0.52s call     tests/test_analyse.py::test_clear_stripes_in_mottle_are_found_and_measured[13]
+0.52s call     tests/test_analyse.py::test_dark_area_is_never_reported_as_striped[21-full-frame-typical]
+0.51s call     tests/test_analyse.py::test_period_and_angle_extremes_are_detected[25-20-10]
+0.51s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[phase-break-P3]
+0.51s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[phase-break-P20]
+0.51s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[profile-only-21]
+0.51s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-26-P20--10deg-noise0.01]
+0.51s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[78-8--10-wide_short]
+0.51s call     tests/test_analyse.py::test_clear_stripes_in_mottle_are_found_and_measured[18]
+0.51s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[28-spikes-clipped]
+0.51s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[22-spikes-clipped]
+0.51s call     tests/test_analyse.py::test_clear_stripes_in_mottle_are_found_and_measured[14]
+0.51s call     tests/test_analyse.py::test_clear_stripes_in_mottle_are_found_and_measured[10]
+0.51s call     tests/test_analyse.py::test_region_above_the_minimum_is_reported[79-8-10-narrow_tall]
+0.51s call     tests/test_analyse.py::test_dark_area_is_never_reported_as_striped[20-full-frame-typical]
+0.51s call     tests/test_analyse.py::test_dark_area_is_never_reported_as_striped[21-full-frame-noise-free]
+0.51s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[23-18-3-0.01]
+0.51s call     tests/test_cli.py::test_cli_writes_mask_csv_laid_out_like_the_frame
+0.50s call     tests/test_analyse.py::test_borderline_striped_frame_has_finite_measurements[22-20]
+0.50s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[27-spikes-clipped]
+0.50s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[25-3-10-0.01]
+0.50s call     tests/test_analyse.py::test_period_and_angle_extremes_are_detected[20-3--10]
+0.50s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[profile-only-20]
+0.50s call     tests/test_analyse.py::test_clip_level_override[inf]
+0.50s call     tests/test_analyse.py::test_strong_stripes_are_measured[12-21]
+0.50s call     tests/test_analyse.py::test_report_converts_to_json[0.6]
+0.50s call     tests/test_analyse.py::test_period_and_angle_extremes_are_detected[22-3-10]
+0.50s call     tests/test_analyse.py::test_clear_stripes_in_mottle_are_found_and_measured[15]
+0.50s call     tests/test_analyse.py::test_clear_stripes_in_mottle_are_found_and_measured[11]
+0.50s call     tests/test_analyse.py::test_clear_stripes_in_mottle_are_found_and_measured[19]
+0.50s call     tests/test_analyse.py::test_region_above_the_minimum_is_reported[78-3-10-wide_short]
+0.50s call     tests/test_analyse.py::test_period_and_angle_extremes_are_detected[23-20--10]
+0.50s call     tests/test_analyse.py::test_clear_stripes_in_mottle_are_found_and_measured[17]
+0.50s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-22-P12--8deg-noise0.0]
+0.50s call     tests/test_analyse.py::test_strong_stripes_are_measured[5-20]
+0.50s call     tests/test_analyse.py::test_borderline_striped_frame_has_finite_measurements[16-8]
+0.49s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[22-12--8-0.01]
+0.49s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-25-P3-10deg-noise0.0]
+0.49s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[borderline-13-8-THRESHOLD]
+0.49s call     tests/test_analyse.py::test_borderline_striped_frame_has_finite_measurements[13-8]
+0.49s call     tests/test_inner_loop.py::test_analysed_shares_one_analysis_across_spellings_of_generate
+0.49s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[23-18-3-0.0]
+0.49s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[78-3-10-wide_short]
+0.49s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[26-20--10-0.01]
+0.49s call     tests/test_analyse.py::test_dark_area_is_never_reported_as_striped[93130-full-frame-typical]
+0.49s call     tests/test_analyse.py::test_region_below_the_minimum_is_not_reported[78-3--10-both]
+0.49s call     tests/test_analyse.py::test_borderline_striped_frame_has_finite_measurements[13-5]
+0.49s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[26-20--10-0.0]
+0.49s call     tests/test_analyse.py::test_spike_free_frames_report_no_spikes[full-frame-25-P3-10deg-noise0.01]
+0.49s call     tests/test_analyse.py::test_clipped_stripe_free_frames_are_not_striped[11]
+0.49s call     tests/test_analyse.py::test_borderline_striped_frame_has_finite_measurements[12-20]
+0.49s call     tests/test_analyse.py::test_profile_only_frame_is_not_striped[20-0.0]
+0.49s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[21-8-6-0.01]
+0.48s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[21-8-6-0.0]
+0.48s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[24-4--4-0.01]
+0.48s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[24-4--4-0.0]
+0.48s call     tests/test_analyse.py::test_period_and_angle_extremes_are_detected[21-3-0]
+0.48s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[20-5-0-0.0]
+0.48s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[20-5-0-0.01]
+0.48s call     tests/test_analyse.py::test_clipped_stripe_free_frames_are_not_striped[10]
+0.48s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[free-12-THRESHOLD]
+0.48s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[22-12--8-0.0]
+0.48s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[borderline-16-8-THRESHOLD]
+0.47s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[borderline-12-20-THRESHOLD]
+0.47s call     tests/test_analyse.py::test_clear_full_frame_stripes_are_found_and_measured[25-3-10-0.0]
+0.47s call     tests/test_analyse.py::test_spikes_do_not_change_the_verdict_on_stripe_free_frames[29-spikes-clipped]
+0.47s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[borderline-13-5-THRESHOLD]
+0.47s call     tests/test_slow_stamp.py::test_sigterm_to_the_runner_stops_its_whole_process_group
+0.46s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[striped-10-score]
+0.46s call     tests/test_cli.py::test_cli_writes_all_zero_mask_for_stripe_free_frame
+0.46s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[borderline-22-20-THRESHOLD]
+0.46s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[striped-10-below-score]
+0.46s call     tests/test_inner_loop.py::test_a_file_arg_next_to_an_item_arg_is_still_checked
+0.46s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[striped-11-zero]
+0.45s call     tests/test_analyse.py::test_dark_area_is_never_reported_as_striped[20-spilling-region]
+0.45s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[striped-10-zero]
+0.45s call     tests/test_analyse.py::test_clip_level_override[level]
+0.45s call     tests/test_glossary_terms.py::test_docstrings_and_comments_use_glossary_terms
+0.45s call     tests/test_analyse.py::test_clipping_is_detected_after_a_constant_dark_subtraction
+0.45s call     tests/test_analyse.py::test_clip_level_override[below]
+0.44s call     tests/test_analyse.py::test_dark_area_is_never_reported_as_striped[20-full-frame-noise-free]
+0.44s call     tests/test_analyse.py::test_dark_area_is_never_reported_as_striped[21-spilling-region]
+0.44s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[striped-10-inf]
+0.44s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[striped-10-above-score]
+0.42s call     tests/test_inner_loop.py::test_a_function_with_only_wide_parameters_fails_collection
+0.42s call     tests/test_inner_loop.py::test_an_explicit_item_selection_is_exempt
+0.42s call     tests/test_inner_loop.py::test_functions_with_an_inner_parameter_pass_collection
+0.40s call     tests/test_slow_stamp.py::test_stamped_files_cover_the_slow_tier
+0.36s call     tests/test_cli.py::test_cli_mask_follows_the_solis_crop_layout
+0.35s call     tests/test_cli.py::test_cli_fails_cleanly_when_mask_dir_missing
+0.30s call     tests/test_cli.py::test_cli_refuses_a_mask_path_that_aliases_the_input_or_output[output-False]
+0.30s call     tests/test_analyse.py::test_modulation_depth_is_relative_to_local_envelope[21-emccd]
+0.29s call     tests/test_cli.py::test_cli_refuses_a_mask_path_that_aliases_the_input_or_output[output-True]
+0.29s call     tests/test_analyse.py::test_modulation_depth_is_relative_to_local_envelope[20-emccd]
+0.29s call     tests/test_analyse.py::test_modulation_depth_is_relative_to_local_envelope[21-noise-free]
+0.28s call     tests/test_cli.py::test_cli_keeps_axis_column_by_default_and_warns_in_the_report
+0.28s call     tests/test_cli.py::test_cli_fails_cleanly_on_nan_clip_level
+0.27s call     tests/test_analyse.py::test_modulation_depth_is_relative_to_local_envelope[20-noise-free]
+0.27s call     tests/test_cli.py::test_cli_refuses_a_mask_path_that_aliases_the_input_or_output[frame_link-False]
+0.27s call     tests/test_cli.py::test_cli_refuses_a_mask_path_that_aliases_the_input_or_output[frame-False]
+0.27s call     tests/test_slow_regression_plan.py::test_free_rate_bound_covers_the_true_rate_for_continuous_scores
+0.26s call     tests/test_cli.py::test_cli_refuses_a_mask_path_that_aliases_the_input_or_output[output_link-True]
+0.24s call     tests/test_cli.py::test_cli_refuses_a_mask_path_that_aliases_the_input_or_output[frame-True]
+0.24s call     tests/test_cli.py::test_cli_without_arguments_is_a_usage_error
+0.21s call     tests/test_cli.py::test_console_script_is_installed
+0.21s call     tests/test_cli.py::test_cli_fails_cleanly_on_uneven_rows
+0.20s call     tests/test_cli.py::test_cli_fails_cleanly_on_kinetic_series
+0.20s call     tests/test_cli.py::test_cli_fails_cleanly_on_frame_with_no_positive_light
+0.20s call     tests/test_cli.py::test_cli_fails_cleanly_on_non_finite_values
+0.20s call     tests/test_cli.py::test_cli_fails_cleanly_on_missing_file
+0.14s call     tests/test_synthetic.py::test_default_frames_are_unchanged_by_regions[scorched-emccd]
+0.11s call     tests/test_slow_stamp.py::test_a_signal_while_the_command_starts_still_stops_its_group
+0.10s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[constant-zero]
+0.10s call     tests/test_synthetic.py::test_spike_free_unclipped_frames_are_unchanged[scorched-emccd]
+0.08s call     tests/test_synthetic.py::test_default_frames_are_unchanged_by_regions[scorched]
+0.07s call     tests/test_seed_guard.py::test_measure_calibrates_inside_the_block_and_evaluates_outside
+0.06s call     tests/test_slow_stamp.py::test_red_run_writes_nothing_and_keeps_the_old_stamp
+0.06s call     tests/test_synthetic.py::test_spike_free_unclipped_frames_are_unchanged[scorched]
+0.06s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[scorched-20]
+0.06s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[multiscale-27]
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[multiscale-29]
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[multiscale-28]
+0.05s call     tests/test_synthetic.py::test_clean_stripes_put_the_spectral_peak_at_the_true_period_and_angle[3-10]
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[scorched-25]
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[scorched-27]
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[multiscale-21]
+0.05s call     tests/test_analyse.py::test_input_frame_is_not_modified
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[multiscale-26]
+0.05s call     tests/test_analyse.py::test_constant_frame_is_not_striped_and_has_finite_score
+0.05s call     tests/test_synthetic.py::test_clip_level_saturates_the_frame_and_is_in_the_truth
+0.05s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[constant-score]
+0.05s call     tests/test_slow_stamp.py::test_docs_cli_report_and_non_slow_tests_never_need_the_slow_tier[README.md]
+0.05s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[constant-above-score]
+0.05s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[constant-inf]
+0.05s call     tests/test_analyse.py::test_verdict_is_striped_exactly_when_a_region_is_reported[constant-below-score]
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[scorched-26]
+0.05s call     tests/test_analyse.py::test_rejects_frame_smaller_than_min_side
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[scorched-24]
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[scorched-29]
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[scorched-23]
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[scorched-28]
+0.05s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[multiscale-20]
+0.04s call     tests/test_synthetic.py::test_spike_and_clipped_masks_are_disjoint
+0.04s call     tests/test_calibration.py::test_false_alarm_tolerance_covers_simulated_held_out_counts
+0.04s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[scorched-21]
+0.04s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[scorched-22]
+0.04s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[multiscale-22]
+0.04s call     tests/test_synthetic.py::test_clean_stripes_put_the_spectral_peak_at_the_true_period_and_angle[20--10]
+0.04s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[multiscale-23]
+0.04s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[multiscale-24]
+0.04s call     tests/test_synthetic.py::test_clean_stripes_put_the_spectral_peak_at_the_true_period_and_angle[7.3-4]
+0.04s call     tests/test_slow_stamp.py::test_docs_cli_report_and_non_slow_tests_never_need_the_slow_tier[GLOSSARY.md]
+0.04s call     tests/test_slow_stamp.py::test_docs_cli_report_and_non_slow_tests_never_need_the_slow_tier[src/denoisifier/cli.py]
+0.04s call     tests/test_synthetic.py::test_stripe_free_frame_has_no_stripe_peak[multiscale-25]
+0.04s call     tests/test_slow_stamp.py::test_check_slow_warns_at_start_on_a_busy_machine[3.50 2.00 1.00 2/900 4242-True]
+0.04s call     tests/test_slow_stamp.py::test_docs_cli_report_and_non_slow_tests_never_need_the_slow_tier[docs/adr/0001-plant.md]
+0.04s call     tests/test_slow_stamp.py::test_green_run_writes_the_stamp_and_check_passes
+0.04s call     tests/test_slow_stamp.py::test_docs_cli_report_and_non_slow_tests_never_need_the_slow_tier[tests/test_analyse.py]
+0.04s call     tests/test_slow_stamp.py::test_check_slow_warns_at_start_on_a_busy_machine[0.20 0.30 0.40 1/900 4242-False]
+0.03s call     tests/test_slow_stamp.py::test_stamped_file_edited_during_the_run_writes_nothing
+0.03s call     tests/test_slow_stamp.py::test_stamped_edit_makes_check_fail_naming_only_that_file
+0.03s call     tests/test_synthetic.py::test_spikes_add_bright_streaks_and_are_in_the_truth
+0.03s call     tests/test_synthetic.py::test_each_region_has_its_own_period_and_angle
+0.03s call     tests/test_slow_stamp.py::test_docs_cli_report_and_non_slow_tests_never_need_the_slow_tier[tests/test_cli.py]
+0.03s call     tests/test_slow_stamp.py::test_docs_cli_report_and_non_slow_tests_never_need_the_slow_tier[src/denoisifier/report.py]
+0.03s call     tests/test_slow_stamp.py::test_docs_cli_report_and_non_slow_tests_never_need_the_slow_tier[src/denoisifier/frame_io.py]
+0.03s call     tests/test_slow_stamp.py::test_docs_cli_report_and_non_slow_tests_never_need_the_slow_tier[src/denoisifier/__main__.py]
+0.03s call     tests/test_slow_stamp.py::test_green_run_without_this_runs_measurement_writes_nothing[another-run]
+0.02s call     tests/test_synthetic.py::test_default_frames_are_unchanged_by_regions[default]
+0.02s call     tests/test_slow_stamp.py::test_red_first_run_writes_no_stamp
+0.02s call     tests/test_synthetic.py::test_emccd_peak_photon_count
+0.02s call     tests/test_slow_stamp.py::test_green_run_without_this_runs_measurement_writes_nothing[missing]
+0.02s call     tests/test_require_background_gate.py::test_the_hook_entry_point_refuses_through_stdin
+0.02s call     tests/test_synthetic.py::test_spike_free_unclipped_frames_are_unchanged[default]
+0.02s call     tests/test_synthetic.py::test_mottle_has_the_requested_strength[scorched-None-0.4]
+0.01s call     tests/test_synthetic.py::test_mottle_has_the_requested_strength[scorched-0.2-0.2]
+0.01s call     tests/test_protected_numbers.py::test_protected_numbers_match_the_lockfile
+0.01s call     tests/test_synthetic.py::test_mottle_has_the_requested_strength[multiscale-None-0.35]
+0.01s call     tests/test_synthetic.py::test_emccd_with_gain_has_excess_noise_factor_two
+0.01s call     tests/test_synthetic.py::test_same_seed_gives_same_frame
+0.01s call     tests/test_slow_stamp.py::test_the_stamp_is_git_ignored_local_state
+0.01s call     tests/test_bench.py::test_bench_records_the_run_and_passes_under_the_limit
+0.01s call     tests/test_synthetic.py::test_ground_truth_lists_regions
+0.01s call     tests/test_synthetic.py::test_emccd_read_noise_adds_its_variance
+0.01s call     tests/test_synthetic.py::test_emccd_with_gain_off_counts_whole_photons
+0.01s call     tests/test_synthetic.py::test_emccd_spurious_charge_adds_its_mean
+0.01s setup    tests/test_slow_stamp.py::test_docs_cli_report_and_non_slow_tests_never_need_the_slow_tier[README.md]
+0.01s call     tests/test_feasibility_gate.py::test_seed_sets_are_disjoint_and_unused
+0.01s call     tests/test_feasibility_gate.py::test_run_info_records_the_worker_count
+0.01s call     tests/test_synthetic.py::test_mottle_none_is_unchanged_from_ticket_01
+0.01s call     tests/test_synthetic.py::test_streaks_cover_their_length
+
+(1350 durations < 0.005s hidden.  Use -vv to show these durations.)
+=============== 558 passed, 478 deselected in 190.40s (0:03:10) ================
+end 00:07:12
+load after:  00:07:12 up 4 days,  5:20,  4 users,  load average: 1.72, 1.57, 1.95
+EXIT=0

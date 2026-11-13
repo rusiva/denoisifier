@@ -149,7 +149,7 @@ Per-function totals, every function at 1 s or more (s total / items / slowest it
 
 The totals that set the subset:
 
-- **Cost per analysis** (from single-analysis items): about 0.6-0.9 s at 256x256; about 2.5-3.5 s at 512x512 for Periods 6-20, but 10.4 s and 16.7 s for the Period 3 and 5 cases (seeds 70, 71); 6.8-9 s for the 640x1024 two-region frame at seed 76 and 8.8-25.6 s at seed 77.
+- **Cost per analysis** (from single-analysis items): about 0.6-0.9 s at 256x256; about 2.5-3.5 s at 512x512 for Periods 6-20, but 10.4 s and 16.7 s for the Period 3 and 5 cases (seeds 70, 71); 6.8-9 s for the 640x1024 two-region frame at seed 76 and 8.8-25.6 s at seed 77. *(Corrected, see the implementer's Comment below: the 10.4 s, 16.7 s and 8.8-25.6 s figures are load spikes during this run, not detector cost; the same 512x512 frame took 2.62 s under another cache key in the same run.)*
 - **Cached work hides behind the first test that pays it.** `test_lowering_the_threshold_keeps_reported_regions_unchanged` (105 items) and the `THRESHOLD` items of the verdict test are all under 5 ms: they read `_sweep_report`'s cache. Likewise `test_spikes_leave_the_typical_stripe_free_score_unchanged` reads all 40 pairs that `test_spikes_do_not_change_the_verdict_on_stripe_free_frames` computed (46.3 s), and `test_clipped_stripe_peaks_keep_the_modulation_depth` reads the 10 seeds of `test_report_counts_clipped_pixels` (11.4 s). If those parametrized tests are cut, the unparametrized aggregate pays the cost itself, as one item.
 - **The 640x1024 two-region frame:** 72.4 s (`test_two_regions_*`, 6 analyses) + 56.5 s (verdict test's `two-region` items, 6 analyses) = **128.9 s, 15% of the run**, for 12 analyses.
 - **The 512x512 region tests:** 50.2 + 75.6 + 9.9 + 5.7 + 16.6 + 27.5 = **185.5 s, 22%**.
@@ -195,3 +195,43 @@ Commit `ee2f774` (plan `07-plan.md` at `69c8730`, review notes B1-B4, N1-N6 appl
 **Correction to the step-0 Comment:** "10.4 s and 16.7 s for the Period 3 and 5 cases" and "8.8-25.6 s at seed 77" are load spikes, not detector cost (review B4): the same 512x512 frame took 2.62 s under another cache key in the same run.
 
 Not run here (the fixer's): `make check-slow`, then `make check`. `Makefile`, `pyproject.toml`, `tests/protected.py` and `tests/conftest.py` are stamped, so `make check-slow` is due first. The CLAUDE.md Gates text (plan section 8) is in `ee2f774`.
+
+### 2026-11-14 — code review fixes F1-F11 and the measured inner loop (fixer)
+
+Fixes (the orchestrator log's "Code review" list), commits `63672c1` (F1) and `72e67e2` (F2-F10); F11 is the inline correction in the step-0 Comment above.
+- F1: the all-`wide` check is exempt only when every arg names a node (`file::test`); a file or directory arg next to a node arg is still checked (new planted test, exit 4).
+- F2, F6: `diagonal(..., cover=...)` builds the size subsets (shared `SIZE_PERIODS`, `SIZE_ANGLES`, `SIZE_CASES`); `pairs` is built once. The size inner sets keep every (shape, Period) and all 6 `SIZE_CASES`; the seed each case runs on changed (12 below and 9 above, as before).
+- F3, F10: new `tests/shared_cache.py` (not stamped; imported by `regions.py`, `test_analyse.py`, `test_inner_loop.py`). `analysed(**generate_kwargs)` runs one `generate` + `analyse` per distinct generate call. It is shared by the free and striped sweep frames, `test_stripe_free_mottled_*`, `test_clear_stripes_in_mottle_*`, the `mottled-*` spike-free frames and `_spike_pair_scores` (which now generates and analyses its free frame once per seed; `_free_score` is gone).
+- F4: `_ZERO_VS_THRESHOLD`, `_INNER_STRIPED`, `_params_per_seed`.
+- F5: `SWEEP_FRAMES[name]()` gives (frame, Report at THRESHOLD); `_sweep_report` has one call site (`_sweep_frame`), and there is no two-region special case.
+- F7: the inner striped sweep frames are `MOTTLED_TEST_SEEDS[:INNER_LOOP_SEED_COUNT]`; `keep=1` for the two-region frame and `keep=len(CASES)` for clear stripes stay (spec).
+- F8: `normalised_cache` binds the call to the signature with defaults applied (any spelling is one key), and freezes the result; used by `single_region_case`, `two_region_case` and `analysed`. Tested in `tests/test_inner_loop.py`.
+- F9, strict reading: all 18 sweep frames run at `THRESHOLD` in the inner loop. The other kinds run on `constant` (all 6), on the analyses the lowering test's inner pairs read (`striped-10` all 6, `striped-11` and `overlapping-extents` at `zero`), and on `free-10` at `zero`: 31 verdict items. `test_the_verdict_sweep_keeps_every_frame_and_every_threshold_kind` asserts every sweep frame and every kind appear unmarked. The two-region frame is still analysed once (`76-5-12`, verdict `THRESHOLD` only, no lowering item).
+
+No tolerance, expected value, timeout, seed range, pass count, `check`/`check-slow` selection, lockfile or `Makefile` change; the only gate-config file touched is `tests/conftest.py` (F1, inside approval item 2).
+
+**The 2-minute target was waived by the owner** (2026-11-13, orchestrator log Decisions: "accept about 3 min; no further narrowing").
+
+**Measured `make test-fast`** at `72e67e2` (tree dirty only in unrelated `.scratch/` files), background, started when the 1-min load dropped below 1.0, log `.scratch/agent-gates/handoffs/07-test-fast-timing-3.log`:
+
+`PYTEST_ADDOPTS="--durations=0" make test-fast` → `EXIT=0`, `558 passed, 478 deselected in 190.40s (0:03:10)`. Wall time 00:04:07 → 00:07:12 (185 s). Load before 0.99 / 1.54 / 2.04, after 1.72 / 1.57 / 1.95 (1/5/15-min). Top 10:
+
+| s | test |
+|---|---|
+| 6.82 | `test_two_regions_with_different_periods_are_reported_separately[76-5-12]` |
+| 4.61 | `test_heavily_clipped_partial_region_is_no_worse_than_no_exclusion[83]` |
+| 4.20 | `test_heavily_clipped_partial_region_is_no_worse_than_no_exclusion[81]` |
+| 3.51 | `test_slow_regression_plan.py::test_regression_check_runs_on_a_tiny_plan` |
+| 3.20 | `test_spikes_do_not_change_the_verdict_on_stripe_free_frames[15-spikes]` |
+| 2.73 | `test_partial_region_is_reported_with_its_measurements[66]` |
+| 2.52 | `test_stripes_on_one_flank_of_the_envelope_are_found[66]` |
+| 2.49 | `test_depth_is_measured_on_the_region_interior[93024-20--10-scorched]` |
+| 2.40 | `test_mask_overlaps_the_true_region[67-multiscale]` |
+| 2.35 | `test_report_counts_spike_pixels[pass-mark-m0.5-83]` |
+
+The slowest test is 6.82 s, under the 10 s limit. The time, about 3 min, is what the owner accepted.
+
+**Same ids for `check` and `check-slow`** (sorted, diffed against `07-ids-check-before.txt` and `07-ids-check-slow-before.txt`):
+- `uv run --locked pytest --collect-only -q` → `1032/1036 tests collected (4 deselected)`. None of the 1009 before-ids is removed; the 23 added ids are all in `tests/test_inner_loop.py`.
+- `uv run --locked pytest -m slow --collect-only -q` → `4/1036 tests collected (1032 deselected)`; the ids are identical to before.
+- `uv run --locked pytest -m "not slow and not wide" --collect-only -q` → `558/1036 tests collected (478 deselected)`. Every one of these ids is in `check`, and the set of test functions (ids cut at `[`) is the same as `check`'s.
