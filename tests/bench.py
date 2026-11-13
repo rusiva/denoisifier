@@ -26,7 +26,7 @@ from statistics import median
 import feasibility
 import seed_guard
 import slow_stamp
-from protected import BENCH_IDLE_LOAD, BENCH_REPEATS, TARGET_TIMING_S, TIMING_LIMIT_S
+from protected import BENCH_REPEATS, TARGET_TIMING_S, TIMING_LIMIT_S
 
 ROOT = feasibility.ROOT
 DEFAULT_OUT = f"{slow_stamp.GATE_DIR}/bench.json"
@@ -41,9 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     out_path: Path = args.out if args.out is not None else ROOT / DEFAULT_OUT
 
-    load_start = feasibility.loadavg()
+    load_start = slow_stamp.loadavg()
     seconds = feasibility.time_full_frame(repeats=BENCH_REPEATS)
-    load_end = feasibility.loadavg()
+    load_end = slow_stamp.loadavg()
     median_s = median(seconds)
     info = feasibility.run_info(workers=1)
     record = {
@@ -72,9 +72,9 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"ticket 13 target {TARGET_TIMING_S} s: " + ("met" if record["meets_target"] else "not met")
     )
-    one_minute = load_start.split()[0] if load_start != "unavailable" else None
-    if one_minute is not None and float(one_minute) > BENCH_IDLE_LOAD:
-        print(f"make bench: warning: load average {load_start} at start; the machine is not idle")
+    warning = slow_stamp.busy_warning("make bench", load_start)
+    if warning is not None:
+        print(warning)
     print(f"wrote {out_path}")
     if not record["meets_limit"]:
         print(f"make bench: median {median_s:.2f} s exceeds the {TIMING_LIMIT_S} s limit")

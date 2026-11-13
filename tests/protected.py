@@ -59,14 +59,17 @@ TIMING_CASE = Case(period=8, angle_deg=0)
 GATE_STORED_THRESHOLD = 49.7159577445053  # = feasibility-gate.json gate.threshold
 PROBE_STORED_THRESHOLD = 85.17105365821853  # = feasibility-gate.json probe.threshold
 REGRESSION_STRIPED_SEEDS = range(80_000, 80_300)  # 256x256, m = WEAK_DEPTH, 30 per case
-REGRESSION_FREE_SEEDS = range(81_000, 81_800)  # 256x256, stripe-free
+REGRESSION_FREE_SEEDS = range(81_000, 81_850)  # 256x256, stripe-free (850: ruling 2026-11-13)
 REGRESSION_PROBE_STRIPED_SEEDS = range(82_000, 82_030)  # 400x1600, m = WEAK_DEPTH, 3 per case
 REGRESSION_TIMED_FRAMES = 3  # first 3 probe seeds, timed serially; counted in the 30
 REGRESSION_MIN_DETECTED = 280
-REGRESSION_MAX_FALSE_ALARMS = 22
+REGRESSION_MAX_FALSE_ALARMS = 24
 REGRESSION_PROBE_MIN_DETECTED = 26
 REGRESSION_MAX_FALSE_RED = 0.01  # gate-wide: union over the three checks
 REGRESSION_MAX_PASS_BAD = 0.05  # per check
+# An unchanged detector's fresh make measure meets the rule at least this often
+# (owner approval 2026-11-13, ticket agent-gates/05 Comments).
+REGRESSION_MIN_PASS_PROBABILITY = 0.95
 REGRESSION_BAD_DETECTION_RATE = 0.90
 REGRESSION_BAD_FALSE_ALARM_RATE = 0.04
 # Declared (ruling O1): a collapse check, not the 0.95 full-run bar
@@ -75,7 +78,7 @@ REGRESSION_PROBE_BAD_DETECTION_RATE = 0.70
 SLOW_TIMING_LIMIT_S = 30.0  # check-slow: real slowdowns only (owner, 2026-11-10)
 BENCH_REPEATS = 5  # make bench: median of this many runs, asserted against TIMING_LIMIT_S
 TARGET_TIMING_S = 5.0  # ticket 13's target; make bench reports it without failing
-BENCH_IDLE_LOAD = 1.0  # make bench warns, without failing, above this 1-min load average
+BENCH_IDLE_LOAD = 1.0  # bench, check-slow, measure warn, without failing, above this 1-min load
 # False-alarm baseline of the operating rule (owner approval, ticket
 # stripe-detector/05 Comments): the upper quantile of the stored threshold's
 # rank-based rate, Beta(k + x, n + 1 - k + N - x), not the held-out count's CI.

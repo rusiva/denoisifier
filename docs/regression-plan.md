@@ -16,7 +16,7 @@ The derivation below was made at the ticket agent-gates/05 baseline. The false-a
   - 256×256 false alarms at 0.04;
   - 400×1600 detection at the declared 0.70 (O1).
 
-**Selection rule** (fixed before any run). The sizes are fixed at n = 300 / 800 / 30. Over all (c, a, c_p) that meet (i) and (ii), take the triple that **minimises the largest pass-bad probability**. Under the independent model the union is computed exactly as 1 - Π(1 - p_i). It is also checked against the Bonferroni sum, so (i) holds even without independence.
+**Selection rule** (fixed before any run). The sizes are fixed at n = 300 / 800 / 30 (800 became 850 in "Pass probability of the rule"). Over all (c, a, c_p) that meet (i) and (ii), take the triple that **minimises the largest pass-bad probability**. Under the independent model the union is computed exactly as 1 - Π(1 - p_i). It is also checked against the Bonferroni sum, so (i) holds even without independence.
 
 ## The three checks at fixed sizes
 
@@ -57,6 +57,21 @@ The per-check minimax (280, 21, 26) has a union of 1.133% and is ruled out. The 
 
 2026-11-12, recorded in `.scratch/stripe-detector/issues/05-striped-regions-and-mask.md` Comments. The false-alarm term's p0 is no longer the held-out count's exact CI end. The stored threshold is the k-th largest of n calibration scores, so its true rate is Beta(k, n + 1 - k), and the held-out count x of N updates it to Beta(k + x, n + 1 - k + N - x). The rule test takes p0 = that distribution's 97.5% quantile (`REGRESSION_FREE_RATE_BOUND_QUANTILE`), reading k, n, x, N from `feasibility-gate.json`; at `317744b`, Beta(32, 2969) gives 1.4636% and a false-red term of 0.209%. The guarantee is averaged over calibration draws, not conditional on one fixed threshold, and assumes i.i.d. continuous Stripe-free scores with no tie at rank k (`test_stored_threshold_rank_is_untied` guards the ranks above k; `test_free_rate_bound_covers_the_true_rate_for_continuous_scores` checks the coverage on uniform scores). Reason: the stored threshold is a calibration rank, so the held-out count is betabinom(N, k, n + 1 - k) for any detector, and under the old term the rule passed only about 38% of measures for any detector (`.scratch/stripe-detector/handoffs/.archived/05-implementer-7.md`). Pass counts, sizes, budgets and bad rates unchanged.
 
+## Pass probability of the rule (owner approval, ticket agent-gates/05)
+
+2026-11-13, recorded in `.scratch/agent-gates/issues/05-required-slow-tier.md` Comments. A fresh `make measure` of an unchanged detector draws a new held-out count x, which is betabinom(N, k, n + 1 - k) for any detector, so whether the rule above passes is itself random. `test_an_unchanged_detector_passes_the_rule_on_most_measures` sums that pmf exactly over every x at which the rule passes (detection terms held at the stored baseline) and asserts at least `REGRESSION_MIN_PASS_PROBABILITY` = 0.95.
+
+At 800 Stripe-free frames and a ≤ 22 limit, the rule passed up to x = 15 only: **91.5%**, a false red on about 1 measure in 12. The limit could not rise at 800 frames: a ≤ 23 limit passes a bad detector (4%) 5.7% of the time, over (ii). The fix is a larger set (`k = 20, n = 2000, N = 1000`, the stored measurement's):
+
+| Stripe-free frames | largest limit meeting (ii) | P(pass), unchanged detector |
+|---|---|---|
+| 800 | 22 | 91.5% |
+| **850** | **24** | **96.3%** |
+| 900 | 26 | 98.5% |
+| 1000 | 29 | 99.1% |
+
+**Chosen:** 850 frames (`range(81_000, 81_850)`, still 85 per case), false alarms **≤ 24 of 850**. The cost is 50 more 256×256 frames in `make check-slow`, a few seconds.
+
 ## Timing frames (O2)
 
 The first `REGRESSION_TIMED_FRAMES = 3` seeds of the 30 full-frame seeds are analysed serially in-process and timed. Their scores count once toward the ≥ 26/30. The other 27 go through the pool.
@@ -67,7 +82,7 @@ Seeds are fixed, so a run is deterministic. The 1% applies to the draw of the se
 
 ## Wall clock (estimate)
 
-- Pool: 1100 small frames + 27 × 12.6 ≈ 1440 small-frame units × 0.17-0.21 s ≈ 4-5 min.
+- Pool: 1100 small frames (1150 since the 850-frame ruling) + 27 × 12.6 ≈ 1440 small-frame units × 0.17-0.21 s ≈ 4-5 min.
 - Serial timing: about 25 s. Three pool spawns: a few seconds.
 - **Estimate: about 5-6 min.** Measured and recorded in Comments.
 

@@ -35,6 +35,8 @@ import uuid
 from pathlib import Path
 from types import FrameType
 
+from protected import BENCH_IDLE_LOAD
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # The files that affect detector output, repo-relative. Every file in
@@ -78,6 +80,24 @@ LOCK = f"{GATE_DIR}/check-slow.lock"
 STAMP = f"{GATE_DIR}/check-slow-stamp.json"
 MEASUREMENT = f"{GATE_DIR}/check-slow-measurement.json"
 RUN_ID_VAR = "CHECK_SLOW_RUN_ID"
+
+
+def loadavg() -> str:
+    """/proc/loadavg as one line, or "unavailable"."""
+    try:
+        return Path("/proc/loadavg").read_text().strip()
+    except OSError:
+        return "unavailable"
+
+
+def busy_warning(label: str, line: str) -> str | None:
+    """The heavy gates' warning when the 1-min load in ``line`` (a loadavg()
+    line) is above BENCH_IDLE_LOAD: their timings assume an idle machine."""
+    if line == "unavailable" or float(line.split()[0]) <= BENCH_IDLE_LOAD:
+        return None
+    return f"{label}: warning: load average {line} at start; the machine is not idle"
+
+
 MISSING = "MISSING"
 
 # After SIGINT to the run's process group: how long to wait before SIGTERM,
@@ -277,6 +297,10 @@ def run(root: Path, command: list[str]) -> int:
                 + f"; then kill {' '.join(map(str, leftovers))}"
             )
             return 1
+
+        warning = busy_warning("make check-slow", loadavg())
+        if warning is not None:
+            print(warning, flush=True)
 
         run_id = uuid.uuid4().hex
         hashes_begin = hash_files(root)

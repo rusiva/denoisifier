@@ -11,7 +11,7 @@ edit.
 import json
 
 import numpy as np
-from scipy.stats import beta, binom, binomtest
+from scipy.stats import beta, betabinom, binom, binomtest
 
 import feasibility
 import protected
@@ -32,6 +32,7 @@ from protected import (
     REGRESSION_MAX_FALSE_RED,
     REGRESSION_MAX_PASS_BAD,
     REGRESSION_MIN_DETECTED,
+    REGRESSION_MIN_PASS_PROBABILITY,
     REGRESSION_PROBE_BAD_DETECTION_RATE,
     REGRESSION_PROBE_MIN_DETECTED,
     REGRESSION_PROBE_STRIPED_SEEDS,
@@ -81,8 +82,9 @@ def _free_rate_bound(k: int, n: int, x: int, n_free: int) -> float:
     return float(beta.ppf(REGRESSION_FREE_RATE_BOUND_QUANTILE, k + x, n + 1 - k + n_free - x))
 
 
-def test_regression_plan_meets_the_operating_rule():
-    saved = _saved()
+def _false_red(saved: dict, false_alarms: int) -> dict[str, float]:
+    """Each check's chance of a false red at the pessimistic end of a baseline
+    whose held-out Stripe-free count is ``false_alarms``."""
     gate, probe = saved["gate"], saved["probe"]
     # Detection: pessimistic ends of the stored baseline's exact 95% CIs.
     det0 = _ci(gate["detected"], gate["striped_n"])[0]
@@ -92,25 +94,49 @@ def test_regression_plan_meets_the_operating_rule():
     # held-out count's own Clopper-Pearson end: the stored threshold is a
     # calibration rank, so the held-out count is betabinom(N, k, n + 1 - k) for
     # any detector, and that CI end passed the rule on only about 38% of measures.
-    fa0 = _free_rate_bound(gate["k"], gate["calibration_n"], gate["false_alarms"], gate["free_n"])
+    fa0 = _free_rate_bound(gate["k"], gate["calibration_n"], false_alarms, gate["free_n"])
+    return {
+        "detection": float(
+            binom.cdf(REGRESSION_MIN_DETECTED - 1, len(REGRESSION_STRIPED_SEEDS), det0)
+        ),
+        "false alarms": float(
+            binom.sf(REGRESSION_MAX_FALSE_ALARMS, len(REGRESSION_FREE_SEEDS), fa0)
+        ),
+        "full frame": float(
+            binom.cdf(
+                REGRESSION_PROBE_MIN_DETECTED - 1, len(REGRESSION_PROBE_STRIPED_SEEDS), probe0
+            )
+        ),
+    }
 
+
+def _union(false_red: dict[str, float]) -> float:
+    """P(any false red), exact under independence: 1 - prod(1 - p_i)."""
+    kept = 1.0
+    for p in false_red.values():
+        kept *= 1.0 - p
+    return 1.0 - kept
+
+
+def _meets_false_red_budget(false_red: dict[str, float]) -> bool:
+    return (
+        _union(false_red) <= REGRESSION_MAX_FALSE_RED
+        and sum(false_red.values()) <= REGRESSION_MAX_FALSE_RED
+    )
+
+
+def test_regression_plan_meets_the_operating_rule():
+    saved = _saved()
+    false_red = _false_red(saved, saved["gate"]["false_alarms"])
     n, c = len(REGRESSION_STRIPED_SEEDS), REGRESSION_MIN_DETECTED
     nf, a = len(REGRESSION_FREE_SEEDS), REGRESSION_MAX_FALSE_ALARMS
     np_, cp = len(REGRESSION_PROBE_STRIPED_SEEDS), REGRESSION_PROBE_MIN_DETECTED
-    false_red = {
-        "detection": float(binom.cdf(c - 1, n, det0)),
-        "false alarms": float(binom.sf(a, nf, fa0)),
-        "full frame": float(binom.cdf(cp - 1, np_, probe0)),
-    }
     pass_bad = {
         "detection": float(binom.sf(c - 1, n, REGRESSION_BAD_DETECTION_RATE)),
         "false alarms": float(binom.cdf(a, nf, REGRESSION_BAD_FALSE_ALARM_RATE)),
         "full frame": float(binom.sf(cp - 1, np_, REGRESSION_PROBE_BAD_DETECTION_RATE)),
     }
-    union = 1.0
-    for p in false_red.values():
-        union *= 1.0 - p
-    union = 1.0 - union
+    union = _union(false_red)
     assert union <= REGRESSION_MAX_FALSE_RED, f"P(any false red) {union:.4%}: {false_red}"
     assert sum(false_red.values()) <= REGRESSION_MAX_FALSE_RED, (
         f"Bonferroni sum {sum(false_red.values()):.4%}: {false_red}"
@@ -118,6 +144,26 @@ def test_regression_plan_meets_the_operating_rule():
     for name, p in pass_bad.items():
         assert p <= REGRESSION_MAX_PASS_BAD, f"{name}: P(pass a bad detector) {p:.4%}"
     assert 0 < REGRESSION_TIMED_FRAMES <= np_
+
+
+def test_an_unchanged_detector_passes_the_rule_on_most_measures():
+    """A fresh `make measure` of an unchanged detector meets the operating rule
+    with probability at least REGRESSION_MIN_PASS_PROBABILITY (owner approval
+    2026-11-13, ticket agent-gates/05 Comments; docs/regression-plan.md, "Pass
+    probability of the rule"). The stored threshold is a calibration rank, so the
+    held-out count is betabinom(N, k, n + 1 - k) for any detector; the sum over it
+    is exact. The detection terms stay at the stored baseline."""
+    saved = _saved()
+    gate = saved["gate"]
+    k, n, n_free = gate["k"], gate["calibration_n"], gate["free_n"]
+    counts = np.arange(n_free + 1)
+    weights = betabinom.pmf(counts, n_free, k, n + 1 - k)
+    passes = np.array([_meets_false_red_budget(_false_red(saved, int(x))) for x in counts])
+    p_pass = float(weights[passes].sum())
+    assert p_pass >= REGRESSION_MIN_PASS_PROBABILITY, (
+        f"P(an unchanged detector passes the rule) {p_pass:.4%}; it passes up to "
+        f"{int(counts[passes].max()) if passes.any() else None} of {n_free} held-out false alarms"
+    )
 
 
 def test_stored_threshold_rank_is_untied():

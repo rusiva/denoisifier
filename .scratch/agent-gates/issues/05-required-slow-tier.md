@@ -73,3 +73,13 @@ Review dispositions: `handoffs/05-orchestrator.md` "Code review". Fixed:
 Gates after the fixes (no other gate ran alongside; another project's pytest loaded the machine, loadavg 4.33 at start, 14.33 at end):
 - `make check-slow` (background, log `handoffs/05-check-slow-fix.log`) → exit 0, `4 passed, 291 deselected in 305.46s (0:05:05)`, HEAD `bd30751-dirty` (only `.scratch` changed). Counts 296/300 detected, 7/800 False Alarms, 30/30 full-frame; timed frames 6.31, 6.26, 6.34 s.
 - `make check` after it (log `handoffs/05-check-fix.log`) → exit 0, `291 passed, 4 deselected in 96.85s (0:01:36)`, HEAD `bd30751-dirty` (only `.scratch` changed).
+
+### 2026-11-13 — pass probability of the rule, and the load warning (retro of stripe-detector/05, items #5 and #6)
+
+**Approval (owner, 2026-11-13, given before the change; weakening moves: protected numbers, lockfile, `tests/slow_stamp.py`).**
+- **#5, option A.** An exact guard, `test_an_unchanged_detector_passes_the_rule_on_most_measures`, sums betabinom(N, k, n + 1 - k) over the held-out counts at which the operating rule passes, and asserts ≥ `REGRESSION_MIN_PASS_PROBABILITY = 0.95` (new lockfile line). At 800 Stripe-free frames and a limit of ≤ 22 it was red: 91.45%, because the rule passes up to x = 15 only, so about 1 measure in 12 would turn red with no regression. ≤ 23 at 800 fails pass-bad (5.7% > 5%). Owner chose `REGRESSION_FREE_SEEDS = range(81_000, 81_850)` and `REGRESSION_MAX_FALSE_ALARMS = 24`: 96.3% pass probability; pass-bad stays ≤ 5%. Reason: a gate that goes red on an unchanged detector 8.5% of the time costs owner decisions and re-measures. Derivation: `docs/regression-plan.md`, "Pass probability of the rule". Rejected: option B (keep 800/22, guard at ≥ 0.90).
+- **#6.** `make check-slow` (`slow_stamp.run`) and `make measure` (`feasibility.main`) print a warning at start when the 1-min load is above `BENCH_IDLE_LOAD`, as `make bench` already did. The shared `loadavg()` and `busy_warning()` now live in the stdlib-only `slow_stamp.py`; `feasibility` and `bench` use them. It warns and never fails; no new constant.
+
+Gates after the change (no other gate ran alongside):
+- `make check-slow` (background, log `handoffs/05-followup-check-slow.log`) → exit 0, `4 passed, 741 deselected in 413.15s (0:06:53)`, HEAD `55061bf-dirty`. Counts 300/300 detected, 4/850 False Alarms (limit 24), 30/30 full-frame. Load 0.35 at start, 13.55 at end: the owner's raytracing project started mid-run.
+- `make check` after it (log `handoffs/05-followup-check.log`) → exit 0, `741 passed, 4 deselected in 437.84s (0:07:17)`, stamp check passed, HEAD `55061bf-dirty`. Load 1.79 at start.

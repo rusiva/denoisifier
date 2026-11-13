@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 import slow_stamp
+from protected import BENCH_IDLE_LOAD
 from slow_stamp import ROOT, STAMPED_FILES
 
 STAMP = Path(".gate/check-slow-stamp.json")
@@ -321,3 +322,26 @@ def test_bench_and_the_full_measurement_stay_out_of_the_gates(target):
     text = _dry_run(target)
     assert "bench.py" not in text
     assert "feasibility.py" not in text
+
+
+BUSY = "3.50 2.00 1.00 2/900 4242"
+IDLE = "0.20 0.30 0.40 1/900 4242"
+
+
+@pytest.mark.parametrize(
+    ("line", "warns"),
+    [(BUSY, True), (IDLE, False), (f"{BENCH_IDLE_LOAD} 0 0 1/1 1", False), ("unavailable", False)],
+)
+def test_busy_warning_flags_a_one_minute_load_above_the_idle_load(line, warns):
+    warning = slow_stamp.busy_warning("make x", line)
+    if warns:
+        assert warning == f"make x: warning: load average {line} at start; the machine is not idle"
+    else:
+        assert warning is None
+
+
+@pytest.mark.parametrize(("line", "warns"), [(BUSY, True), (IDLE, False)])
+def test_check_slow_warns_at_start_on_a_busy_machine(root, monkeypatch, capsys, line, warns):
+    monkeypatch.setattr(slow_stamp, "loadavg", lambda: line)
+    assert run(root, GREEN) == 0
+    assert ("make check-slow: warning: load average" in capsys.readouterr().out) is warns

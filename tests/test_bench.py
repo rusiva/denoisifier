@@ -1,9 +1,11 @@
-"""make bench (ticket agent-gates/05): the speed gate outside check and check-slow."""
+"""make bench (ticket agent-gates/05): the speed gate outside check and check-slow,
+and the heavy gates' warning on a busy machine."""
 
 import json
 
 import bench
 import feasibility
+import slow_stamp
 from protected import BENCH_REPEATS, TARGET_TIMING_S, TIMING_LIMIT_S
 
 
@@ -59,3 +61,17 @@ def test_bench_writes_local_state_by_default(monkeypatch, tmp_path):
     monkeypatch.setattr(bench, "ROOT", tmp_path)
     assert bench.main([]) == 0
     assert json.loads((tmp_path / ".gate/bench.json").read_text())["meets_target"] is True
+
+
+def test_measure_warns_at_start_on_a_busy_machine(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(feasibility, "loadavg", lambda: "3.50 2.00 1.00 2/900 4242")
+    monkeypatch.setattr(feasibility, "measure_all", lambda *_args, **_kwargs: {"ok": 1})
+    assert feasibility.main(["--out", str(tmp_path / "m.json")]) == 0
+    assert "make measure: warning: load average 3.50" in capsys.readouterr().out
+
+
+def test_bench_warns_at_start_on_a_busy_machine(monkeypatch, tmp_path, capsys):
+    _times(monkeypatch, [4.0, 4.0, 4.0])
+    monkeypatch.setattr(slow_stamp, "loadavg", lambda: "3.50 2.00 1.00 2/900 4242")
+    assert bench.main(["--out", str(tmp_path / "bench.json")]) == 0
+    assert "make bench: warning: load average 3.50" in capsys.readouterr().out

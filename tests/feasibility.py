@@ -72,6 +72,7 @@ from protected import (  # noqa: E402
     TIMING_SEED,
     WEAK_DEPTH,
 )
+from slow_stamp import busy_warning, loadavg  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = ROOT / ".scratch/stripe-detector/feasibility-gate.json"
@@ -451,14 +452,6 @@ REGRESSION = RegressionPlan(
 )
 
 
-def loadavg() -> str:
-    """/proc/loadavg as one line, or "unavailable"."""
-    try:
-        return Path("/proc/loadavg").read_text().strip()
-    except OSError:
-        return "unavailable"
-
-
 def thread_settings() -> dict[str, str | None]:
     """The BLAS/OpenMP thread variables as this process sees them."""
     return {v: os.environ.get(v) for v in THREAD_VARS}
@@ -531,6 +524,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="JSON measurement path")
     args = parser.parse_args(argv)
 
+    warning = busy_warning("make measure", loadavg())
+    if warning is not None:
+        print(warning, flush=True)
     out = measure_all(args.workers, probe=not args.skip_probe)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(out, indent=2) + "\n")
