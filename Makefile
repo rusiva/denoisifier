@@ -20,8 +20,8 @@ measure:                    ## full ticket-03 measurement (~39 min): milestones 
 	$(UV) python tests/feasibility.py
 	$(PYTEST) tests/test_feasibility_gate.py
 
-test-fast:                  ## inner loop: stop at first failure, failures first
-	$(PYTEST) -x --ff
+test-fast:                  ## inner loop: first seeds only (not slow, not wide; tests/inner_loop.py), stop at first failure, failures first
+	$(PYTEST) -x --ff -m "not slow and not wide"
 
 lock-check:
 	uv lock --check

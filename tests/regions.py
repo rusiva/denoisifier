@@ -7,6 +7,7 @@ the generator's truth; a truth region's pixels are ``truth_pixels`` (its soft
 mask at or above TRUTH_LEVEL).
 """
 
+import dataclasses
 from functools import cache
 
 import numpy as np
@@ -107,6 +108,36 @@ def single_region_case(seed, period, angle_deg, mottle="scorched"):
         **TYPICAL,
     )
     return s, analyse(s.frame)
+
+
+def _freeze(value):
+    """Make every array of a (nested) dataclass or tuple read-only, in place."""
+    if isinstance(value, np.ndarray):
+        value.setflags(write=False)
+    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
+        for field in dataclasses.fields(value):
+            _freeze(getattr(value, field.name))
+    elif isinstance(value, tuple):
+        for item in value:
+            _freeze(item)
+
+
+@cache
+def two_region_case(seed, left_period, right_period):
+    """(Synthetic, Report) for one typical-noise two-region frame (TWO_REGION_SHAPE, scorched
+    Mottle), cached per run: the 640x1024 frame is the slowest to analyse, and several tests
+    read it (ticket agent-gates/07). Call it positionally, so every caller shares one key.
+    Every array it returns is read-only, so no test can change what another test reads."""
+    s = generate(
+        seed=seed,
+        shape=TWO_REGION_SHAPE,
+        mottle="scorched",
+        regions=two_regions(left_period, right_period),
+        **TYPICAL,
+    )
+    report = analyse(s.frame)
+    _freeze((s, report))
+    return s, report
 
 
 def iou(a, b):

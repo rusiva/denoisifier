@@ -110,6 +110,7 @@ protected :: REGRESSION_TINY_PROBE_TEST_SEEDS :: range(64, 66)
 protected :: A0_CALIBRATION_SEEDS :: range(0, 10)
 protected :: THRESHOLD_CALIBRATION_SEEDS :: range(100, 200)
 protected :: TEST_SEED_BLOCK :: range(10, 100)
+protected :: INNER_LOOP_SEED_COUNT :: 2
 protected :: MOTTLED_TEST_SEEDS :: range(10, 30)
 protected :: FULL_FRAME_TEST_SEEDS :: range(20, 27)
 protected :: PROFILE_ONLY_TEST_SEEDS :: range(20, 30)

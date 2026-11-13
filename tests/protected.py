@@ -118,6 +118,9 @@ DEPTH_REGRESSION_CASES = ((93_024, 20, -10, "scorched"), (93_048, 10, 3, "multis
 DARK_REGRESSION_CASES = ((93_130, "full-frame-typical"),)
 # Seeds of the non-slow tests: every *_TEST_SEED(S) lies in here.
 TEST_SEED_BLOCK = range(10, 100)
+# make test-fast (ticket agent-gates/07): the first this-many seeds of a seed range run in the
+# inner loop; the rest are pytest.mark.wide (tests/inner_loop.py) and run in make check only.
+INNER_LOOP_SEED_COUNT = 2
 
 # Test seeds (ticket agent-gates/04, owner ruling O1): each seed s in 0-9, now
 # A0_CALIBRATION_SEEDS, moved to s + 20; seeds 10-19 stayed. CASES[seed % 10]

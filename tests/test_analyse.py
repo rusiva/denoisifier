@@ -21,6 +21,7 @@ from denoisifier.synthetic import (
     StripedRegion,
     generate,
 )
+from inner_loop import WIDE, diagonal, inner
 from protected import (
     AC4_MIN_CLIPPED_PIXELS,
     BBOX_TOL_PERIODS,
@@ -37,6 +38,7 @@ from protected import (
     EXTREMES_TEST_SEEDS,
     FULL_FRAME_TEST_SEEDS,
     GATE_STORED_THRESHOLD,
+    INNER_LOOP_SEED_COUNT,
     INPUT_NOT_MODIFIED_TEST_SEED,
     MASK_IOU_MIN,
     MILD_CLIP_LEVEL_FRACTION,
@@ -67,7 +69,6 @@ from protected import (
     SPIKE_TEST_SEEDS,
     STRONG_TEST_SEEDS,
     TWO_REGION_PAIRS,
-    TWO_REGION_SHAPE,
     TWO_REGION_TEST_SEEDS,
 )
 from regions import (
@@ -78,7 +79,7 @@ from regions import (
     single_region_case,
     truth_bbox,
     truth_pixels,
-    two_regions,
+    two_region_case,
 )
 from truth_match import assert_depth_matches, assert_matches_truth
 
@@ -88,8 +89,11 @@ SEEDS = MOTTLED_TEST_SEEDS
 TYPICAL = dict(mottle="scorched", noise=Emccd())
 TYPICAL_NOISE = dict(noise=Emccd())
 
+# make test-fast runs the unmarked parameters only; the `wide` ones (tests/inner_loop.py) run
+# in make check (ticket agent-gates/07).
 
-@pytest.mark.parametrize("seed", SEEDS)
+
+@pytest.mark.parametrize("seed", inner(SEEDS))
 def test_stripe_free_mottled_frames_are_not_striped(seed):
     s = generate(seed=seed, shape=SHAPE, modulation_depth=0.0, **TYPICAL)
     report = analyse(s.frame)
@@ -98,7 +102,11 @@ def test_stripe_free_mottled_frames_are_not_striped(seed):
     assert not report.mask().any()
 
 
-@pytest.mark.parametrize("seed", SEEDS)
+# Every CASES entry runs in the inner loop: CASES[seed % 10] over the first 10 seeds.
+CLEAR_STRIPES_PARAMS = inner(SEEDS, keep=len(CASES))
+
+
+@pytest.mark.parametrize("seed", CLEAR_STRIPES_PARAMS)
 def test_clear_stripes_in_mottle_are_found_and_measured(seed):
     period, angle_deg = CASES[seed % len(CASES)]
     s = generate(
@@ -142,7 +150,7 @@ def test_clear_full_frame_stripes_are_found_and_measured(seed, period, angle_deg
 
 
 @pytest.mark.parametrize("noise", [0.0, 0.001, 0.01])
-@pytest.mark.parametrize("seed", PROFILE_ONLY_TEST_SEEDS)
+@pytest.mark.parametrize("seed", inner(PROFILE_ONLY_TEST_SEEDS))
 def test_profile_only_frame_is_not_striped(seed, noise):
     s = generate(seed=seed, shape=SHAPE, modulation_depth=0.0, noise=noise)
     report = analyse(s.frame)
@@ -261,8 +269,7 @@ def test_report_converts_to_json(modulation_depth):
     assert data["threshold"] == report.threshold
 
 
-@pytest.mark.parametrize("seed", STRONG_TEST_SEEDS)
-@pytest.mark.parametrize("period", [5, 12])
+@pytest.mark.parametrize(("period", "seed"), diagonal(STRONG_TEST_SEEDS, [(5,), (12,)]))
 def test_strong_stripes_are_measured(seed, period):
     s = generate(
         seed=seed, shape=SHAPE, period=period, angle_deg=6, modulation_depth=0.8, **TYPICAL
@@ -287,7 +294,7 @@ def _crop_columns(profile, rows, width=128, step=8):
 
 
 @pytest.mark.parametrize("noise", [0.0, Emccd()], ids=["noise-free", "emccd"])
-@pytest.mark.parametrize("seed", ENVELOPE_TEST_SEEDS)
+@pytest.mark.parametrize("seed", inner(ENVELOPE_TEST_SEEDS))
 def test_modulation_depth_is_relative_to_local_envelope(seed, noise):
     shape = (256, 640)
     s = generate(
@@ -331,7 +338,7 @@ def test_period_and_angle_extremes_are_detected(seed, period, angle_deg):
     assert_every_region_matches(report, s.truth, depth=False)
 
 
-@pytest.mark.parametrize("seed", MULTISCALE_TEST_SEEDS)
+@pytest.mark.parametrize("seed", inner(MULTISCALE_TEST_SEEDS))
 def test_multiscale_mottle_is_handled(seed):
     common = dict(seed=seed, shape=SHAPE, mottle="multiscale", noise=Emccd())
     assert analyse(generate(**common, modulation_depth=0.0).frame).striped is False
@@ -356,10 +363,11 @@ def test_borderline_striped_frame_has_finite_measurements(seed, period):
 # --- Striped Regions (ticket 05) ---------------------------------------------
 
 
-@pytest.mark.parametrize("seed", REGION_TEST_SEEDS)
+@pytest.mark.parametrize("seed", inner(REGION_TEST_SEEDS))
 def test_partial_region_is_reported_with_its_measurements(seed):
     period, angle_deg = CASES[seed % len(CASES)]
-    s, report = single_region_case(seed, period, angle_deg)
+    # "scorched" spelt out: the same cache key as test_mask_overlaps_the_true_region.
+    s, report = single_region_case(seed, period, angle_deg, "scorched")
     assert report.striped is True
     (region,) = report.regions
     (truth,) = s.truth.regions
@@ -384,8 +392,10 @@ def test_depth_is_measured_on_the_region_interior(seed, period, angle_deg, mottl
     assert_depth_matches(region.modulation_depth, truth)
 
 
-@pytest.mark.parametrize("mottle", ["scorched", "multiscale"])
-@pytest.mark.parametrize("seed", REGION_TEST_SEEDS)
+@pytest.mark.parametrize(
+    ("seed", "mottle"),
+    diagonal(REGION_TEST_SEEDS, [("scorched",), ("multiscale",)], seed_first=True),
+)
 def test_mask_overlaps_the_true_region(seed, mottle):
     period, angle_deg = CASES[seed % len(CASES)]
     s, report = single_region_case(seed, period, angle_deg, mottle)
@@ -393,17 +403,18 @@ def test_mask_overlaps_the_true_region(seed, mottle):
     assert iou(report.mask(), truth_pixels(truth)) >= MASK_IOU_MIN
 
 
-@pytest.mark.parametrize(("left", "right"), TWO_REGION_PAIRS)
-@pytest.mark.parametrize("seed", TWO_REGION_TEST_SEEDS)
+# The 640x1024 frame is the slowest to analyse: the inner loop analyses it once, for
+# (76, 5, 12), shared through two_region_case with the verdict sweep's "two-region" frame.
+TWO_REGION_PARAMS = inner(
+    [(seed, *pair) for seed in TWO_REGION_TEST_SEEDS for pair in TWO_REGION_PAIRS],
+    keep=1,
+    multi=True,
+)
+
+
+@pytest.mark.parametrize(("seed", "left", "right"), TWO_REGION_PARAMS)
 def test_two_regions_with_different_periods_are_reported_separately(seed, left, right):
-    s = generate(
-        seed=seed,
-        shape=TWO_REGION_SHAPE,
-        mottle="scorched",
-        regions=two_regions(left, right),
-        **TYPICAL_NOISE,
-    )
-    report = analyse(s.frame)
+    s, report = two_region_case(seed, left, right)
     assert len(report.regions) == 2
     pairs = match(report.regions, report.labels, s.truth.regions)
     assert {id(t) for _, t in pairs} == {id(t) for t in s.truth.regions}
@@ -436,11 +447,32 @@ SIZE_SHAPES = {
     "narrow_tall": lambda p, f: (2.0 * p, 1.5 * f * p),  # 4p tall, 3fp wide: width only
 }
 SIZE_CASES = [(p, a) for p in (3, 8, 20) for a in (-10, 10)]
+SIZE_PERIODS = (3, 8, 20)
 
 
-@pytest.mark.parametrize("shape", list(SIZE_SHAPES))
-@pytest.mark.parametrize(("period", "angle_deg"), SIZE_CASES)
-@pytest.mark.parametrize("seed", MIN_SIZE_TEST_SEEDS)
+def _size_params(shapes):
+    """(seed, Period, Angle, shape) over every seed, SIZE_CASE and shape. The inner loop keeps
+    each (shape i, Period j) once, at Angle (-10, 10)[(i + j) % 2] and seed
+    MIN_SIZE_TEST_SEEDS[i % 2]: every shape meets every Period, and every Period both Angles."""
+    params = []
+    for seed in MIN_SIZE_TEST_SEEDS:
+        for period, angle_deg in SIZE_CASES:
+            for i, shape in enumerate(shapes):
+                j = SIZE_PERIODS.index(period)
+                kept = (
+                    angle_deg == (-10, 10)[(i + j) % 2]
+                    and seed == MIN_SIZE_TEST_SEEDS[i % INNER_LOOP_SEED_COUNT]
+                )
+                value = (seed, period, angle_deg, shape)
+                params.append(value if kept else pytest.param(*value, marks=WIDE))
+    return params
+
+
+BELOW_SIZE_PARAMS = _size_params(list(SIZE_SHAPES))
+ABOVE_SIZE_PARAMS = _size_params(["both", "wide_short", "narrow_tall"])
+
+
+@pytest.mark.parametrize(("seed", "period", "angle_deg", "shape"), BELOW_SIZE_PARAMS)
 def test_region_below_the_minimum_is_not_reported(seed, period, angle_deg, shape):
     axes = SIZE_SHAPES[shape](period, MIN_SIZE_BELOW_FACTOR)
     report = analyse(_size_test_frame(seed, period, angle_deg, axes).frame)
@@ -448,9 +480,7 @@ def test_region_below_the_minimum_is_not_reported(seed, period, angle_deg, shape
     assert report.striped is False
 
 
-@pytest.mark.parametrize("shape", ["both", "wide_short", "narrow_tall"])
-@pytest.mark.parametrize(("period", "angle_deg"), SIZE_CASES)
-@pytest.mark.parametrize("seed", MIN_SIZE_TEST_SEEDS)
+@pytest.mark.parametrize(("seed", "period", "angle_deg", "shape"), ABOVE_SIZE_PARAMS)
 def test_region_above_the_minimum_is_reported(seed, period, angle_deg, shape):
     axes = SIZE_SHAPES[shape](period, MIN_SIZE_ABOVE_FACTOR)
     s = _size_test_frame(seed, period, angle_deg, axes)
@@ -459,7 +489,7 @@ def test_region_above_the_minimum_is_reported(seed, period, angle_deg, shape):
     assert abs(region.period_px - period) <= PERIOD_REL_TOL * period
 
 
-@pytest.mark.parametrize("seed", REGION_TEST_SEEDS[:3])
+@pytest.mark.parametrize("seed", inner(REGION_TEST_SEEDS[:3]))
 def test_stripes_on_one_flank_of_the_envelope_are_found(seed):
     period, angle_deg = CASES[seed % len(CASES)]
     rows, cols = REGION_FRAME_SHAPE
@@ -492,14 +522,18 @@ DARK_CASES = {
 }
 
 
-@pytest.mark.parametrize(
-    ("seed", "case"),
-    [
-        *[(seed, case) for seed in ENVELOPE_TEST_SEEDS for case in DARK_CASES],
-        # First fresh range's miss: two mask pixels in a corner at Profile 4.9%.
-        *DARK_REGRESSION_CASES,
-    ],
-)
+DARK_PARAMS = [
+    *inner(
+        [(seed, case) for seed in ENVELOPE_TEST_SEEDS for case in DARK_CASES],
+        key=lambda value: value[0],
+        multi=True,
+    ),
+    # First fresh range's miss: two mask pixels in a corner at Profile 4.9%. Always run.
+    *DARK_REGRESSION_CASES,
+]
+
+
+@pytest.mark.parametrize(("seed", "case"), DARK_PARAMS)
 def test_dark_area_is_never_reported_as_striped(seed, case):
     kwargs = DARK_CASES[case]
     report = analyse(generate(seed=seed, shape=SHAPE, **kwargs).frame)
@@ -578,15 +612,7 @@ SWEEP_FRAMES = {
         f"borderline-{seed}-{period}": (lambda c=(seed, period): borderline_frame(*c))
         for seed, period in BORDERLINE
     },
-    "two-region": lambda: (
-        generate(
-            seed=TWO_REGION_TEST_SEEDS[0],
-            shape=TWO_REGION_SHAPE,
-            mottle="scorched",
-            regions=two_regions(*TWO_REGION_PAIRS[0]),
-            **TYPICAL_NOISE,
-        ).frame
-    ),
+    "two-region": lambda: two_region_case(TWO_REGION_TEST_SEEDS[0], *TWO_REGION_PAIRS[0])[0].frame,
     "overlapping-extents": _overlap_frame,
     "constant": lambda: np.ones((64, 64)),
 }
@@ -616,12 +642,37 @@ def _sweep_threshold(name, kind):
 def _sweep_report(name, kind):
     """``analyse`` of sweep frame ``name`` at threshold ``kind``, on the real path."""
     if kind == "THRESHOLD":
+        if name == "two-region":  # shared with test_two_regions_*: analysed once
+            return two_region_case(TWO_REGION_TEST_SEEDS[0], *TWO_REGION_PAIRS[0])[1]
         return analyse(SWEEP_FRAMES[name]())
     return analyse(SWEEP_FRAMES[name](), threshold=_sweep_threshold(name, kind))
 
 
-@pytest.mark.parametrize("kind", SWEEP_THRESHOLDS)
-@pytest.mark.parametrize("name", list(SWEEP_FRAMES))
+# The inner loop: every sweep frame family (seed repetition cut to its first two frames) and
+# every threshold kind, not their product. Each kind runs on 4 frames; the two-region frame
+# only at THRESHOLD, its one shared analysis.
+_FIRST, _SECOND = MOTTLED_TEST_SEEDS[:2]
+SWEEP_INNER_KINDS = {
+    f"free-{_FIRST}": SWEEP_THRESHOLDS,
+    f"free-{_SECOND}": ("zero", "THRESHOLD"),
+    f"striped-{_FIRST}": SWEEP_THRESHOLDS,
+    f"striped-{_SECOND}": ("zero", "THRESHOLD"),
+    "borderline-{}-{}".format(*BORDERLINE[0]): SWEEP_THRESHOLDS,
+    "borderline-{}-{}".format(*BORDERLINE[1]): ("zero", "THRESHOLD"),
+    "two-region": ("THRESHOLD",),
+    "overlapping-extents": ("zero", "THRESHOLD"),
+    "constant": SWEEP_THRESHOLDS,
+}
+VERDICT_PARAMS = [
+    (name, kind)
+    if kind in SWEEP_INNER_KINDS.get(name, ())
+    else pytest.param(name, kind, marks=WIDE)
+    for name in SWEEP_FRAMES
+    for kind in SWEEP_THRESHOLDS
+]
+
+
+@pytest.mark.parametrize(("name", "kind"), VERDICT_PARAMS)
 def test_verdict_is_striped_exactly_when_a_region_is_reported(name, kind):
     report = _sweep_report(name, kind)
     assert report.score == _sweep_report(name, "THRESHOLD").score
@@ -649,10 +700,35 @@ def _regions_by_bbox(report):
     return {r.bbox: (r, report.labels == r.label) for r in report.regions}
 
 
-@pytest.mark.parametrize(("kind_a", "kind_b"), list(combinations(SWEEP_THRESHOLDS, 2)))
-@pytest.mark.parametrize(
-    "name", ["two-region", "overlapping-extents", *[f"striped-{s}" for s in MOTTLED_TEST_SEEDS[:5]]]
-)
+# The inner loop: every threshold kind, on the frames the verdict sweep already analysed. Only
+# a pair whose high side is below the score has regions to compare, so (zero, THRESHOLD) and
+# (zero, below-score) carry the teeth; (below-score, score) and (above-score, inf) are there
+# for kind coverage. The two-region frame is wide: the inner loop analyses it once.
+_WIDE_DROP = frozenset(("zero", "THRESHOLD"))
+LOWERING_INNER_PAIRS = {
+    f"striped-{_FIRST}": {
+        _WIDE_DROP,
+        frozenset(("zero", "below-score")),
+        frozenset(("below-score", "score")),
+        frozenset(("above-score", "inf")),
+    },
+    f"striped-{_SECOND}": {_WIDE_DROP},
+    "overlapping-extents": {_WIDE_DROP},
+}
+LOWERING_PARAMS = [
+    (name, a, b)
+    if frozenset((a, b)) in LOWERING_INNER_PAIRS.get(name, ())
+    else pytest.param(name, a, b, marks=WIDE)
+    for name in [
+        "two-region",
+        "overlapping-extents",
+        *[f"striped-{s}" for s in MOTTLED_TEST_SEEDS[:5]],
+    ]
+    for a, b in combinations(SWEEP_THRESHOLDS, 2)
+]
+
+
+@pytest.mark.parametrize(("name", "kind_a", "kind_b"), LOWERING_PARAMS)
 def test_lowering_the_threshold_keeps_reported_regions_unchanged(name, kind_a, kind_b):
     if name == "overlapping-extents":
         assert len(_sweep_report(name, "zero").regions) >= 2
@@ -719,8 +795,7 @@ def _verdicts_and_region_counts(frame):
     return [(r.striped, len(r.regions)) for r in reports]
 
 
-@pytest.mark.parametrize("seed", SPIKE_TEST_SEEDS)
-@pytest.mark.parametrize("kind", list(SPIKE_FRAMES))
+@pytest.mark.parametrize(("kind", "seed"), diagonal(SPIKE_TEST_SEEDS, [(k,) for k in SPIKE_FRAMES]))
 def test_report_counts_spike_pixels(kind, seed):
     """AC 2 is about the count. On striped frames the detection is paired with the same
     seed without Spikes (verdict and region count at both thresholds), not asserted
@@ -736,8 +811,9 @@ def test_report_counts_spike_pixels(kind, seed):
         assert _verdicts_and_region_counts(s.frame) == _verdicts_and_region_counts(free.frame)
 
 
-@pytest.mark.parametrize("seed", SPIKE_TEST_SEEDS)
-@pytest.mark.parametrize("kind", ["typical-m0", "typical-m0.5"])
+@pytest.mark.parametrize(
+    ("kind", "seed"), diagonal(SPIKE_TEST_SEEDS, [("typical-m0",), ("typical-m0.5",)])
+)
 def test_saturated_spikes_are_counted_as_spikes(kind, seed):
     """A clip at SATURATING_CLIP_FACTOR x the clean maximum saturates the bright Spikes; on a
     dim column a saturated Spike is still a Spike, and the rest of the plateau is clipped."""
@@ -786,15 +862,29 @@ def _phase_break_frame(period):
     return frame
 
 
+def _per_seed(seeds, params_of):
+    """The pytest.params ``params_of(seed)`` for every seed; those of seeds beyond the inner
+    loop's first ones are WIDE."""
+    params = []
+    for value in inner(seeds):
+        if isinstance(value, int):
+            params += params_of(value)
+        else:
+            params += inner(params_of(*value.values), keep=0)
+    return params
+
+
 SPIKE_FREE_FRAMES = [
-    *[
-        pytest.param(
-            lambda seed=seed, m=m: _case_frame(seed, modulation_depth=m, **TYPICAL).frame,
-            id=f"mottled-{seed}-m{m}",
-        )
-        for seed in MOTTLED_TEST_SEEDS
-        for m in (0.0, 0.5)
-    ],
+    *_per_seed(
+        MOTTLED_TEST_SEEDS,
+        lambda seed: [
+            pytest.param(
+                lambda seed=seed, m=m: _case_frame(seed, modulation_depth=m, **TYPICAL).frame,
+                id=f"mottled-{seed}-m{m}",
+            )
+            for m in (0.0, 0.5)
+        ],
+    ),
     *[
         pytest.param(
             lambda seed=seed, case=case, noise=noise: (
@@ -812,15 +902,17 @@ SPIKE_FREE_FRAMES = [
         for seed, case in zip(FULL_FRAME_TEST_SEEDS, FULL_FRAME_CASES, strict=True)
         for noise in (0.0, 0.01)
     ],
-    *[
-        pytest.param(
-            lambda seed=seed: (
-                generate(seed=seed, shape=SHAPE, modulation_depth=0.0, noise=0.0).frame
-            ),
-            id=f"profile-only-{seed}",
-        )
-        for seed in PROFILE_ONLY_TEST_SEEDS
-    ],
+    *_per_seed(
+        PROFILE_ONLY_TEST_SEEDS,
+        lambda seed: [
+            pytest.param(
+                lambda seed=seed: (
+                    generate(seed=seed, shape=SHAPE, modulation_depth=0.0, noise=0.0).frame
+                ),
+                id=f"profile-only-{seed}",
+            )
+        ],
+    ),
     *[pytest.param(lambda p=p: _phase_break_frame(p), id=f"phase-break-P{p}") for p in (3, 20)],
 ]
 
@@ -848,7 +940,7 @@ def test_report_counts_clipped_pixels(seed):
     assert report.spike_pixels <= SPIKE_PIXELS_ABS_TOL
 
 
-@pytest.mark.parametrize("seed", CLIP_TEST_SEEDS)
+@pytest.mark.parametrize("seed", inner(CLIP_TEST_SEEDS))
 def test_clipped_and_spike_totals_match_at_a_peak_level_clip(seed):
     """A Spike saturated inside the clip plateau is counted as clipped, so only the total
     of the two counts is compared with the truth's."""
@@ -863,6 +955,12 @@ def test_clipped_and_spike_totals_match_at_a_peak_level_clip(seed):
 
 
 @cache
+def _free_score(seed):
+    """The score of the stripe-free frame of _spike_pair_scores, shared by its two clips."""
+    return analyse(generate(seed=seed, shape=SHAPE, modulation_depth=0.0, **TYPICAL).frame).score
+
+
+@cache
 def _spike_pair_scores(seed, clip):
     """Paired per seed: the scores of the same stripe-free frame without and with
     SPIKE_STRESS_COUNT Spikes (with ``clip``, the spiked frame is also clipped at
@@ -871,7 +969,7 @@ def _spike_pair_scores(seed, clip):
     free = generate(seed=seed, shape=SHAPE, **kwargs)
     level = SATURATING_CLIP_FACTOR * free.clean.max() if clip else None
     spiked = generate(seed=seed, shape=SHAPE, spikes=SPIKE_STRESS_COUNT, clip_level=level, **kwargs)
-    return analyse(free.frame).score, analyse(spiked.frame).score
+    return _free_score(seed), analyse(spiked.frame).score
 
 
 SPIKE_PAIRS = [(seed, clip) for clip in (False, True) for seed in SEEDS]
@@ -899,7 +997,7 @@ def test_spikes_leave_the_typical_stripe_free_score_unchanged():
     assert np.median(changes) <= SPIKE_SCORE_MEDIAN_TOL
 
 
-@pytest.mark.parametrize("seed", SEEDS)
+@pytest.mark.parametrize("seed", inner(SEEDS))
 def test_clipped_stripe_free_frames_are_not_striped(seed):
     kwargs = dict(seed=seed, shape=SHAPE, modulation_depth=0.0, **TYPICAL)
     s, _ = clipped_at(CLIP_LEVEL_FRACTION, generate, **kwargs)
@@ -944,7 +1042,7 @@ def _clipped_partial_frame(seed, fraction):
     return s, truth
 
 
-@pytest.mark.parametrize("seed", PARTIAL_CLIP_TEST_SEEDS)
+@pytest.mark.parametrize("seed", inner(PARTIAL_CLIP_TEST_SEEDS))
 def test_clipping_does_not_harm_a_partial_region(seed):
     """A mild clip (MILD_CLIP_LEVEL_FRACTION) on a partial region: a no-harm guard. It has no
     teeth against flattening (without the exclusion the depth also stays within tolerance)."""
@@ -956,7 +1054,7 @@ def test_clipping_does_not_harm_a_partial_region(seed):
     assert_depth_matches(region.modulation_depth, truth)
 
 
-@pytest.mark.parametrize("seed", PARTIAL_CLIP_TEST_SEEDS)
+@pytest.mark.parametrize("seed", inner(PARTIAL_CLIP_TEST_SEEDS))
 def test_heavily_clipped_partial_region_is_no_worse_than_no_exclusion(seed):
     """At CLIP_LEVEL_FRACTION about a fifth or more of a partial region is clipped; the
     depth then drifts toward the flattened value, and AC 4 is met only in part there (ticket

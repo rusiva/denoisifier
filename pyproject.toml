@@ -48,6 +48,7 @@ testpaths = ["tests"]
 addopts = ["-m", "not slow"]
 markers = [
     "slow: long measurement runs (feasibility gate); `make check-slow`",
+    "wide: seeds and cross-products beyond the inner loop's first ones (tests/inner_loop.py); deselected by make test-fast, run by make check",
 ]
 # A misspelt marker or config key, or an xfail that passes, fails the run.
 strict_markers = true
