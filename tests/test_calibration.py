@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from scipy.stats import betabinom
 
-from denoisifier import analyse, recalibrate
+from denoisifier import BinFactors, analyse, recalibrate
 from denoisifier._calibration import (
     false_alarm_tolerance,
     rate_interval,
@@ -21,11 +21,12 @@ from denoisifier.calibration import (
     Calibration,
     calibrate,
     calibrate_folder,
+    stored_calibration,
     stripe_free_score,
 )
 from denoisifier.frame_io import read_frame, write_frame_csv
 from denoisifier.synthetic import Emccd, generate
-from protected import CALIBRATION_FOLDER_TEST_SEEDS
+from protected import CALIBRATION_FOLDER_TEST_SEEDS, PACKAGE_CALIBRATION_DIGEST
 
 TOO_FEW = "^" + re.escape("50 scores are too few for a false-alarm rate of 0.01: need at least 99")
 
@@ -351,3 +352,58 @@ def test_folder_calibration_refuses_a_nan_clip_level_before_scoring(tmp_path):
 def test_folder_calibration_records_the_folder_name_not_its_path(tmp_path):
     cal = calibrate_folder(_csv_folder_path(tmp_path))
     assert cal.run_info["folder"] == "free"
+
+
+# Ticket 08 (plan 2.6): a Calibration records non-1x1 bin factors in its settings.
+
+
+def test_one_by_one_calibration_settings_and_digest_are_unchanged(tmp_path):
+    folder = _csv_folder_path(tmp_path)
+    cal = calibrate_folder(folder)
+    assert "bin_factors" not in cal.settings
+    assert cal == calibrate_folder(folder, bin_factors=BinFactors(1, 1))
+    assert cal.bin_factors == BinFactors()
+    stored = stored_calibration()
+    assert "bin_factors" not in stored.settings
+    assert stored.bin_factors == BinFactors()
+    assert int(stored.digest(), 16) == PACKAGE_CALIBRATION_DIGEST
+
+
+def test_binned_calibration_records_and_reads_bin_factors(tmp_path):
+    bins = BinFactors(horizontal=2, vertical=1)
+    frames = [(f"f{s}", _folder_frame(s)) for s in CALIBRATION_FOLDER_TEST_SEEDS[:3]]
+    cal = calibrate(frames, bin_factors=bins)
+    assert cal.settings["bin_factors"] == {"horizontal": 2, "vertical": 1}
+    assert cal.bin_factors == bins
+    assert cal.scores == tuple(
+        analyse(f, threshold=np.inf, bin_factors=bins).score for _, f in frames
+    )
+    assert cal.scores != calibrate(frames).scores
+    back = Calibration.from_json(cal.to_json())
+    assert back == cal
+    assert back.bin_factors == bins
+    folder = _csv_folder_path(tmp_path)
+    by_folder = calibrate_folder(folder, bin_factors=bins)
+    assert by_folder.settings["bin_factors"] == {"horizontal": 2, "vertical": 1}
+    out = tmp_path / "cal.json"
+    assert recalibrate.main([str(folder), "-o", str(out), "--bin", "2x1"]) == 0
+    assert Calibration.from_json(out.read_text()) == by_folder
+
+
+def test_malformed_bin_factors_setting_raises():
+    cal = Calibration.from_scores(["a"], [1.0], (64, 64), settings={"bin_factors": [2, 1]})
+    with pytest.raises(ValueError, match="bin factors"):
+        _ = cal.bin_factors
+    zero = {"bin_factors": {"horizontal": 0, "vertical": 1}}
+    with pytest.raises(ValueError, match="at least 1"):
+        _ = Calibration.from_scores(["a"], [1.0], (64, 64), settings=zero).bin_factors
+
+
+def test_settings_with_bin_factors_are_refused():
+    """Review note N7: the recorded bin factors come from ``bin_factors=`` only."""
+    frames = [("a", _folder_frame(CALIBRATION_FOLDER_TEST_SEEDS[0]))]
+    settings = {"bin_factors": {"horizontal": 2, "vertical": 1}}
+    with pytest.raises(ValueError, match="bin_factors"):
+        calibrate(frames, settings=settings)
+    with pytest.raises(ValueError, match="bin_factors"):
+        calibrate(frames, settings=settings, bin_factors=BinFactors(2, 1))

@@ -46,6 +46,14 @@ _Avoid_: baseline, background
 A pixel at or above the clip level, whose true value the frame does not show.
 _Avoid_: overexposed
 
+**Bin Factors**:
+How many sensor pixels were summed into one frame pixel along each axis, written horizontal x vertical (1x2: two sensor rows per frame row).
+_Avoid_: binning ratio
+
+**Frame pixel**:
+One element of the frame array as given, which under binning holds several sensor pixels. Bounding boxes, areas and the Mask are in frame pixels; Period and Angle are in sensor pixels.
+_Avoid_: array pixel
+
 ### Stripe structure
 
 **Period**:

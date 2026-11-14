@@ -8,13 +8,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from binning import bin_sensor_frame
 from borderline import BORDERLINE, borderline_frame
 from cases import case_frame, clipped_at
-from denoisifier import analyse, read_frame
+from denoisifier import BinFactors, analyse, read_frame
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
+    BINNING_TEST_SEEDS,
     CLI_CLIP_TEST_SEED,
     CLI_MASK_TEST_SEED,
     CLI_MISSING_OUTPUT_DIR_TEST_SEED,
@@ -457,3 +459,66 @@ def test_cli_calibration_file_sets_the_threshold(tmp_path):
 def test_cli_missing_calibration_file_is_an_error(tmp_path):
     result, _ = _threshold_report(tmp_path, "--calibration", tmp_path / "missing.json")
     _assert_clean_failure(result, "missing.json")
+
+
+# Ticket 08: --bin HxV (plan 2.2).
+
+
+def _binned_csv(tmp_path, h, v, transpose=False, **kwargs):
+    """A 2x1-style binned 128x128 frame of a sensor (128 v) x (128 h), as a CSV
+    (transposed in the file on request); returns (path, Synthetic)."""
+    s = generate(seed=BINNING_TEST_SEEDS[0], shape=(128 * v, 128 * h), **kwargs)
+    frame = bin_sensor_frame(s.frame, h, v)
+    path = tmp_path / "binned.csv"
+    write_frame_csv(frame.T if transpose else frame, path)
+    return path, s
+
+
+def test_cli_bin_flag_reports_bin_factors_and_warning(tmp_path):
+    path, s = _binned_csv(tmp_path, 2, 1, period=12, modulation_depth=0.5)
+    result = _run(path, "--bin", "2x1")
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    report = json.loads(result.stdout)
+    assert report["bin_factors"] == {"horizontal": 2, "vertical": 1}
+    assert report["unresolved_period_px"] == [3.0, 4.0]
+    assert any("below 4 px" in w for w in report["warnings"])
+    (region,) = report["regions"]
+    assert_matches_truth(region["period_px"], region["angle_deg"], s.truth)
+
+
+def test_cli_bin_with_transpose_keeps_bin_factors_in_sensor_axes(tmp_path):
+    path, s = _binned_csv(tmp_path, 2, 1, transpose=True, period=12, modulation_depth=0.5)
+    result = _run(path, "--transpose", "--bin", "2x1")
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report["transposed"] is True
+    assert report["bin_factors"] == {"horizontal": 2, "vertical": 1}
+    expected = analyse(
+        read_frame(path, transpose=True).frame, bin_factors=BinFactors(2, 1)
+    ).in_file_layout()
+    assert [r["bbox"] for r in report["regions"]] == [r.bbox.to_dict() for r in expected.regions]
+    (region,) = report["regions"]
+    assert_matches_truth(region["period_px"], region["angle_deg"], s.truth)
+
+
+def test_cli_bin_one_by_one_equals_no_flag(tmp_path):
+    path, _ = _binned_csv(tmp_path, 1, 1, period=8, angle_deg=6, modulation_depth=0.5)
+    plain = _run(path)
+    binned = _run(path, "--bin", "1X1")
+    assert plain.returncode == binned.returncode == 0
+    assert binned.stdout == plain.stdout
+
+
+@pytest.mark.parametrize("value", ["2*1", "2x", "x1", "0x1", "1x0", "2x1x1"])
+def test_cli_rejects_malformed_bin(tmp_path, value):
+    path, _ = _binned_csv(tmp_path, 1, 1, modulation_depth=0.0)
+    result = _run(path, "--bin", value)
+    assert result.returncode == 2
+    assert "--bin" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_cli_bin_leaving_no_searchable_period_fails_cleanly(tmp_path):
+    path, _ = _binned_csv(tmp_path, 1, 1, modulation_depth=0.0)
+    _assert_clean_failure(_run(path, "--bin", "11x1"), "11x1")

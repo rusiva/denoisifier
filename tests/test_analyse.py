@@ -321,10 +321,17 @@ def test_report_converts_to_json(modulation_depth):
         "score",
         "threshold",
         "transposed",
+        "bin_factors",
+        "units",
         "regions",
         "spike_pixels",
         "clipped_pixels",
+        "unresolved_period_px",
+        "warnings",
     ]
+    assert data["bin_factors"] == {"horizontal": 1, "vertical": 1}
+    assert data["unresolved_period_px"] is None
+    assert data["warnings"] == []
     for key in ("spike_pixels", "clipped_pixels"):
         assert type(data[key]) is int
         assert data[key] == getattr(report, key)
@@ -1424,3 +1431,138 @@ def test_bin_factors_leaving_no_searchable_period_raise():
     frame = generate(seed=BINNING_TEST_SEEDS[0], shape=SHAPE).frame
     with pytest.raises(ValueError, match="11x1"):
         analyse(frame, bin_factors=BinFactors(11, 1))
+
+
+REPORT_UNITS = {
+    "period_px": "sensor px",
+    "angle_deg": "degrees from vertical, sensor geometry",
+    "modulation_depth": "relative to the local envelope, as measured on the (binned) frame",
+    "bbox": "frame px (binned array; file layout when transposed)",
+    "area_px": "frame px (binned array)",
+    "mask": "frame px (binned array; file layout when transposed)",
+    "spike_pixels": "frame px (binned array)",
+    "clipped_pixels": "frame px (binned array)",
+    "unresolved_period_px": "sensor px",
+}
+
+
+def test_report_states_units():
+    """AC 4: every report states each field's unit (plan 2.5)."""
+    assert Report.UNITS == REPORT_UNITS
+    _, frame = _binned(BINNING_TEST_SEEDS[0], 2, 1, modulation_depth=0.0)
+    data = json.loads(analyse(frame, bin_factors=BinFactors(2, 1), threshold=1e3).to_json())
+    assert data["units"] == REPORT_UNITS
+    assert data["bin_factors"] == {"horizontal": 2, "vertical": 1}
+
+
+def test_two_by_one_binning_warns_below_four_px():
+    """AC 3: under 2x1, physical Periods below 4 px are not searched, and the report says so."""
+    _, frame = _binned(BINNING_TEST_SEEDS[0], 2, 1, period=12, modulation_depth=0.5, **TYPICAL)
+    report = analyse(frame, bin_factors=BinFactors(2, 1), threshold=GATE_STORED_THRESHOLD)
+    assert report.bin_factors == BinFactors(2, 1)
+    assert report.unresolved_period_px == (3.0, 4.0)
+    (warning,) = report.warnings
+    assert "below 4 px" in warning
+    assert "stripes" in warning
+    assert "2x1" in warning
+    with_calibration = analyse(frame, bin_factors=BinFactors(2, 1))
+    assert warning in with_calibration.warnings
+
+
+def test_one_by_two_binning_names_the_reference_in_its_warning():
+    _, frame = _binned(BINNING_TEST_SEEDS[0], 1, 2, period=12, modulation_depth=0.5, **TYPICAL)
+    report = analyse(frame, bin_factors=BinFactors(1, 2), threshold=GATE_STORED_THRESHOLD)
+    assert report.unresolved_period_px == (3.0, 4.0)
+    (warning,) = report.warnings
+    assert "below 4 px" in warning
+    assert "reference" in warning
+    assert "1x2" in warning
+
+
+def test_two_by_two_binning_names_both_filters_in_its_warning():
+    _, frame = _binned(BINNING_TEST_SEEDS[0], 2, 2, period=12, modulation_depth=0.5, **TYPICAL)
+    report = analyse(frame, bin_factors=BinFactors(2, 2), threshold=GATE_STORED_THRESHOLD)
+    assert report.unresolved_period_px == (3.0, 4.0)
+    (warning,) = report.warnings
+    assert "stripes" in warning
+    assert "reference" in warning
+
+
+def test_one_by_one_has_no_period_warning():
+    _, report = analysed(
+        seed=BINNING_TEST_SEEDS[0],
+        shape=SHAPE,
+        period=8,
+        angle_deg=6,
+        modulation_depth=0.5,
+        **TYPICAL,
+    )
+    assert report.bin_factors == BinFactors()
+    assert report.unresolved_period_px is None
+    assert report.warnings == ()
+
+
+def test_report_in_file_layout_keeps_bin_factors_and_warnings():
+    _, frame = _binned(BINNING_TEST_SEEDS[1], 2, 1, period=12, modulation_depth=0.5, **TYPICAL)
+    report = analyse(frame, bin_factors=BinFactors(2, 1), threshold=GATE_STORED_THRESHOLD)
+    assert report.regions
+    flipped = report.in_file_layout()
+    assert flipped.bin_factors == report.bin_factors
+    assert flipped.unresolved_period_px == report.unresolved_period_px
+    assert flipped.warnings == report.warnings
+    assert flipped.transposed is True
+
+
+# Calibration coverage note (plan 2.6): a Calibration that set the Threshold
+# does not cover a frame of other bin factors or of more pixels.
+
+
+def _small_calibration(shape, settings=None):
+    """A Calibration of 99 made-up scores at ``shape``: Threshold 99 at 1%."""
+    return Calibration.from_scores(
+        [f"x{i}" for i in range(99)], np.arange(1.0, 100.0), shape, settings=settings
+    )
+
+
+def test_binned_frame_notes_the_calibration_does_not_cover_it():
+    _, frame = _binned(BINNING_TEST_SEEDS[0], 2, 1, modulation_depth=0.0, **TYPICAL)
+    report = analyse(frame, bin_factors=BinFactors(2, 1))
+    notes = [w for w in report.warnings if "calibration" in w]
+    assert notes == [
+        "the calibration was made at 1x1 binning; its false-alarm rate does not cover 2x1 "
+        "frames (binning makes the Mottle directional in the frame: Stripe-free scores up to "
+        "1.9x at the shortest searched Period)"
+    ]
+
+
+def test_frame_with_more_pixels_than_the_calibration_is_noted():
+    frame = generate(seed=BINNING_TEST_SEEDS[0], shape=(128, 128), **TYPICAL).frame
+    report = analyse(frame, calibration=_small_calibration((64, 64)))
+    assert report.warnings == (
+        "frame 128x128 has more pixels than the calibration's 64x64; its false-alarm rate "
+        "is not covered",
+    )
+
+
+def test_frame_with_fewer_pixels_is_not_noted():
+    frame = generate(seed=BINNING_TEST_SEEDS[0], shape=(64, 64), **TYPICAL).frame
+    assert analyse(frame, calibration=_small_calibration((128, 128))).warnings == ()
+    # 512x512 is 41% of the stored calibration's 400x1600 pixels.
+    big = generate(seed=BINNING_TEST_SEEDS[0], shape=(512, 512), **TYPICAL).frame
+    assert analyse(big).warnings == ()
+
+
+def test_explicit_threshold_has_no_calibration_note():
+    frame = generate(seed=BINNING_TEST_SEEDS[0], shape=(128, 128), **TYPICAL).frame
+    assert analyse(frame, threshold=GATE_STORED_THRESHOLD).warnings == ()
+    _, binned = _binned(BINNING_TEST_SEEDS[0], 2, 1, modulation_depth=0.0, **TYPICAL)
+    report = analyse(binned, bin_factors=BinFactors(2, 1), threshold=GATE_STORED_THRESHOLD)
+    assert not [w for w in report.warnings if "calibration" in w]
+
+
+def test_calibration_with_matching_bin_factors_has_no_note():
+    _, frame = _binned(BINNING_TEST_SEEDS[0], 2, 1, modulation_depth=0.0, **TYPICAL)
+    cal = _small_calibration(SHAPE, settings={"bin_factors": {"horizontal": 2, "vertical": 1}})
+    report = analyse(frame, bin_factors=BinFactors(2, 1), calibration=cal)
+    assert len(report.warnings) == 1
+    assert "below 4 px" in report.warnings[0]

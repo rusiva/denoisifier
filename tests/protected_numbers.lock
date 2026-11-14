@@ -46,6 +46,7 @@ denoisifier.calibration :: DEFAULT_FALSE_ALARM_RATE :: 0.01
 
 denoisifier.report :: BinFactors.horizontal :: 1
 denoisifier.report :: BinFactors.vertical :: 1
+denoisifier.report :: Report.bin_factors :: BinFactors(horizontal=1, vertical=1)
 
 denoisifier._data_quality :: _SPIKE_NEIGHBOUR_ROWS :: 3
 denoisifier._data_quality :: _SPIKE_SIGMAS :: 8.0

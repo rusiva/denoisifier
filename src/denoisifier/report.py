@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 import numpy as np
 
@@ -76,9 +77,11 @@ class Region:
     ``label`` (1-based) is the value of this region's pixels in
     ``Report.labels`` and in the mask CSV. ``period_px`` is the Period in
     sensor pixels; ``angle_deg`` the Angle in degrees, with the sign
-    convention in GLOSSARY.md; ``modulation_depth`` the Modulation Depth
-    relative to the local Envelope. ``bbox`` is the tight box of the region's
-    pixels and ``area_px`` their count.
+    convention in GLOSSARY.md, in the sensor's geometry; ``modulation_depth``
+    the Modulation Depth relative to the local Envelope, as measured on the
+    frame as given (binning damps it; see ``analyse``). ``bbox`` is the tight
+    box of the region's pixels and ``area_px`` their count, both in frame
+    pixels (the binned array). ``Report.UNITS`` lists each field's unit.
     """
 
     label: int
@@ -127,7 +130,28 @@ class Report:
     counts the Clipped Pixels that were not rejected as Spikes, so the two
     never count a pixel twice (a Spike saturated inside the clip plateau is
     counted as clipped).
+
+    ``bin_factors`` are the frame's ``BinFactors``. Period and Angle are in
+    sensor pixels; ``labels``, the bboxes, areas and pixel counts in frame
+    pixels (the binned array); ``UNITS`` names the unit of each field, and
+    ``to_dict`` carries it as ``"units"``. ``unresolved_period_px`` is the
+    part of the 3-20 px Period range (sensor px) that was not searched
+    because a filter there falls under 2 frame pixels, or ``None``.
+    ``warnings`` are frame-level analysis warnings (that range, and a frame
+    the calibration does not cover), separate from ``reader_notes``.
     """
+
+    UNITS: ClassVar[dict[str, str]] = {
+        "period_px": "sensor px",
+        "angle_deg": "degrees from vertical, sensor geometry",
+        "modulation_depth": "relative to the local envelope, as measured on the (binned) frame",
+        "bbox": "frame px (binned array; file layout when transposed)",
+        "area_px": "frame px (binned array)",
+        "mask": "frame px (binned array; file layout when transposed)",
+        "spike_pixels": "frame px (binned array)",
+        "clipped_pixels": "frame px (binned array)",
+        "unresolved_period_px": "sensor px",
+    }
 
     striped: bool
     score: float
@@ -138,6 +162,9 @@ class Report:
     labels: np.ndarray = field(compare=False, repr=False)
     transposed: bool = False
     reader_notes: tuple[str, ...] | None = None
+    bin_factors: BinFactors = BinFactors()
+    unresolved_period_px: tuple[float, float] | None = None
+    warnings: tuple[str, ...] = ()
 
     def mask(self) -> np.ndarray:
         """Boolean, frame shape: True inside any reported region."""
@@ -146,7 +173,8 @@ class Report:
     def in_file_layout(self) -> Report:
         """This report with ``labels`` and every bbox transposed back to the file's layout.
 
-        Period, Angle, Modulation Depth, score and label values are unchanged."""
+        Period, Angle, Modulation Depth, score, label values, ``bin_factors``,
+        ``unresolved_period_px`` and ``warnings`` are unchanged."""
         return dataclasses.replace(
             self,
             labels=np.ascontiguousarray(self.labels.T),
@@ -157,15 +185,23 @@ class Report:
     def to_dict(self) -> dict[str, object]:
         """Plain Python types only, so ``json.dumps`` works. ``labels`` is not
         included (the mask CSV carries it); ``reader_notes`` is included, as a
-        list, only when it is not ``None``."""
+        list, only when it is not ``None``. ``units`` is a copy of ``UNITS``."""
         d: dict[str, object] = {
             "striped": bool(self.striped),
             "score": float(self.score),
             "threshold": float(self.threshold),
             "transposed": bool(self.transposed),
+            "bin_factors": self.bin_factors.to_dict(),
+            "units": dict(self.UNITS),
             "regions": [r.to_dict() for r in self.regions],
             "spike_pixels": int(self.spike_pixels),
             "clipped_pixels": int(self.clipped_pixels),
+            "unresolved_period_px": (
+                None
+                if self.unresolved_period_px is None
+                else [float(x) for x in self.unresolved_period_px]
+            ),
+            "warnings": list(self.warnings),
         }
         if self.reader_notes is not None:
             d["reader_notes"] = list(self.reader_notes)

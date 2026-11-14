@@ -67,6 +67,7 @@ from denoisifier._local_stripes import (
     _Spectrum,
     estimate_local_stripes,
     searched_periods,
+    unresolved_period_range,
 )
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.report import BinFactors, BoundingBox, Region, Report
@@ -203,10 +204,16 @@ def analyse(
     The stated rate holds for unclipped frames of 400x1600 at typical
     settings. On crops and smaller frames it is expected to be lower (a
     smaller light area), but that is not guaranteed; frames with a larger
-    light area and binned frames are not covered. The score can change in
-    steps under small pixel changes, because a group appears or vanishes at
-    the size and leakage rules, so it is a calibrated verdict statistic more
-    than a smooth measure of how close a frame was.
+    light area and binned frames are not covered. When a Calibration set the
+    Threshold, ``Report.warnings`` notes a frame it does not cover: one of
+    other bin factors than the Calibration's (binning makes the Mottle
+    directional in the frame: Stripe-free scores rose up to 1.9x at the
+    shortest searched Period under 1x2), else one with more pixels than its
+    frames. The note never changes the verdict or the Threshold.
+
+    The score can change in steps under small pixel changes, because a group
+    appears or vanishes at the size and leakage rules, so it is a calibrated
+    verdict statistic more than a smooth measure of how close a frame was.
 
     Spike pixels are always rejected first: replaced by the median of their
     column neighbours in a working copy that every later step uses. The count
@@ -224,6 +231,21 @@ def analyse(
     ``Report.clipped_pixels`` the Clipped Pixels that are not Spike pixels,
     so a Spike saturated inside the clip plateau of a bright region is
     counted as clipped.
+
+    ``bin_factors`` (``BinFactors``, default 1x1) are the frame's bin factors:
+    ``horizontal`` sensor pixels summed along a row, ``vertical`` along a
+    column. Period and Angle, the searched range (Periods 3-20 px, Angles
+    within 10 deg of vertical) and the 3x2-Period minimum are in sensor
+    pixels and are converted into frame coordinates before searching; the
+    bboxes, areas, the Mask and the pixel counts stay in frame pixels
+    (``Report.UNITS``). Bank Periods at which a stripe or reference filter
+    falls under 2 frame pixels are not searched: ``Report.unresolved_period_px``
+    and a ``Report.warnings`` entry say so (under 2x1 or 1x2, Periods below
+    4 px). Factors that leave no Period searchable raise ``ValueError``.
+    The Modulation Depth is measured on the frame as given, not corrected
+    for binning: summing h pixels across the stripes damps it by
+    ``|sin(pi h f) / (h sin(pi f))|`` at sensor frequency f (under 2x1 about
+    x0.97 at 12 px, x0.87 at 6 px and x0.73 at 4.2 px).
     """
     frame = np.asarray(frame, dtype=float)
     if frame.ndim != 2:
@@ -243,7 +265,7 @@ def analyse(
             f"at {bins} binning no Period from {_PERIODS[0]:g} to {_PERIODS[-1]:g} px "
             "can be searched: every one falls under 2 frame pixels"
         )
-    threshold = _resolve_threshold(false_alarm_rate, calibration, threshold)
+    threshold, used = _resolve_threshold(false_alarm_rate, calibration, threshold)
     if not threshold >= 0:
         raise ValueError(f"threshold must be >= 0 (or inf), got {threshold!r}")
     if clip_level is not None:
@@ -274,6 +296,10 @@ def analyse(
                 area_px=g.area_px,
             )
         )
+    unresolved = unresolved_period_range(bins)
+    warnings = [] if unresolved is None else [_unresolved_warning(unresolved, bins)]
+    if used is not None:
+        warnings += _coverage_note(used, frame.shape, bins)
     return Report(
         striped=bool(score > threshold),
         score=float(score),
@@ -282,22 +308,66 @@ def analyse(
         spike_pixels=int(spikes.sum()),
         clipped_pixels=int(clipped.sum()),
         labels=labels,
+        bin_factors=bins,
+        unresolved_period_px=None if unresolved is None else (unresolved[0], unresolved[1]),
+        warnings=tuple(warnings),
+    )
+
+
+def _unresolved_warning(unresolved: tuple[float, float, str], bins: BinFactors) -> str:
+    """The Report warning for the unsearched part of the Period range, naming
+    the filters that fall under 2 frame pixels there."""
+    _, limit, by = unresolved
+    if by == "stripe":
+        return (
+            f"Periods below {limit:g} px cannot be resolved at {bins} binning: the stripes "
+            "fall under 2 frame pixels; they were not searched"
+        )
+    if by == "reference":
+        return (
+            f"Periods below {limit:g} px were not searched at {bins} binning: the 90-deg "
+            "reference filters fall under 2 frame pixels (the stripes do not)"
+        )
+    return (
+        f"Periods below {limit:g} px cannot be resolved at {bins} binning: the stripes and "
+        "their 90-deg reference filters fall under 2 frame pixels; they were not searched"
     )
 
 
 def _resolve_threshold(
     false_alarm_rate: float | None, calibration: Calibration | None, threshold: float | None
-) -> float:
-    """The Threshold ``analyse`` uses: ``threshold`` as given, else the
-    calibration's Threshold at the false-alarm rate (``None`` takes the
-    stored calibration and ``DEFAULT_FALSE_ALARM_RATE``)."""
+) -> tuple[float, Calibration | None]:
+    """``(Threshold, Calibration that set it)``: ``threshold`` as given (no
+    Calibration), else the calibration's Threshold at the false-alarm rate
+    (``None`` takes the stored calibration and ``DEFAULT_FALSE_ALARM_RATE``)."""
     if threshold is not None:
         if false_alarm_rate is not None or calibration is not None:
             raise ValueError("threshold= excludes false_alarm_rate= and calibration=")
-        return float(threshold)
+        return float(threshold), None
     cal = stored_calibration() if calibration is None else calibration
     rate = DEFAULT_FALSE_ALARM_RATE if false_alarm_rate is None else false_alarm_rate
-    return cal.threshold(rate)
+    return cal.threshold(rate), cal
+
+
+def _coverage_note(cal: Calibration, shape: tuple[int, ...], bins: BinFactors) -> list[str]:
+    """At most one note that ``cal``'s false-alarm rate does not cover this
+    frame: other bin factors, else more pixels than its frames. Smaller
+    frames are not noted (their rate is expected to be lower). The note never
+    changes the verdict or the Threshold."""
+    if cal.bin_factors != bins:
+        return [
+            f"the calibration was made at {cal.bin_factors} binning; its false-alarm rate "
+            f"does not cover {bins} frames (binning makes the Mottle directional in the "
+            "frame: Stripe-free scores up to 1.9x at the shortest searched Period)"
+        ]
+    rows, cols = shape
+    cal_rows, cal_cols = cal.shape
+    if rows * cols > cal_rows * cal_cols:
+        return [
+            f"frame {rows}x{cols} has more pixels than the calibration's {cal_rows}x{cal_cols}; "
+            "its false-alarm rate is not covered"
+        ]
+    return []
 
 
 def _light(frame: np.ndarray) -> np.ndarray:

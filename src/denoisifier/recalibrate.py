@@ -1,7 +1,7 @@
 """Recalibrate from a folder of Stripe-free frames (synthetic or real):
 
     python -m denoisifier.recalibrate FOLDER -o FILE [--drop-axis-column] [--transpose]
-        [--clip-level LEVEL] [--workers N]
+        [--clip-level LEVEL] [--bin HxV] [--workers N]
 
 Writes the Calibration file (``Calibration.to_json``) that ``analyse(...,
 calibration=Calibration.from_json(...))`` and the CLI's ``--calibration``
@@ -15,6 +15,8 @@ import argparse
 import sys
 
 from denoisifier.calibration import calibrate_folder
+from denoisifier.cli import bin_factors_arg
+from denoisifier.report import BinFactors
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -40,6 +42,15 @@ def main(argv: list[str] | None = None) -> int:
         help="clip level for every frame (default: detected per frame); 'inf' turns it off",
     )
     parser.add_argument(
+        "--bin",
+        type=bin_factors_arg,
+        default=BinFactors(),
+        metavar="HxV",
+        dest="bin_factors",
+        help="bin factors of every frame as HORIZONTALxVERTICAL (default 1x1); recorded in "
+        "the Calibration's settings when not 1x1",
+    )
+    parser.add_argument(
         "--workers", type=int, default=1, help="worker processes (default 1: serial)"
     )
     args = parser.parse_args(argv)
@@ -50,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
             transpose=args.transpose,
             clip_level=args.clip_level,
             workers=args.workers,
+            bin_factors=args.bin_factors,
         )
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(cal.to_json())

@@ -33,6 +33,7 @@ from numpy.typing import ArrayLike
 
 from denoisifier._calibration import threshold_rank
 from denoisifier.frame_io import read_frame
+from denoisifier.report import BinFactors
 
 DEFAULT_FALSE_ALARM_RATE = 0.01
 
@@ -56,6 +57,10 @@ class Calibration:
     ``run_info`` (commit, machine, versions, wall clock) is recorded and never
     compared: two Calibrations that differ only in ``run_info`` are equal.
     Both are kept JSON-normalised. Build one with ``from_scores``.
+
+    Frames scored at bin factors other than 1x1 record them in ``settings``
+    as ``"bin_factors"`` (``calibrate``, ``calibrate_folder``); the
+    ``bin_factors`` property reads them back (1x1 when absent).
     """
 
     ids: tuple[str, ...]
@@ -94,6 +99,14 @@ class Calibration:
             settings=_json_normalised(settings or {}),
             run_info=_json_normalised(run_info or {}),
         )
+
+    @property
+    def bin_factors(self) -> BinFactors:
+        """The bin factors the scores were taken at: ``settings["bin_factors"]``,
+        or 1x1 when absent. Raises ValueError when that setting is malformed."""
+        if "bin_factors" not in self.settings:
+            return BinFactors()
+        return BinFactors.from_dict(self.settings["bin_factors"])
 
     def threshold(self, rate: float) -> float:
         """The Threshold at false-alarm rate ``rate``: the k-th largest score,
@@ -190,14 +203,35 @@ def stored_calibration() -> Calibration:
     return Calibration.from_json(text)
 
 
-def stripe_free_score(frame: np.ndarray, *, clip_level: float | None = None) -> float:
+def stripe_free_score(
+    frame: np.ndarray, *, clip_level: float | None = None, bin_factors: BinFactors | None = None
+) -> float:
     """The Stripe Score of ``frame`` as ``analyse`` gives it (spike rejection,
     clip detection, regions), independent of any Threshold: the one scoring
     rule of every calibration path."""
     # Imported here: analysis imports this module for its defaults.
     from denoisifier.analysis import analyse
 
-    return analyse(frame, threshold=np.inf, clip_level=clip_level).score
+    return analyse(frame, threshold=np.inf, clip_level=clip_level, bin_factors=bin_factors).score
+
+
+def _with_bin_factors(
+    settings: Mapping[str, object] | None, bin_factors: BinFactors | None
+) -> dict[str, object]:
+    """``settings`` plus ``"bin_factors"`` when they are not 1x1 (so 1x1
+    settings, and the stored calibration's digest, are unchanged). A
+    ``"bin_factors"`` key already in ``settings`` is refused: the recorded
+    factors come from ``bin_factors=`` only, the ones the frames were scored at."""
+    out = dict(settings or {})
+    if "bin_factors" in out:
+        raise ValueError(
+            "settings may not contain 'bin_factors': pass bin_factors= instead, "
+            "which the frames are scored at and which is recorded"
+        )
+    bins = BinFactors() if bin_factors is None else bin_factors
+    if bins != BinFactors():
+        out["bin_factors"] = bins.to_dict()
+    return out
 
 
 def calibrate(
@@ -206,11 +240,15 @@ def calibrate(
     clip_level: float | None = None,
     settings: Mapping[str, object] | None = None,
     run_info: Mapping[str, object] | None = None,
+    bin_factors: BinFactors | None = None,
 ) -> Calibration:
     """A Calibration from ``(id, frame)`` pairs of Stripe-free frames, scored
     serially by ``stripe_free_score``. All frames must have one shape: the
-    false-alarm rate depends on it. Raises ValueError on no frames, differing
-    shapes or a non-finite score."""
+    false-alarm rate depends on it. ``bin_factors`` (default 1x1) are the
+    frames' bin factors, passed to ``analyse`` and recorded in ``settings``
+    when not 1x1. Raises ValueError on no frames, differing shapes, a
+    non-finite score or ``settings`` that already hold ``"bin_factors"``."""
+    settings = _with_bin_factors(settings, bin_factors)
     ids: list[str] = []
     scores: list[float] = []
     shapes: set[tuple[int, int]] = set()
@@ -219,7 +257,7 @@ def calibrate(
         shapes.add((int(frame.shape[0]), int(frame.shape[1])) if frame.ndim == 2 else (0, 0))
         _check_one_shape(shapes)
         ids.append(frame_id)
-        scores.append(stripe_free_score(frame, clip_level=clip_level))
+        scores.append(stripe_free_score(frame, clip_level=clip_level, bin_factors=bin_factors))
     if not ids:
         raise ValueError("no frames to calibrate on")
     (shape,) = shapes
@@ -233,6 +271,7 @@ def calibrate_folder(
     transpose: bool = False,
     clip_level: float | None = None,
     workers: int = 1,
+    bin_factors: BinFactors | None = None,
 ) -> Calibration:
     """A Calibration from every ``*.csv`` and ``*.asc`` file in ``folder``
     (not recursive; hidden files skipped; sorted by name), read by
@@ -247,7 +286,9 @@ def calibrate_folder(
     a script that calls it so needs the ``if __name__ == "__main__":`` guard.
     ``clip_level`` is passed to ``stripe_free_score`` for every frame (None:
     detected per frame; ``inf``: clip detection off, recorded in ``settings``
-    as the text ``"inf"``, since JSON has no infinity).
+    as the text ``"inf"``, since JSON has no infinity). ``bin_factors``
+    (default 1x1) are passed to ``analyse`` for every frame and recorded in
+    ``settings`` when not 1x1.
     Raises ValueError when ``clip_level`` is NaN, no file matches, a file
     cannot be read (naming the file), or the shapes differ.
     """
@@ -264,7 +305,7 @@ def calibrate_folder(
     if not paths:
         raise ValueError(f"no .csv or .asc files in {root}")
     t0 = time.perf_counter()
-    jobs = [(p, drop_axis_column, transpose, clip_level) for p in paths]
+    jobs = [(p, drop_axis_column, transpose, clip_level, bin_factors) for p in paths]
     if workers > 1:
         with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("spawn")) as ex:
             results = list(ex.map(_score_file, jobs))
@@ -273,16 +314,19 @@ def calibrate_folder(
     shapes = {shape for shape, _ in results}
     _check_one_shape(shapes)
     (shape,) = shapes
-    settings = {
-        "source": "folder",
-        "drop_axis_column": drop_axis_column,
-        "transpose": transpose,
-        # JSON has no inf: an infinite clip level (clip detection off) is recorded
-        # as its text; None means detected per frame.
-        "clip_level": (
-            clip_level if clip_level is None or np.isfinite(clip_level) else str(clip_level)
-        ),
-    }
+    settings = _with_bin_factors(
+        {
+            "source": "folder",
+            "drop_axis_column": drop_axis_column,
+            "transpose": transpose,
+            # JSON has no inf: an infinite clip level (clip detection off) is recorded
+            # as its text; None means detected per frame.
+            "clip_level": (
+                clip_level if clip_level is None or np.isfinite(clip_level) else str(clip_level)
+            ),
+        },
+        bin_factors,
+    )
     run_info = {
         "folder": root.resolve().name,
         "workers": workers,
@@ -300,12 +344,14 @@ def calibrate_folder(
     )
 
 
-def _score_file(job: tuple[Path, bool, bool, float | None]) -> tuple[tuple[int, int], float]:
-    path, drop_axis_column, transpose, clip_level = job
+def _score_file(
+    job: tuple[Path, bool, bool, float | None, BinFactors | None],
+) -> tuple[tuple[int, int], float]:
+    path, drop_axis_column, transpose, clip_level, bin_factors = job
     try:
         frame = read_frame(path, drop_axis_column=drop_axis_column, transpose=transpose).frame
         return (int(frame.shape[0]), int(frame.shape[1])), stripe_free_score(
-            frame, clip_level=clip_level
+            frame, clip_level=clip_level, bin_factors=bin_factors
         )
     except (OSError, ValueError) as e:
         raise ValueError(f"{path.name}: {e}") from e

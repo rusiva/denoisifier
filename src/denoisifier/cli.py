@@ -14,7 +14,10 @@ calibration (``python -m denoisifier.recalibrate``). With
 0 outside every region, k inside the region whose ``label`` is k. Under
 ``--transpose`` the Mask and the bboxes follow the file's layout
 (``"transposed": true``); Period and Angle are always measured on the
-analysed (transposed) frame.
+analysed (transposed) frame. ``--bin HxV`` gives the frame's bin factors
+(horizontal first): Period, Angle and the 3x2-Period minimum are in sensor
+pixels, bboxes, areas and the Mask in frame pixels, as the report's ``units``
+say; ``bin_factors``, ``unresolved_period_px`` and ``warnings`` record them.
 """
 
 from __future__ import annotations
@@ -22,12 +25,30 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import os
+import re
 import sys
 from pathlib import Path
 
 from denoisifier.analysis import analyse
 from denoisifier.calibration import Calibration
 from denoisifier.frame_io import read_frame, write_mask_csv
+from denoisifier.report import BinFactors
+
+BIN_HELP = (
+    "bin factors of the frame as HORIZONTALxVERTICAL (default 1x1). Period, Angle and the "
+    "3x2-Period minimum are in sensor pixels; bboxes, areas and the mask are in frame pixels."
+)
+
+
+def bin_factors_arg(text: str) -> BinFactors:
+    """argparse ``type=`` for ``--bin HxV`` (case-insensitive ``x``)."""
+    m = re.fullmatch(r"(\d+)[xX](\d+)", text)
+    if m is None:
+        raise argparse.ArgumentTypeError(f"expected HORIZONTALxVERTICAL such as 1x2, got {text!r}")
+    try:
+        return BinFactors(horizontal=int(m[1]), vertical=int(m[2]))
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,7 +57,8 @@ def main(argv: list[str] | None = None) -> int:
         description="Decide whether a frame is striped and report each Striped Region's "
         "period, angle, modulation depth and bounding box as JSON (per-region values under "
         '"regions"; "transposed" records --transpose; "spike_pixels" and "clipped_pixels" '
-        "count the pixels rejected as spikes and the clipped pixels).",
+        "count the pixels rejected as spikes and the clipped pixels; --bin gives the frame's bin "
+        'factors, and "units" names the unit of each field).',
     )
     parser.add_argument(
         "frame",
@@ -60,7 +82,8 @@ def main(argv: list[str] | None = None) -> int:
         "--transpose",
         action="store_true",
         help="transpose the frame after reading (and after --drop-axis-column), for exports "
-        "that write one sensor column per file row; never done without this flag",
+        "that write one sensor column per file row; never done without this flag; --bin "
+        "factors refer to the transposed (sensor) axes",
     )
     parser.add_argument(
         "--clip-level",
@@ -84,6 +107,14 @@ def main(argv: list[str] | None = None) -> int:
         help="a calibration JSON (written by python -m denoisifier.recalibrate) to set the "
         "threshold on instead of the stored one",
     )
+    parser.add_argument(
+        "--bin",
+        type=bin_factors_arg,
+        default=BinFactors(),
+        metavar="HxV",
+        dest="bin_factors",
+        help=BIN_HELP,
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -102,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
             false_alarm_rate=args.false_alarm_rate,
             calibration=calibration,
             clip_level=args.clip_level,
+            bin_factors=args.bin_factors,
         )
         report = dataclasses.replace(analysed, reader_notes=frame_file.notes)
         if args.transpose:
