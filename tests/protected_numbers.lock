@@ -42,6 +42,7 @@ denoisifier.analysis :: _LEAK_FRACTION :: 0.5
 denoisifier.analysis :: _REFINE_STEPS :: 2
 denoisifier.analysis :: _INTERIOR_FRACTION :: 0.5
 denoisifier.analysis :: _CLIPPED_WEIGHT_MAX :: 0.05
+denoisifier.calibration :: DEFAULT_FALSE_ALARM_RATE :: 0.01
 
 denoisifier._data_quality :: _SPIKE_NEIGHBOUR_ROWS :: 3
 denoisifier._data_quality :: _SPIKE_SIGMAS :: 8.0
