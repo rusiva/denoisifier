@@ -24,10 +24,19 @@ short bright streaks on top of the noisy frame, then the frame is clipped:
 
 ``GroundTruth.spike_mask`` and ``clipped_mask`` record which pixels each one
 touched.
+
+Phase Breaks (``PhaseBreakLine``, ticket 09) add a hard step to the stripe
+phase of every Striped Region (spec forward model):
+
+    phase_i += sum_b jump_b * [pixel lies on b's positive side]
+
+``GroundTruth.phase_breaks`` records each line in canonical form
+(``BreakTruth``).
 """
 
 from __future__ import annotations
 
+import math
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -101,6 +110,44 @@ class RegionTruth:
 
 
 @dataclass(frozen=True)
+class PhaseBreakLine:
+    """A straight Phase Break across the whole frame.
+
+    ``point`` (row, col) is any point on the line, in px. ``line_angle_deg``
+    is the line's direction in degrees from horizontal, positive descending
+    to the right (row 0 is the top), so a line at ``line_angle_deg == t`` is
+    perpendicular to stripes of Angle ``t``. ``jump_rad`` is the stripe
+    phase on the positive side of the directed line minus the phase on the
+    other side (``BreakTruth`` defines the positive side). The stripe phase
+    grows with the column, so a positive jump moves the stripes on the
+    positive side toward column 0 by jump / 2 pi Periods.
+    """
+
+    point: tuple[float, float]
+    line_angle_deg: float
+    jump_rad: float
+
+
+@dataclass(frozen=True)
+class BreakTruth:
+    """One Phase Break as the generator drew it, in canonical form.
+
+    ``point`` is as given. ``line_angle_deg`` is in (-90, 90]: a line given
+    outside that range is flipped (180 deg added or taken off) and its jump
+    negated, which is the same line. ``jump_rad`` follows the canonical
+    direction, wrapped to (-pi, pi]. With ``d = (cos a, sin a)`` in
+    (x = col, y = row), a pixel's side is ``d_x (y - y0) - d_y (x - x0)``;
+    ``shifted`` (bool, frame shape) is the positive side, strictly
+    (``> 0``), where the jump is added. Pixels exactly on the line are not
+    shifted."""
+
+    point: tuple[float, float]
+    line_angle_deg: float
+    jump_rad: float
+    shifted: np.ndarray
+
+
+@dataclass(frozen=True)
 class GroundTruth:
     """What the generator put into a frame: one ``RegionTruth`` per region.
 
@@ -118,11 +165,15 @@ class GroundTruth:
     above the clip level that no Spike hit, so the two are disjoint. Both are
     all False without spikes or without a clip level; ``spike_pixels`` and
     ``clipped_pixels`` are their counts.
+
+    ``phase_breaks`` holds one ``BreakTruth`` per Phase Break, in the order
+    given (empty without breaks).
     """
 
     regions: tuple[RegionTruth, ...]
     spike_mask: np.ndarray
     clipped_mask: np.ndarray
+    phase_breaks: tuple[BreakTruth, ...] = ()
 
     @property
     def spike_pixels(self) -> int:
@@ -179,6 +230,7 @@ def generate(
     regions: Sequence[StripedRegion] | None = None,
     spikes: int = 0,
     clip_level: float | None = None,
+    phase_breaks: Sequence[PhaseBreakLine] = (),
 ) -> Synthetic:
     """Generate one frame: profile times full-frame stripes, plus noise.
 
@@ -213,6 +265,22 @@ def generate(
     With ``spikes=0`` and ``clip_level=None`` the frame is bit-identical to a
     call without them, and a spiked frame equals the same seed's spike-free
     frame outside the hit pixels.
+
+    ``phase_breaks`` (``PhaseBreakLine``s) shift the stripe phase by each
+    line's jump on its positive side, a hard step, in every Striped Region;
+    without ``regions`` the stripes, and so the breaks, cover the whole
+    frame. Each line is canonicalised first (``BreakTruth``) and returned in
+    ``GroundTruth.phase_breaks``; every field must be finite and ``point`` a
+    pair (``ValueError``); a jump of 0 changes nothing. Breaks draw nothing
+    from the RNG. So:
+
+    1. ``phase_breaks=()`` is bit-identical to a call without it, for every
+       noise model;
+    2. with breaks, Gaussian ``noise``, ``spikes=0`` and no ``clip_level``,
+       ``frame`` and ``clean`` are bit-identical to the break-free call off
+       each break's ``shifted`` pixels;
+    3. with breaks and EMCCD noise no pixel is claimed equal: the chain
+       rescales by ``clean.max()`` and its draws depend on the values.
 
     Once the arguments are valid, the seed is raised as the audit event
     ``denoisifier.synthetic.generate`` (``sys.audit``) just before it seeds the
@@ -255,11 +323,15 @@ def generate(
         raise ValueError(f"spikes must be a non-negative int, got {spikes!r}")
     if clip_level is not None and not np.isfinite(clip_level):
         raise ValueError(f"clip_level must be finite (None for no clipping), got {clip_level!r}")
+    lines = tuple(_canonical_break(b) for b in phase_breaks)
 
     sys.audit("denoisifier.synthetic.generate", seed)
     rng = np.random.default_rng(seed)
     rows, cols = shape
     y, x = np.mgrid[0:rows, 0:cols].astype(float)
+    break_truths = tuple(_break_truth(b, x, y) for b in lines)
+    # Branch so that the break-free path does no arithmetic at all (claim 1).
+    break_phase = _break_phase(break_truths) if break_truths else None
 
     # RNG draw order is fixed: profile, stripe phase offset, mottle, noise,
     # then spikes (only when spikes > 0).
@@ -280,6 +352,8 @@ def generate(
     if regions is None:
         # Only full's Period, Angle and depth are used: the stripes cover the frame.
         phase = _phase(x, y, full.period, full.angle_deg, phase0)
+        if break_phase is not None:
+            phase = phase + break_phase
         clean = envelope * (1 + full.modulation_depth * np.cos(phase))
         truths: tuple[RegionTruth, ...] = (
             RegionTruth(
@@ -295,9 +369,10 @@ def generate(
         modulation = np.zeros(shape)
         for r, mask in zip(regions, masks, strict=True):
             depth_sum += r.modulation_depth * mask
-            modulation += (
-                r.modulation_depth * mask * np.cos(_phase(x, y, r.period, r.angle_deg, phase0))
-            )
+            region_phase = _phase(x, y, r.period, r.angle_deg, phase0)
+            if break_phase is not None:
+                region_phase = region_phase + break_phase
+            modulation += r.modulation_depth * mask * np.cos(region_phase)
         if (depth_sum > 1).any():
             raise ValueError(
                 "regions overlap with a summed modulation depth above 1 "
@@ -323,7 +398,12 @@ def generate(
     frame, spike_mask, clipped_mask = _spike_and_clip(rng, frame, clean, spikes, clip_level)
     return Synthetic(
         frame=frame,
-        truth=GroundTruth(regions=truths, spike_mask=spike_mask, clipped_mask=clipped_mask),
+        truth=GroundTruth(
+            regions=truths,
+            spike_mask=spike_mask,
+            clipped_mask=clipped_mask,
+            phase_breaks=break_truths,
+        ),
         clean=clean,
     )
 
@@ -398,6 +478,44 @@ def _check_region(r: StripedRegion) -> None:
 def _phase(x: _F64, y: _F64, period: float, angle_deg: float, phase0: float) -> _F64:
     t = np.deg2rad(angle_deg)
     return cast(_F64, 2 * np.pi / period * (x * np.cos(t) + y * np.sin(t)) + phase0)
+
+
+def _canonical_break(b: PhaseBreakLine) -> PhaseBreakLine:
+    """``b`` validated, with its angle in (-90, 90] and its jump, negated when
+    the direction was flipped, wrapped to (-pi, pi]."""
+    point = tuple(b.point)
+    if len(point) != 2 or not all(math.isfinite(float(v)) for v in point):
+        raise ValueError(f"phase break point must be a finite (row, col) pair, got {b.point!r}")
+    if not math.isfinite(b.line_angle_deg):
+        raise ValueError(f"phase break line_angle_deg must be finite, got {b.line_angle_deg!r}")
+    if not math.isfinite(b.jump_rad):
+        raise ValueError(f"phase break jump_rad must be finite, got {b.jump_rad!r}")
+    angle, jump = float(b.line_angle_deg), float(b.jump_rad)
+    if not -90.0 < angle <= 90.0:
+        angle = (angle + 180.0) % 360.0 - 180.0  # same direction, in [-180, 180)
+        if angle <= -90.0:
+            angle, jump = angle + 180.0, -jump
+        elif angle > 90.0:
+            angle, jump = angle - 180.0, -jump
+    jump = -((-jump + math.pi) % (2 * math.pi) - math.pi)  # (-pi, pi]
+    return PhaseBreakLine((float(point[0]), float(point[1])), angle, jump)
+
+
+def _break_truth(b: PhaseBreakLine, x: _F64, y: _F64) -> BreakTruth:
+    """The canonical line ``b`` with its strictly positive side (frame shape)."""
+    t = math.radians(b.line_angle_deg)
+    side = math.cos(t) * (y - b.point[0]) - math.sin(t) * (x - b.point[1])
+    return BreakTruth(
+        point=b.point, line_angle_deg=b.line_angle_deg, jump_rad=b.jump_rad, shifted=side > 0
+    )
+
+
+def _break_phase(breaks: tuple[BreakTruth, ...]) -> _F64:
+    """Sum of each break's jump on its positive side: a hard step per line."""
+    total = np.zeros(breaks[0].shifted.shape)
+    for b in breaks:
+        total[b.shifted] += b.jump_rad
+    return total
 
 
 def _region_mask(r: StripedRegion, x: _F64, y: _F64) -> _F64:

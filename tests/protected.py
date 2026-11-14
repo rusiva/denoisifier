@@ -8,6 +8,8 @@ a tolerance or expected value), and so is editing the lockfile: owner approval
 first (CLAUDE.md).
 """
 
+import math
+
 from cases import Case
 
 # Measured Period, Angle and Modulation Depth vs the generator's ground truth
@@ -273,6 +275,43 @@ BINNING_PROTOTYPE_SEEDS = range(108_000, 108_400)
 BINNED_FRAME_ANGLE_DEG = 19.43
 BINNED_FRAME_ANGLE_TOL_DEG = 0.01
 
+# Ticket 09 (Phase Breaks; plan .scratch/stripe-detector/handoffs/09-plan.md, sections 5 and 7).
+# Test seeds, never run before the plan; CASES[seed % 10] gives P 3, 5, 8, 12, 20, 4, 16, 6, 10, 14.
+PHASE_BREAK_TEST_SEEDS = range(10, 20)
+# A found break (truth_match.assert_break_matches, plan 5.1; spec tolerances).
+BREAK_POSITION_TOL_PERIODS = 1.0  # every segment point within this x P of the true line
+BREAK_JUMP_TOL_RAD = math.pi / 4  # found jump vs the true jump, directions aligned
+BREAK_MIN_FOUND_JUMP_RAD = math.pi / 2  # AC 2: the smallest jump that must be found
+BREAK_CHORD_COVER_MIN = 0.6  # segment covers this share of the true chord (P1: min 0.776)
+# AC 4 (plan 5.3): each side of the true line, truth pixels farther than
+# BREAK_SIDE_EXCLUDE_PERIODS x P from it, is covered at least this much by the one region.
+BREAK_SIDE_COVER_MIN = 0.5
+BREAK_SIDE_EXCLUDE_PERIODS = 2.5
+# Full frames' chord: the generator-side lit mask, clean smoothed at this sigma (sensor px),
+# at or above this x its maximum (truth_match.truth_lit_mask).
+BREAK_LIT_SIGMA_PX = 10.0
+BREAK_LIT_LEVEL = 0.1
+BREAK_PHASE_ATOL = 1e-9  # the generator's break phase, noise-free
+# _local_phase unit tests on noise-free phasor fields.
+BREAK_EXACT_POSITION_TOL_PERIODS = 0.25
+BREAK_EXACT_JUMP_TOL_RAD = 0.05
+# Two parallel breaks this many Periods apart (P1 v2 validation 20/20 at 6 P), at case
+# Periods of at least BREAK_PAIR_MIN_PERIOD.
+BREAK_PAIR_SEPARATION_PERIODS = 6
+BREAK_PAIR_MIN_PERIOD = 5
+# The end-to-end sign test: Period (px), stripe Angle 0, line 10 deg, jump +pi/2.
+BREAK_SIGN_TEST_SEED = PHASE_BREAK_TEST_SEEDS[0]
+BREAK_SIGN_TEST_PERIOD = 10
+# The frame-period refusal: sensor Period under 2x1 (frame Period 2.35, between
+# MIN_FRAME_PERIOD_PX 2.0 and the finder's 2.5).
+BREAK_REFUSAL_TEST_PERIOD = 4.7
+# A region this many Periods tall gets no break (the finder's small-region rule).
+BREAK_SMALL_REGION_PERIODS = 5
+# Prototype P1 of ticket 09 (09-prototype-p1.md): explore, and the validation ranges
+# (v1 109_600-109_999, v2 110_000-110_399, gate 110_400-110_459). Reserved.
+BREAK_PROTOTYPE_SEEDS = range(109_000, 109_600)
+BREAK_VALIDATION_SEEDS = range(109_600, 110_460)
+
 # test_seed_guard.py (ticket agent-gates/04). The held-out free and striped
 # seeds of test_measure_calibrates_inside_the_block_and_evaluates_outside's
 # small SeedPlan.
@@ -327,6 +366,9 @@ USED_SEEDS = [
     range(104_000, 104_100),
     # Ticket 08: prototype P1.
     BINNING_PROTOTYPE_SEEDS,
+    # Ticket 09: prototype P1 (explore, validations, gate seeds).
+    BREAK_PROTOTYPE_SEEDS,
+    BREAK_VALIDATION_SEEDS,
 ]
 
 # Calibration seed ranges, by name. tests/seed_guard.py refuses any of these

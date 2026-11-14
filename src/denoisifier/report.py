@@ -149,6 +149,40 @@ class Region:
 
 
 @dataclass(frozen=True)
+class PhaseBreak:
+    """One reported Phase Break.
+
+    ``line`` is a polyline of (row, col) points in frame px (two points in
+    this version: the break's run across its region). ``jump_rad``, in
+    (-pi, pi], is the local stripe phase on the positive side minus the
+    other side; the positive side is where ``cross(end - start, p - start)
+    > 0``, with ``cross(a, b) = a_col * b_row - a_row * b_col``. The stripe
+    phase grows with the column, so a positive jump moves the stripes on the
+    positive side toward column 0 by jump / 2 pi Periods (toward row 0 in
+    file layout when transposed). In the analysed frame the points are in
+    col-increasing order, so the positive side is below a horizontal line;
+    in file layout they are row-decreasing. Near vertical, point order and
+    the sign flip together. ``region`` is the label of its Striped Region.
+    """
+
+    region: int
+    line: tuple[tuple[float, float], ...]
+    jump_rad: float
+
+    def transposed(self) -> PhaseBreak:
+        """The break in the transposed layout: points swapped, order reversed,
+        so every pixel keeps its side; the jump is unchanged."""
+        return dataclasses.replace(self, line=tuple((c, r) for r, c in reversed(self.line)))
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "region": int(self.region),
+            "line": [[float(r), float(c)] for r, c in self.line],
+            "jump_rad": float(self.jump_rad),
+        }
+
+
+@dataclass(frozen=True)
 class Report:
     """What ``analyse`` found in one frame.
 
@@ -184,8 +218,14 @@ class Report:
     part of the 3-20 px Period range (sensor px) that was not searched
     because a filter there falls under ``MIN_FRAME_PERIOD_PX`` frame pixels
     (``denoisifier._local_stripes``), or ``None``.
-    ``warnings`` are frame-level analysis warnings (that range, and a frame
-    the calibration does not cover), separate from ``reader_notes``.
+    ``warnings`` are frame-level analysis warnings (that range, a frame
+    the calibration does not cover, and regions whose Phase Breaks were not
+    searched), separate from ``reader_notes``.
+
+    ``phase_breaks`` (``PhaseBreak``) are the Phase Breaks found in the
+    reported regions, ordered by region label, then by descending
+    ``|jump_rad|``, then by first point in row-major order; each ``line`` is
+    in frame px (file layout when transposed).
     """
 
     UNITS: ClassVar[dict[str, str]] = {
@@ -198,6 +238,14 @@ class Report:
         "spike_pixels": "frame px",
         "clipped_pixels": "frame px",
         "unresolved_period_px": "sensor px",
+        "line": (
+            "frame px, (row, col) points; file layout when transposed "
+            "(points swapped and order reversed)"
+        ),
+        "jump_rad": (
+            "radians, phase on the positive side (cross-product rule) minus the other; "
+            "same value in both layouts"
+        ),
     }
 
     striped: bool
@@ -212,20 +260,24 @@ class Report:
     bin_factors: BinFactors = BinFactors()
     unresolved_period_px: tuple[float, float] | None = None
     warnings: tuple[str, ...] = ()
+    phase_breaks: tuple[PhaseBreak, ...] = ()
 
     def mask(self) -> np.ndarray:
         """Boolean, frame shape: True inside any reported region."""
         return np.asarray(self.labels > 0)
 
     def in_file_layout(self) -> Report:
-        """This report with ``labels`` and every bbox transposed back to the file's layout.
+        """This report with ``labels``, every bbox and every Phase Break line
+        transposed back to the file's layout (``PhaseBreak.transposed``).
 
-        Period, Angle, Modulation Depth, score, label values, ``bin_factors``,
-        ``unresolved_period_px`` and ``warnings`` are unchanged."""
+        Period, Angle, Modulation Depth, score, label values, jumps,
+        ``bin_factors``, ``unresolved_period_px`` and ``warnings`` are
+        unchanged."""
         return dataclasses.replace(
             self,
             labels=np.ascontiguousarray(self.labels.T),
             regions=tuple(dataclasses.replace(r, bbox=r.bbox.transposed()) for r in self.regions),
+            phase_breaks=tuple(b.transposed() for b in self.phase_breaks),
             transposed=True,
         )
 
@@ -241,6 +293,7 @@ class Report:
             "bin_factors": self.bin_factors.to_dict(),
             "units": dict(self.UNITS),
             "regions": [r.to_dict() for r in self.regions],
+            "phase_breaks": [b.to_dict() for b in self.phase_breaks],
             "spike_pixels": int(self.spike_pixels),
             "clipped_pixels": int(self.clipped_pixels),
             "unresolved_period_px": (

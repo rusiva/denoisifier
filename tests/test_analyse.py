@@ -13,7 +13,7 @@ from scipy.ndimage import gaussian_filter
 from binning import bin_sensor_frame, bin_truth_mask
 from borderline import BORDERLINE, borderline_frame
 from cases import CASES, case_frame, clipped_at
-from denoisifier import BinFactors, Report, analyse, analysis
+from denoisifier import BinFactors, BoundingBox, PhaseBreak, Region, Report, analyse, analysis
 from denoisifier.analysis import _ENVELOPE_SIGMA
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.synthetic import (
@@ -326,11 +326,13 @@ def test_report_converts_to_json(modulation_depth):
         "bin_factors",
         "units",
         "regions",
+        "phase_breaks",
         "spike_pixels",
         "clipped_pixels",
         "unresolved_period_px",
         "warnings",
     ]
+    assert data["phase_breaks"] == []
     assert data["bin_factors"] == {"horizontal": 1, "vertical": 1}
     assert data["unresolved_period_px"] is None
     assert data["warnings"] == []
@@ -1445,7 +1447,73 @@ REPORT_UNITS = {
     "spike_pixels": "frame px",
     "clipped_pixels": "frame px",
     "unresolved_period_px": "sensor px",
+    "line": "frame px, (row, col) points; file layout when transposed (points swapped and order "
+    "reversed)",
+    "jump_rad": "radians, phase on the positive side (cross-product rule) minus the other; same "
+    "value in both layouts",
 }
+
+
+def _positive_side(line, pixel):
+    """PhaseBreak's rule: cross(end - start, p - start) > 0, with
+    cross(a, b) = a_col b_row - a_row b_col."""
+    (r0, c0), (r1, c1) = line
+    return (c1 - c0) * (pixel[0] - r0) - (r1 - r0) * (pixel[1] - c0) > 0
+
+
+def _report_with_a_break():
+    labels = np.zeros((8, 10), dtype=np.int32)
+    labels[1:7, 1:9] = 1
+    region = Region(
+        label=1,
+        period_px=5.0,
+        angle_deg=0.0,
+        modulation_depth=0.5,
+        bbox=BoundingBox(1, 7, 1, 9),
+        area_px=48,
+    )
+    brk = PhaseBreak(region=1, line=((3.0, 1.0), (4.0, 8.0)), jump_rad=1.25)
+    return Report(
+        striped=True,
+        score=10.0,
+        threshold=1.0,
+        regions=(region,),
+        spike_pixels=0,
+        clipped_pixels=0,
+        labels=labels,
+        phase_breaks=(brk,),
+    )
+
+
+def test_report_lists_phase_breaks_as_plain_json():
+    report = _report_with_a_break()
+    data = json.loads(report.to_json())
+    assert list(data).index("phase_breaks") == list(data).index("regions") + 1
+    assert data["phase_breaks"] == [
+        {"region": 1, "line": [[3.0, 1.0], [4.0, 8.0]], "jump_rad": 1.25}
+    ]
+    (entry,) = data["phase_breaks"]
+    assert type(entry["region"]) is int
+    assert type(entry["jump_rad"]) is float
+    assert all(type(v) is float for point in entry["line"] for v in point)
+
+
+def test_phase_break_in_file_layout_swaps_and_reverses_its_points():
+    """B3: the file layout swaps each point and reverses their order, so a pixel keeps its side
+    by the cross-product rule; the jump is unchanged."""
+    report = _report_with_a_break()
+    flipped = report.in_file_layout()
+    (brk,) = report.phase_breaks
+    (file_brk,) = flipped.phase_breaks
+    assert file_brk.line == ((8.0, 4.0), (1.0, 3.0))
+    assert file_brk.jump_rad == brk.jump_rad
+    assert file_brk.region == brk.region
+    below, above = (6, 4), (1, 4)  # analysed frame: below the near-horizontal line, above it
+    assert _positive_side(brk.line, below)
+    assert not _positive_side(brk.line, above)
+    assert _positive_side(file_brk.line, below[::-1])
+    assert not _positive_side(file_brk.line, above[::-1])
+    assert json.loads(flipped.to_json())["phase_breaks"][0]["line"] == [[8.0, 4.0], [1.0, 3.0]]
 
 
 def test_report_states_units():

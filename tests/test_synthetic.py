@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import math
 import re
 
 import numpy as np
@@ -8,8 +9,9 @@ from scipy import ndimage
 
 from cases import case_frame, clipped_at
 from denoisifier import synthetic
-from denoisifier.synthetic import Emccd, StripedRegion, generate
+from denoisifier.synthetic import Emccd, PhaseBreakLine, StripedRegion, generate
 from protected import (
+    BREAK_PHASE_ATOL,
     CLIP_LEVEL_FRACTION,
     DIGEST_TEST_SEEDS,
     MASK_AREA_REL_TOL,
@@ -19,6 +21,7 @@ from protected import (
     MASK_TAIL,
     MOTTLE_NONE_TEST_SEED,
     OUTSIDE_REGIONS_RTOL,
+    PHASE_BREAK_TEST_SEEDS,
     REGION_GENERATOR_TEST_SEED,
     SAME_SEED_TEST_SEEDS,
     SATURATING_CLIP_FACTOR,
@@ -422,3 +425,192 @@ def test_spike_and_clipped_masks_are_disjoint():
     assert np.array_equal(both.frame, np.minimum(spiked.frame, level))
     assert (both.frame[spikes] == level).any()
     assert (both.frame[spikes] < level).any()
+
+
+# --- Phase Breaks (ticket 09) ---------------------------------------------------
+
+_BREAK_POINT = (127.5, 127.5)  # half-integer: no pixel centre lies on a line through it
+
+
+def _wrap(a):
+    """``a`` wrapped to (-pi, pi]."""
+    return -((-a + math.pi) % (2 * math.pi) - math.pi)
+
+
+def _canonical(angle_deg, jump):
+    """The plan's canonical line (2.1): angle in (-90, 90], jump with its sign, wrapped."""
+    a = (angle_deg + 180.0) % 360.0 - 180.0
+    if a <= -90.0:
+        a, jump = a + 180.0, -jump
+    elif a > 90.0:
+        a, jump = a - 180.0, -jump
+    return a, _wrap(jump)
+
+
+def _side(shape, point, angle_deg):
+    """The strict positive side of the directed line: d_x (y - y0) - d_y (x - x0) > 0."""
+    y, x = np.mgrid[0 : shape[0], 0 : shape[1]].astype(float)
+    t = math.radians(angle_deg)
+    return math.cos(t) * (y - point[0]) - math.sin(t) * (x - point[1]) > 0
+
+
+def _broken(angle_deg, jump, **kwargs):
+    return generate(
+        seed=PHASE_BREAK_TEST_SEEDS[0],
+        noise=0.0,
+        phase_breaks=[PhaseBreakLine(_BREAK_POINT, angle_deg, jump)],
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize("jump", [math.pi / 2, math.pi, 2.0])
+@pytest.mark.parametrize("angle", [0, 10, 45, 90, -60, 135])
+def test_phase_break_shifts_every_stripe_on_one_side(angle, jump):
+    """AC 1: the canonical jump is added to the stripe phase on the canonical positive side
+    (strict), and nothing else changes."""
+    s = _broken(angle, jump)
+    (truth,) = s.truth.phase_breaks
+    canonical_angle, canonical_jump = _canonical(angle, jump)
+    assert truth.point == _BREAK_POINT
+    assert truth.line_angle_deg == pytest.approx(canonical_angle, abs=BREAK_PHASE_ATOL)
+    assert truth.jump_rad == pytest.approx(canonical_jump, abs=BREAK_PHASE_ATOL)
+    assert np.array_equal(truth.shifted, _side(s.frame.shape, _BREAK_POINT, canonical_angle))
+    assert truth.shifted.any()
+    assert not truth.shifted.all()
+    free = generate(seed=PHASE_BREAK_TEST_SEEDS[0], noise=0.0)
+    off = ~truth.shifted
+    assert np.array_equal(s.clean[off], free.clean[off])
+    env = generate(seed=PHASE_BREAK_TEST_SEEDS[0], noise=0.0, modulation_depth=0.0).clean
+    quarter = generate(
+        seed=PHASE_BREAK_TEST_SEEDS[0],
+        noise=0.0,
+        phase_breaks=[PhaseBreakLine(_BREAK_POINT, canonical_angle, math.pi / 2)],
+    ).clean
+    on = truth.shifted
+    c_j, c_0, c_q = (c[on] / env[on] - 1 for c in (s.clean, free.clean, quarter))
+    expected = c_0 * math.cos(canonical_jump) + c_q * math.sin(canonical_jump)
+    assert np.max(np.abs(c_j - expected)) <= BREAK_PHASE_ATOL
+
+
+_DIGEST_BREAK = PhaseBreakLine(point=(100.5, 60.5), line_angle_deg=20.0, jump_rad=math.pi)
+
+
+@pytest.mark.parametrize("kind", ["default", "scorched", "scorched-emccd"])
+def test_no_phase_breaks_leaves_frames_unchanged(kind):
+    """B1: phase_breaks=() is the BASE frame bit for bit (every noise kind); with one break,
+    Gaussian noise, no spikes and no clip, frame and clean are bit-identical off ``shifted``.
+    No pixel claim is made for EMCCD noise with a break."""
+    for seed, digest in zip(DIGEST_TEST_SEEDS, _BASE_DIGESTS[kind], strict=True):
+        s = generate(seed=seed, phase_breaks=(), **_DIGEST_KWARGS[kind])
+        assert hashlib.sha256(s.frame.tobytes()).hexdigest() == digest
+        assert s.truth.phase_breaks == ()
+    if kind == "scorched-emccd":
+        return
+    for seed in DIGEST_TEST_SEEDS:
+        free = generate(seed=seed, **_DIGEST_KWARGS[kind])
+        broken = generate(seed=seed, phase_breaks=[_DIGEST_BREAK], **_DIGEST_KWARGS[kind])
+        off = ~broken.truth.phase_breaks[0].shifted
+        assert np.array_equal(broken.frame[off], free.frame[off])
+        assert np.array_equal(broken.clean[off], free.clean[off])
+        assert not np.array_equal(broken.frame, free.frame)
+
+
+@pytest.mark.parametrize("a", [100, 270, -90])
+def test_phase_break_truth_is_canonical(a):
+    """A line given outside (-90, 90] is flipped, its jump negated and wrapped; (a, j) and
+    (a - 180, -j) are one line, so they give the same truth and the same frame."""
+    jump = 2.5
+    s = _broken(a, jump)
+    flipped = _broken(a - 180, -jump)
+    (truth,) = s.truth.phase_breaks
+    (other,) = flipped.truth.phase_breaks
+    want_angle, want_jump = _canonical(a, jump)
+    assert -90 < truth.line_angle_deg <= 90
+    assert truth.line_angle_deg == pytest.approx(want_angle, abs=BREAK_PHASE_ATOL)
+    assert truth.jump_rad == pytest.approx(want_jump, abs=BREAK_PHASE_ATOL)
+    assert truth.jump_rad == pytest.approx(_wrap(-jump), abs=BREAK_PHASE_ATOL)
+    assert np.array_equal(truth.shifted, _side(s.frame.shape, _BREAK_POINT, want_angle))
+    assert other.line_angle_deg == truth.line_angle_deg
+    assert other.jump_rad == pytest.approx(truth.jump_rad, abs=BREAK_PHASE_ATOL)
+    assert np.array_equal(other.shifted, truth.shifted)
+    assert np.allclose(flipped.clean, s.clean, rtol=0, atol=BREAK_PHASE_ATOL)
+
+
+def test_phase_breaks_apply_inside_regions_and_over_the_whole_frame():
+    region = StripedRegion(
+        center=(127.5, 127.5),
+        semi_axes=(60.0, 80.0),
+        rotation_deg=0.0,
+        edge_px=6.0,
+        period=8.0,
+        angle_deg=0.0,
+        modulation_depth=0.5,
+    )
+    line = PhaseBreakLine(_BREAK_POINT, 0.0, math.pi)
+    for kwargs in (dict(regions=[region]), dict()):
+        free = generate(seed=PHASE_BREAK_TEST_SEEDS[0], noise=0.0, **kwargs)
+        broken = generate(seed=PHASE_BREAK_TEST_SEEDS[0], noise=0.0, phase_breaks=[line], **kwargs)
+        shifted = broken.truth.phase_breaks[0].shifted
+        lit = free.truth.regions[0].mask >= 0.5
+        # A jump of pi negates the stripe term wherever stripes are drawn and shifted.
+        env = generate(
+            seed=PHASE_BREAK_TEST_SEEDS[0],
+            noise=0.0,
+            regions=() if kwargs else None,
+            **({} if kwargs else dict(modulation_depth=0.0)),
+        ).clean
+        at = shifted & lit
+        assert at.sum() > 1000
+        assert np.allclose(
+            broken.clean[at] / env[at] - 1, 1 - free.clean[at] / env[at], atol=BREAK_PHASE_ATOL
+        )
+        assert np.array_equal(broken.clean[~shifted], free.clean[~shifted])
+
+
+def test_pixels_on_a_phase_break_line_are_not_shifted():
+    s = generate(
+        seed=PHASE_BREAK_TEST_SEEDS[0],
+        noise=0.0,
+        phase_breaks=[PhaseBreakLine((100.0, 60.0), 0.0, math.pi)],
+    )
+    shifted = s.truth.phase_breaks[0].shifted
+    assert not shifted[:101].any()
+    assert shifted[101:].all()
+
+
+def test_zero_jump_is_a_no_op():
+    s = _broken(30.0, 0.0)
+    assert np.array_equal(s.clean, generate(seed=PHASE_BREAK_TEST_SEEDS[0], noise=0.0).clean)
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        (PhaseBreakLine((np.nan, 1.0), 0.0, 1.0), "phase break point must be"),
+        (PhaseBreakLine((1.0, 2.0, 3.0), 0.0, 1.0), "phase break point must be"),
+        (PhaseBreakLine((1.0, 2.0), np.inf, 1.0), "phase break line_angle_deg must be finite"),
+        (PhaseBreakLine((1.0, 2.0), 0.0, np.nan), "phase break jump_rad must be finite"),
+    ],
+)
+def test_rejects_invalid_phase_breaks(line, message):
+    with pytest.raises(ValueError, match="^" + re.escape(message)):
+        generate(seed=PHASE_BREAK_TEST_SEEDS[0], phase_breaks=[line])
+
+
+def test_positive_jump_moves_stripes_toward_column_zero():
+    """C1, noise-free: a jump of +pi/2 below a 10-deg line moves the stripes there toward
+    column 0 by a quarter Period (5 px at P 20)."""
+    period = 20
+    common = dict(seed=PHASE_BREAK_TEST_SEEDS[0], noise=0.0, period=period, angle_deg=0.0)
+    free = generate(**common)
+    broken = generate(**common, phase_breaks=[PhaseBreakLine(_BREAK_POINT, 10.0, math.pi / 2)])
+    env = generate(seed=PHASE_BREAK_TEST_SEEDS[0], noise=0.0, modulation_depth=0.0).clean
+    row = 220
+    assert broken.truth.phase_breaks[0].shifted[row].all()
+    b = broken.clean[row] / env[row] - 1
+    f = free.clean[row] / env[row] - 1
+    lags = range(-period // 2, period // 2)
+    inner = slice(period, len(b) - period)
+    # b(x) = f(x - lag) at the best lag.
+    score = {lag: float(np.dot(b[inner], np.roll(f, lag)[inner])) for lag in lags}
+    assert max(score, key=lambda lag: score[lag]) == -period // 4
