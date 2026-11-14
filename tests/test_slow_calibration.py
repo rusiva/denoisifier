@@ -16,10 +16,13 @@ per-test timeout covers the fixture of the first test (W6).
 
 import pytest
 
-import protected
 import threshold_calibration as tc
 from denoisifier.calibration import stored_calibration
-from protected import CALIBRATION_TIMEOUT_S
+from protected import (
+    CALIBRATION_TIMEOUT_S,
+    PACKAGE_STORED_THRESHOLD,
+    PACKAGE_STORED_THRESHOLD_5PCT,
+)
 
 pytestmark = [pytest.mark.slow]
 
@@ -33,7 +36,7 @@ def reproduction() -> dict:
 def test_calibration_reproduces_the_stored_thresholds(reproduction):
     problems = tc.reproduction_problems(
         reproduction,
-        protected.PACKAGE_STORED_THRESHOLD,
-        protected.PACKAGE_STORED_THRESHOLD_5PCT,
+        PACKAGE_STORED_THRESHOLD,
+        PACKAGE_STORED_THRESHOLD_5PCT,
     )
     assert problems == [], "\n".join(problems)

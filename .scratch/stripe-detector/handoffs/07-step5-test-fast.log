@@ -1,0 +1,37 @@
+uv run --locked pytest -x --ff -m "not slow and not wide"
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 1087 items / 482 deselected / 605 selected
+run-last-failure: 121 known failures not in selected tests
+
+tests/test_analyse.py .................................................. [  8%]
+........................................................................ [ 20%]
+........................................................................ [ 32%]
+....................................................                     [ 40%]
+tests/test_bench.py .....                                                [ 41%]
+tests/test_calibration.py .................................              [ 46%]
+tests/test_cli.py ..............................                         [ 51%]
+tests/test_data_quality.py ................                              [ 54%]
+tests/test_feasibility_gate.py ..............                            [ 56%]
+tests/test_glossary_terms.py ......                                      [ 57%]
+tests/test_inner_loop.py .......................                         [ 61%]
+tests/test_protected_numbers.py ..........                               [ 63%]
+tests/test_read_frame.py ............................................... [ 71%]
+.....                                                                    [ 71%]
+tests/test_require_background_gate.py ...........................        [ 76%]
+tests/test_seed_guard.py .............                                   [ 78%]
+tests/test_slow_regression_plan.py ........                              [ 79%]
+tests/test_slow_stamp.py ..................................              [ 85%]
+tests/test_synthetic.py ................................................ [ 93%]
+.............................                                            [ 98%]
+tests/test_threshold_calibration.py ...........                          [100%]
+
+=============== 605 passed, 482 deselected in 206.30s (0:03:26) ================
+EXIT=0

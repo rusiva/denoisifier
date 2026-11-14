@@ -245,6 +245,15 @@ CALIBRATION_TOLERANCE_LEVEL = 0.995
 CALIBRATION_MAX_FALSE_RED = 0.01
 HELD_OUT_OPTION_FRAMES = 20  # AC 2b: frames also analysed with false_alarm_rate=0.05 (N3)
 CALIBRATION_TIMEOUT_S = 2400  # per test of the calibration slow modules (W6)
+# The shipped calibration (src/denoisifier/stripe_free_calibration.json), from the step-5
+# run at c20b28d (W4, W9): its thresholds at 1% (k = 3) and 5% (k = 15), and the SHA-256
+# of its canonical {ids, scores, shape, settings} (Calibration.digest) as an int, so the
+# lockfile pins the whole payload (W4(b)). Re-stored only by the procedure in CLAUDE.md.
+PACKAGE_STORED_THRESHOLD = 100.80547983306298
+PACKAGE_STORED_THRESHOLD_5PCT = 60.91880891139576
+PACKAGE_CALIBRATION_DIGEST = int(
+    "4140b3db8edcb56dce3567cd42bc321e1df1512d616e37647e6dc0823d2e0f6a", 16
+)
 # Test seeds of ticket 07 (fixed at step 0, before use).
 CALIBRATION_FOLDER_TEST_SEEDS = range(10, 22)  # AC 5: 12 frames, 64x64
 CALIBRATION_TINY_TEST_SEEDS = range(40, 44)  # the tiny plan's calibration (core, no guard)

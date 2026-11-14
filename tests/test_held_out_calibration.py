@@ -23,9 +23,12 @@ paid under the per-test timeout of the first test that uses it (W6).
 
 import pytest
 
-import protected
 import threshold_calibration as tc
-from protected import CALIBRATION_TIMEOUT_S
+from protected import (
+    CALIBRATION_TIMEOUT_S,
+    PACKAGE_STORED_THRESHOLD,
+    PACKAGE_STORED_THRESHOLD_5PCT,
+)
 
 pytestmark = [pytest.mark.slow, pytest.mark.held_out]
 
@@ -47,20 +50,20 @@ def striped() -> dict:
 @pytest.mark.timeout(CALIBRATION_TIMEOUT_S)
 def test_held_out_false_alarms_at_the_default_rate(free):
     assert free["n"] == len(tc.HELD_OUT.free)
-    problems = tc.false_alarm_problems(free, protected.PACKAGE_STORED_THRESHOLD)
+    problems = tc.false_alarm_problems(free, PACKAGE_STORED_THRESHOLD)
     assert problems == [], "\n".join(problems)
 
 
 @pytest.mark.timeout(CALIBRATION_TIMEOUT_S)
 def test_held_out_false_alarms_at_five_percent(free):
     assert len(free["option_frames"]) == tc.HELD_OUT.option_frames
-    problems = tc.other_rate_problems(free, protected.PACKAGE_STORED_THRESHOLD_5PCT)
+    problems = tc.other_rate_problems(free, PACKAGE_STORED_THRESHOLD_5PCT)
     assert problems == [], "\n".join(problems)
 
 
 @pytest.mark.timeout(CALIBRATION_TIMEOUT_S)
 def test_weak_stripes_detected_at_the_default_rate(striped):
     assert striped["n"] == len(tc.HELD_OUT.striped)
-    assert striped["thresholds_seen"] == [protected.PACKAGE_STORED_THRESHOLD]
+    assert striped["thresholds_seen"] == [PACKAGE_STORED_THRESHOLD]
     problems = tc.detection_problems(striped)
     assert problems == [], "\n".join(problems)

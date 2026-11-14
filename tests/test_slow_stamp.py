@@ -314,7 +314,14 @@ def test_check_ends_with_the_stamp_check():
 def test_check_slow_runs_the_slow_tier_under_the_runner():
     last = _dry_run("check-slow").strip().splitlines()[-1]
     assert "python tests/slow_stamp.py run -- " in last
-    assert last.endswith("pytest -m slow")
+    assert last.endswith('pytest -m "slow and not held_out"')
+
+
+def test_check_held_out_selects_the_held_out_tests_and_stays_out_of_check():
+    last = _dry_run("check-held-out").strip().splitlines()[-1]
+    assert last.endswith("pytest -m held_out")
+    assert "slow_stamp.py" not in _dry_run("check-held-out")
+    assert "held_out" not in _dry_run("check")
 
 
 @pytest.mark.parametrize("target", ["check", "check-slow"])

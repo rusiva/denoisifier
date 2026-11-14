@@ -6,6 +6,7 @@ functions; the tiny-plan test here runs the same code on test seeds at a small s
 """
 
 import importlib
+import importlib.resources
 import json
 import math
 
@@ -15,10 +16,11 @@ from scipy.stats import betabinom
 import feasibility
 import threshold_calibration as tc
 from denoisifier import analyse
-from denoisifier._calibration import false_alarm_tolerance
+from denoisifier._calibration import false_alarm_tolerance, threshold_rank
 from denoisifier.calibration import (
     DEFAULT_FALSE_ALARM_RATE,
     Calibration,
+    stored_calibration,
     stripe_free_score,
 )
 from denoisifier.synthetic import generate
@@ -35,6 +37,9 @@ from protected import (
     HELD_OUT_OPTION_FRAMES,
     MIN_DETECTION_RATE,
     OTHER_FALSE_ALARM_RATE,
+    PACKAGE_CALIBRATION_DIGEST,
+    PACKAGE_STORED_THRESHOLD,
+    PACKAGE_STORED_THRESHOLD_5PCT,
     RUN_POOL_TEST_SEEDS,
     STRIPE_FREE_CALIBRATION_SEEDS,
     WEAK_DEPTH,
@@ -247,3 +252,38 @@ def test_the_full_plans_are_the_protected_ones():
     assert plan.option_frames == HELD_OUT_OPTION_FRAMES
     assert plan.level == CALIBRATION_TOLERANCE_LEVEL
     assert plan.min_detection_rate == MIN_DETECTION_RATE
+
+
+# --- The stored calibration (plan 2.2, W4(b)): make check, no analysis ------------------
+
+
+def test_stored_calibration_ships_with_the_package():
+    resource = importlib.resources.files("denoisifier").joinpath("stripe_free_calibration.json")
+    assert resource.is_file()
+    assert Calibration.from_json(resource.read_text(encoding="utf-8")) == stored_calibration()
+
+
+def test_stored_calibration_is_the_protected_one():
+    """Any edit to the shipped file forces a lockfile edit (an approval): its thresholds,
+    ids, shape, settings and the digest of its whole payload are protected numbers."""
+    stored = stored_calibration()
+    assert stored.threshold(DEFAULT_FALSE_ALARM_RATE) == PACKAGE_STORED_THRESHOLD
+    assert stored.threshold(OTHER_FALSE_ALARM_RATE) == PACKAGE_STORED_THRESHOLD_5PCT
+    assert stored.ids == tuple(f"seed:{s}" for s in STRIPE_FREE_CALIBRATION_SEEDS)
+    assert stored.shape == CALIBRATION_SHAPE
+    assert stored.settings == json.loads(json.dumps(tc.settings(CALIBRATION_SHAPE)))
+    assert int(stored.digest(), 16) == PACKAGE_CALIBRATION_DIGEST
+
+
+def test_stored_threshold_ranks_are_untied_and_positive():
+    """At k(1%) = 3 and k(5%) = 15 the k-th largest stored score is strictly above the
+    (k+1)-th and above 0 (the 0.0 atom is far from both ranks)."""
+    stored = stored_calibration()
+    ranked = sorted(stored.scores, reverse=True)
+    n = len(ranked)
+    for rate, want_k in ((DEFAULT_FALSE_ALARM_RATE, 3), (OTHER_FALSE_ALARM_RATE, 15)):
+        k = threshold_rank(n, rate)
+        assert k == want_k
+        assert ranked[k - 1] > ranked[k], f"rank {k} is tied"
+        assert ranked[k - 1] > 0
+        assert stored.threshold(rate) == ranked[k - 1]
