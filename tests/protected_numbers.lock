@@ -42,6 +42,18 @@ denoisifier.analysis :: _LEAK_FRACTION :: 0.5
 denoisifier.analysis :: _REFINE_STEPS :: 2
 denoisifier.analysis :: _INTERIOR_FRACTION :: 0.5
 denoisifier.analysis :: _CLIPPED_WEIGHT_MAX :: 0.05
+denoisifier.analysis :: _BRIDGE_GAP_PERIODS :: 4.0
+denoisifier.analysis :: _BRIDGE_SMALL_SIDE_SHARE :: 0.8
+denoisifier.analysis :: _BRIDGE_LARGE_SIDE_SHARE :: 0.5
+denoisifier.analysis :: _BRIDGE_ROUNDS :: 3
+denoisifier.analysis :: _BREAK_FILL_SIGMAS :: 1.0
+denoisifier.analysis :: _BREAK_FILL_REACH_PERIODS :: 1.0
+denoisifier.analysis :: _BREAK_FILL_BIN_PERIODS :: 0.5
+denoisifier.analysis :: _REMEASURE_EXCLUDE_SIGMAS :: 2.0
+denoisifier.analysis :: _REMEASURE_STEPS :: 6
+denoisifier.analysis :: _REMEASURE_MIN_AREA_P2 :: 9.4
+denoisifier.analysis :: _ABSORB_SLIT_SHARE :: 0.6
+denoisifier.analysis :: _BREAK_SEGMENT_HALF_WIDTH_PIXELS :: 0.75
 denoisifier.calibration :: DEFAULT_FALSE_ALARM_RATE :: 0.01
 
 denoisifier.report :: BinFactors.horizontal :: 1
@@ -228,8 +240,10 @@ protected :: BREAK_SIDE_EXCLUDE_PERIODS :: 2.5
 protected :: BREAK_LIT_SIGMA_PX :: 10.0
 protected :: BREAK_LIT_LEVEL :: 0.1
 protected :: BREAK_PHASE_ATOL :: 1e-09
-protected :: BREAK_EXACT_POSITION_TOL_PERIODS :: 0.25
+protected :: BREAK_EXACT_POSITION_TOL_PERIODS :: 0.5
 protected :: BREAK_EXACT_JUMP_TOL_RAD :: 0.05
+protected :: BREAK_PHASOR_FIELD_RADIUS_PX :: 60.0
+protected :: BREAK_PHASOR_FIELD_ATOL :: 0.1
 protected :: BREAK_PAIR_SEPARATION_PERIODS :: 6
 protected :: BREAK_PAIR_MIN_PERIOD :: 5
 protected :: BREAK_SIGN_TEST_SEED :: 10
@@ -238,3 +252,26 @@ protected :: BREAK_REFUSAL_TEST_PERIOD :: 4.7
 protected :: BREAK_SMALL_REGION_PERIODS :: 5
 protected :: BREAK_PROTOTYPE_SEEDS :: range(109000, 109600)
 protected :: BREAK_VALIDATION_SEEDS :: range(109600, 110460)
+denoisifier._local_phase :: _BREAK_SIGMA_ACROSS_PERIODS :: 1.0
+denoisifier._local_phase :: _BREAK_SIGMA_ALONG_PERIODS :: 0.5
+denoisifier._local_phase :: _BREAK_MIN_MAGNITUDE_FRACTION :: 0.5
+denoisifier._local_phase :: _BREAK_MIN_INTERIOR_PX :: 50
+denoisifier._local_phase :: _BREAK_MIN_NEIGHBOUR_PAIRS :: 8
+denoisifier._local_phase :: _BREAK_SAMPLE_STRIDE_PERIODS :: 0.5
+denoisifier._local_phase :: _BREAK_BIN_PERIODS :: 0.25
+denoisifier._local_phase :: _BREAK_FIT_HALF_WINDOW_PERIODS :: 4.0
+denoisifier._local_phase :: _BREAK_MIN_SIDE_AREA_P2 :: 6.0
+denoisifier._local_phase :: _BREAK_COARSE_STEP_DEG :: 3.0
+denoisifier._local_phase :: _BREAK_FINE_SPAN_DEG :: 3.0
+denoisifier._local_phase :: _BREAK_FINE_STEP_DEG :: 0.5
+denoisifier._local_phase :: _BREAK_FINE_OFFSET_SPAN_PERIODS :: 2.0
+denoisifier._local_phase :: _BREAK_LINE_TOL_PERIODS :: 0.1
+denoisifier._local_phase :: _BREAK_REFINE_OFFSET_SPAN_PERIODS :: 1.0
+denoisifier._local_phase :: _BREAK_MIN_EVIDENCE :: 0.1
+denoisifier._local_phase :: _BREAK_MIN_JUMP_RAD :: 0.7853981633974483
+denoisifier._local_phase :: _BREAK_SEGMENTS :: 3
+denoisifier._local_phase :: _BREAK_MIN_PIECE_SAMPLES :: 3
+denoisifier._local_phase :: _BREAK_JUMP_SPREAD_RAD :: 0.7853981633974483
+denoisifier._local_phase :: _BREAK_EXPLAIN_SIGMAS :: 2.0
+denoisifier._local_phase :: _BREAK_MAX_PER_REGION :: 4
+denoisifier._local_phase :: _BREAK_MIN_FRAME_PERIOD_PX :: 2.5

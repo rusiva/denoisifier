@@ -50,13 +50,23 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
+from typing import Protocol
 
 import numpy as np
 from scipy import ndimage
 from scipy.ndimage import gaussian_filter
 
 from denoisifier._data_quality import find_clipped, reject_spikes
+from denoisifier._local_phase import (
+    _BREAK_MIN_FRAME_PERIOD_PX,
+    FoundBreak,
+    break_response,
+    find_phase_breaks,
+    frame_period,
+    sigma_n,
+)
 from denoisifier._local_stripes import (
     _A0,
     _ACROSS,
@@ -75,7 +85,7 @@ from denoisifier._local_stripes import (
     unresolved_periods,
 )
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
-from denoisifier.report import BinFactors, BoundingBox, Region, Report
+from denoisifier.report import BinFactors, BoundingBox, PhaseBreak, Region, Report
 
 _log = logging.getLogger(__name__)
 
@@ -281,15 +291,23 @@ def analyse(
     clipped = find_clipped(frame, clip_level) & ~spikes
     light = _light(work)
     local = estimate_local_stripes(work, light, bins)
-    survivors = _qualifying_regions(work, light, local, clipped, bins)
+    survivors, filters = _qualifying_regions(work, light, local, clipped, bins)
     score = max((g.peak_ratio for g in survivors), default=0.0)
     reported = [g for g in survivors if g.peak_ratio > threshold]
-    reported.sort(key=lambda g: (-g.area_px, -g.peak_ratio, g.first_pixel))
+    # Phase Breaks: after the score and the threshold, never read back by them.
+    settled = (
+        _with_phase_breaks(reported, filters, clipped)
+        if filters is not None and reported
+        else [(g, []) for g in reported]
+    )
+    settled.sort(key=lambda r: (-r[0].area_px, -r[0].peak_ratio, r[0].first_pixel))
 
     labels = np.zeros(frame.shape, dtype=np.int32)
     regions = []
-    for k, g in enumerate(reported, start=1):
+    phase_breaks: list[PhaseBreak] = []
+    for k, (g, found) in enumerate(settled, start=1):
         labels[g.pixels] = k
+        phase_breaks += _reported_breaks(k, g.pixels, found, bins)
         regions.append(
             Region(
                 label=k,
@@ -300,8 +318,14 @@ def analyse(
                 area_px=g.area_px,
             )
         )
+    phase_breaks.sort(key=lambda b: (b.region, -abs(b.jump_rad), b.line[0]))
     unresolved = unresolved_periods(bins)
     warnings = [] if unresolved is None else [_unresolved_warning(unresolved, bins)]
+    warnings += [
+        _refusal_warning(k, g, bins)
+        for k, (g, _) in enumerate(settled, start=1)
+        if frame_period(g.period, g.angle_deg, bins) < _BREAK_MIN_FRAME_PERIOD_PX
+    ]
     if used is not None:
         warnings += _coverage_note(used, frame.shape, bins)
     return Report(
@@ -312,6 +336,7 @@ def analyse(
         spike_pixels=int(spikes.sum()),
         clipped_pixels=int(clipped.sum()),
         labels=labels,
+        phase_breaks=tuple(phase_breaks),
         bin_factors=bins,
         unresolved_period_px=(
             None if unresolved is None else (unresolved.shortest, unresolved.limit)
@@ -337,6 +362,15 @@ def _unresolved_warning(unresolved: UnresolvedPeriods, bins: BinFactors) -> str:
     return (
         f"Periods below {limit:g} px cannot be resolved at {bins} binning: the stripes and "
         f"their 90-deg reference filters fall {under}; they were not searched"
+    )
+
+
+def _refusal_warning(label: int, region: _Survivor, bins: BinFactors) -> str:
+    """The Report warning for a region whose Phase Breaks were not searched."""
+    return (
+        f"region {label} (Period {region.period:.3g} px): phase breaks were not searched at "
+        f"{bins} binning: its stripes fall under {_BREAK_MIN_FRAME_PERIOD_PX:g} frame pixels "
+        f"along their normal ({frame_period(region.period, region.angle_deg, bins):.3g})"
     )
 
 
@@ -433,11 +467,13 @@ def _qualifying_regions(
     local: LocalStripes,
     clipped: np.ndarray,
     bins: BinFactors,
-) -> list[_Survivor]:
-    """Every size-qualifying group after overlaps are settled (threshold-free).
-    ``clipped`` (bool, frame shape) is left out of each region's depth only."""
+) -> tuple[list[_Survivor], _Filters | None]:
+    """Every size-qualifying group after overlaps are settled (threshold-free),
+    and the filters they were measured with (None when there was nothing to
+    measure). ``clipped`` (bool, frame shape) is left out of each region's
+    depth only."""
     if not light.any() or not local.ratio.max() > 0:
-        return []
+        return [], None
     filters = _Filters(_Spectrum(frame, bins), light)
     candidates = _grow_candidates(local, light, filters)
     groups = _merge(candidates, local, filters)
@@ -451,7 +487,9 @@ def _qualifying_regions(
         and _passes_size_rule(g, filters)
         and not _is_leakage(g, candidates, frame, filters)
     ]
-    return [_refined(s, filters) for s in _settle_overlaps(qualifying, clipped, filters.bins)]
+    return [
+        _refined(s, filters) for s in _settle_overlaps(qualifying, clipped, filters.bins)
+    ], filters
 
 
 class _Filters:
@@ -665,7 +703,12 @@ def _absorbed(c: _Candidate, members: list[_Candidate]) -> bool:
     return bool((c.grown & union).sum() > _ABSORB_FRACTION * c.grown.sum())
 
 
-def _compatible(a: _Candidate, b: _Candidate) -> bool:
+class _Tuned(Protocol):
+    period: float
+    angle_deg: float
+
+
+def _compatible(a: _Tuned, b: _Tuned) -> bool:
     ratio = max(a.period, b.period) / min(a.period, b.period)
     return ratio <= _MERGE_PERIOD_RATIO and abs(a.angle_deg - b.angle_deg) <= _MERGE_ANGLE_DEG
 
@@ -860,3 +903,381 @@ def _bbox(mask: np.ndarray) -> BoundingBox:
     rows = np.flatnonzero(mask.any(axis=1))
     cols = np.flatnonzero(mask.any(axis=0))
     return BoundingBox(int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1)
+
+
+# Phase Breaks (ticket 09): a report-level pass after the threshold, on the
+# reported regions only (see _with_phase_breaks). Values: prototype P1 v2 of
+# ticket 09 (explore seeds 109_000-109_599, validated once on 110_000-110_399).
+# Two reported regions that are _compatible and within this many Periods (the
+# larger of the two, sensor px) are searched for a break between them.
+_BRIDGE_GAP_PERIODS = 4.0
+# A break bridges them when it has at least _BRIDGE_SMALL_SIDE_SHARE of the
+# smaller region's pixels on one side and _BRIDGE_LARGE_SIDE_SHARE of the
+# larger's on the other.
+_BRIDGE_SMALL_SIDE_SHARE = 0.8
+_BRIDGE_LARGE_SIDE_SHARE = 0.5
+# At most this many second-round bridges (one merge per round).
+_BRIDGE_ROUNDS = 3
+# The slit along a found break: pixels within _BREAK_FILL_SIGMAS bank step
+# widths (sigma_n with _ACROSS, _ALONG) of the line, in the along-line bins of
+# _BREAK_FILL_BIN_PERIODS where the region has pixels on both sides within
+# _BREAK_FILL_REACH_PERIODS beyond that.
+_BREAK_FILL_SIGMAS = 1.0
+_BREAK_FILL_REACH_PERIODS = 1.0
+_BREAK_FILL_BIN_PERIODS = 0.5
+# Period and Angle are re-measured on the region's pixels farther than
+# _REMEASURE_EXCLUDE_SIGMAS bank step widths from every found break,
+# _REMEASURE_STEPS neighbour-product steps from the reported values, when at
+# least _REMEASURE_MIN_AREA_P2 Periods^2 (sensor px^2) remain: one bank Gabor
+# footprint, 2 pi _ACROSS _ALONG.
+_REMEASURE_EXCLUDE_SIGMAS = 2.0
+_REMEASURE_STEPS = 6
+_REMEASURE_MIN_AREA_P2 = 9.4
+# A region with no break of its own joins a larger region with a break when
+# at least this share of its pixels lies in that region's slit (and their
+# Periods are within _MERGE_PERIOD_RATIO).
+_ABSORB_SLIT_SHARE = 0.6
+# A break's reported run: the region's pixels within this many frame pixels
+# (the larger pixel side, in sensor px) of the line.
+_BREAK_SEGMENT_HALF_WIDTH_PIXELS = 0.75
+
+
+@dataclass
+class _Broken:
+    """A region in the Phase Break pass: its reported members, pixels, current
+    Period and Angle, found breaks and slit."""
+
+    members: list[_Survivor]
+    pixels: np.ndarray
+    period: float
+    angle_deg: float
+    breaks: list[FoundBreak] = field(default_factory=list)
+    slit: np.ndarray | None = None
+    merged: bool = False
+
+    @property
+    def top(self) -> _Survivor:
+        return max(self.members, key=lambda g: g.peak_ratio)
+
+    @property
+    def peak_ratio(self) -> float:
+        return self.top.peak_ratio
+
+    @property
+    def area_px(self) -> int:
+        return int(self.pixels.sum())
+
+
+class _BreakPass:
+    """The shared state of one frame's Phase Break pass."""
+
+    def __init__(self, filters: _Filters, clipped: np.ndarray, owned: np.ndarray):
+        self.filters = filters
+        self.spec = filters.spec
+        self.light = filters.light
+        self.bins = filters.bins
+        self.clipped = clipped
+        self.owned = owned
+        rows, cols = np.mgrid[0 : owned.shape[0], 0 : owned.shape[1]]
+        v, h = pixel_size(self.bins)
+        self.y = (rows * v).astype(float)
+        self.x = (cols * h).astype(float)
+        self._responses: dict[tuple[float, float], np.ndarray] = {}
+
+    def find(self, domain: np.ndarray, period: float, angle_deg: float) -> list[FoundBreak]:
+        key = (period, angle_deg)
+        if key not in self._responses:
+            self._responses[key] = break_response(self.spec, period, angle_deg)
+        return find_phase_breaks(self._responses[key], domain, period, angle_deg, self.bins)
+
+    def exclusion(self, breaks: list[FoundBreak], period: float, angle_deg: float) -> np.ndarray:
+        """Pixels within _REMEASURE_EXCLUDE_SIGMAS bank step widths of any break."""
+        out = np.zeros(self.owned.shape, dtype=bool)
+        for b in breaks:
+            width = _bank_sigma_n(period, angle_deg, b.line_angle_deg)
+            out |= np.abs(b.side(self.y, self.x)) <= _REMEASURE_EXCLUDE_SIGMAS * width
+
+        return out
+
+    def bridge(
+        self, a: _Tuned, b: _Tuned, pa: np.ndarray, pb: np.ndarray, top_a: bool
+    ) -> tuple[np.ndarray, FoundBreak] | None:
+        """(gap pixels, bridging break) for two compatible regions with pixels
+        ``pa`` and ``pb`` across a found break between them, or None. The
+        finder runs at the Period and Angle of ``a`` when ``top_a``, else
+        ``b``'s."""
+        if not _compatible(a, b):
+            return None
+        gap = _BRIDGE_GAP_PERIODS * max(a.period, b.period)
+        box = _bbox(pa)
+        pad = int(np.ceil(max(frame_px(self.bins, gap, gap)))) + 1
+        r0, r1 = max(box.row_start - pad, 0), min(box.row_stop + pad, pa.shape[0])
+        c0, c1 = max(box.col_start - pad, 0), min(box.col_stop + pad, pa.shape[1])
+        window_b = pb[r0:r1, c0:c1]
+        if not window_b.any():
+            return None
+        if _edt(~pa[r0:r1, c0:c1], self.bins)[window_b].min() > gap:
+            return None
+        between = (_edt(~pa, self.bins) <= gap) & (_edt(~pb, self.bins) <= gap) & self.light
+        top = a if top_a else b
+        na, nb = int(pa.sum()), int(pb.sum())
+        if na <= nb:
+            need_a, need_b = _BRIDGE_SMALL_SIDE_SHARE, _BRIDGE_LARGE_SIDE_SHARE
+        else:
+            need_a, need_b = _BRIDGE_LARGE_SIDE_SHARE, _BRIDGE_SMALL_SIDE_SHARE
+        for brk in self.find(pa | pb | between, top.period, top.angle_deg):
+            share_a = float((brk.side(self.y[pa], self.x[pa]) > 0).mean())
+            share_b = float((brk.side(self.y[pb], self.x[pb]) > 0).mean())
+            if (share_a >= need_a and 1 - share_b >= need_b) or (
+                1 - share_a >= need_a and share_b >= need_b
+            ):
+                return between, brk
+        return None
+
+    def process(
+        self,
+        members: list[_Survivor],
+        extra: np.ndarray,
+        bridge_breaks: list[FoundBreak],
+        start: tuple[float, float] | None = None,
+    ) -> _Broken:
+        """Find, re-measure and fill one region made of ``members`` (searched
+        on their pixels plus ``extra``)."""
+        top = max(members, key=lambda g: g.peak_ratio)
+        p0, a0 = start if start is not None else (top.period, top.angle_deg)
+        pixels = np.logical_or.reduce([g.pixels for g in members])
+        region = _Broken(members, pixels, p0, a0, merged=len(members) > 1)
+        found = self.find(pixels | extra, p0, a0) or list(bridge_breaks)
+        if not found:
+            return region
+        region.breaks = found
+        region.period, region.angle_deg = self.remeasure(pixels, found, p0, a0)
+        region.slit = np.zeros(pixels.shape, dtype=bool)
+        for b in found:
+            pixels = self.fill(region, pixels, b)
+        region.pixels = pixels
+        return region
+
+    def remeasure(
+        self, pixels: np.ndarray, breaks: list[FoundBreak], p0: float, a0: float
+    ) -> tuple[float, float]:
+        """Period and Angle away from the breaks, kept only when the stripes'
+        mean filter response there is at least the starting one's."""
+        area = pixels & ~self.exclusion(breaks, p0, a0)
+        h, v = self.bins.horizontal, self.bins.vertical
+        if not area.any() or area.sum() * h * v < _REMEASURE_MIN_AREA_P2 * p0 * p0:
+            return p0, a0
+        period, angle_deg = p0, a0
+        for _ in range(_REMEASURE_STEPS):
+            period, angle_deg = _phase_steps(
+                self.spec.gabor(period, angle_deg), area, period, angle_deg, self.bins
+            )
+        before = float(np.abs(self.spec.gabor(p0, a0)[area]).mean())
+        after = float(np.abs(self.spec.gabor(period, angle_deg)[area]).mean())
+        return (period, angle_deg) if after >= before else (p0, a0)
+
+    def fill(self, region: _Broken, pixels: np.ndarray, b: FoundBreak) -> np.ndarray:
+        """``pixels`` plus the slit along ``b`` (see _BREAK_FILL_SIGMAS); the
+        slit is added to ``region.slit`` and the new pixels to ``owned``."""
+        assert region.slit is not None
+        half = _BREAK_FILL_SIGMAS * _bank_sigma_n(region.period, region.angle_deg, b.line_angle_deg)
+        reach = half + _BREAK_FILL_REACH_PERIODS * region.period
+        side = b.side(self.y, self.x)
+        near = pixels & (np.abs(side) <= reach)
+        if not near.any():
+            return pixels
+        q = np.floor(b.along(self.y, self.x) / (_BREAK_FILL_BIN_PERIODS * region.period))
+        q = q.astype(np.int64)
+        q0 = int(q[near].min())
+        nq = int(q[near].max()) - q0 + 1
+        both = (np.bincount(q[near & (side > 0)] - q0, minlength=nq) > 0) & (
+            np.bincount(q[near & (side < 0)] - q0, minlength=nq) > 0
+        )
+        q -= q0
+        inside = (q >= 0) & (q < nq)
+        ok = np.zeros(pixels.shape, dtype=bool)
+        ok[inside] = both[q[inside]]
+        region.slit |= ok & (np.abs(side) <= reach)
+        add = ok & (np.abs(side) <= half) & self.light & ~(self.owned & ~pixels)
+        self.owned |= add
+        return np.asarray(pixels | add)
+
+    def depth(self, region: _Broken) -> float:
+        """A merged region's Modulation Depth, away from its breaks."""
+        p, a = region.period, region.angle_deg
+        inner = region.pixels & ~self.exclusion(region.breaks, p, a)
+        if not inner.any():
+            inner = region.pixels
+        tuned = _depth(self.spec.gabor(p, a), self.spec.local_mean(p), self.light)
+        return _interior_depth(tuned, inner, self.clipped, p, self.bins)
+
+
+def _bank_sigma_n(period: float, angle_deg: float, line_angle_deg: float) -> float:
+    """The bank filter's step width (sensor px) across a line."""
+    return sigma_n(period, angle_deg, line_angle_deg, _ACROSS, _ALONG)
+
+
+def _with_phase_breaks(
+    reported: list[_Survivor], filters: _Filters, clipped: np.ndarray
+) -> list[tuple[_Survivor, list[FoundBreak]]]:
+    """The reported regions after the Phase Break pass, each with its found
+    breaks. Runs after the score and the threshold, which never read it.
+
+    1. Bridge: two _compatible regions within _BRIDGE_GAP_PERIODS are merged
+       when a break found on both plus the gap between them has the regions
+       on opposite sides (_BRIDGE_*_SIDE_SHARE).
+    2. Find: breaks in each resulting region (a merged region with none found
+       keeps its bridging breaks).
+    3. Re-measure Period and Angle away from the breaks (``remeasure``).
+    4. Fill the slit along each break; pixels of another region are never
+       taken, and a fill sees the fills before it.
+    5. A region with no break of its own lying in another's slit joins it;
+       then bridging again on the re-measured values, one merge per round.
+
+    With no found break, the inputs are returned unchanged (the same objects,
+    in order). A region that only gained breaks keeps its depth; a merged one
+    is re-measured away from its breaks."""
+    owned = np.logical_or.reduce([g.pixels for g in reported])
+    run = _BreakPass(filters, clipped, owned)
+
+    parent = list(range(len(reported)))
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            i = parent[i]
+        return i
+
+    bridged: dict[tuple[int, int], tuple[np.ndarray, FoundBreak]] = {}
+    for i, a in enumerate(reported):
+        for j in range(i + 1, len(reported)):
+            b = reported[j]
+            found = run.bridge(a, b, a.pixels, b.pixels, a.peak_ratio >= b.peak_ratio)
+            if found is not None:
+                bridged[(i, j)] = found
+                ri, rj = root(i), root(j)
+                if ri != rj:
+                    parent[rj] = ri
+    groups: dict[int, list[int]] = {}
+    for i in range(len(reported)):
+        groups.setdefault(root(i), []).append(i)
+
+    regions = []
+    for members in groups.values():
+        extra = np.zeros(owned.shape, dtype=bool)
+        bridge_breaks = []
+        for (i, j), (between, brk) in bridged.items():
+            if i in members and j in members:
+                extra |= between
+                bridge_breaks.append(brk)
+        regions.append(run.process([reported[k] for k in members], extra, bridge_breaks))
+
+    regions = _absorbed_in_slits(regions)
+    regions = _bridged_again(run, regions)
+
+    if not any(r.breaks or r.merged for r in regions):
+        return [(g, []) for g in reported]
+    return [(_settled(run, r), r.breaks) for r in regions]
+
+
+def _absorbed_in_slits(regions: list[_Broken]) -> list[_Broken]:
+    """Each region with a break, largest first, takes in every smaller region
+    with no break of its own that lies in its slit (_ABSORB_SLIT_SHARE) at a
+    Period within _MERGE_PERIOD_RATIO."""
+    gone: set[int] = set()
+    for r in sorted(regions, key=lambda r: -r.area_px):
+        if id(r) in gone or not r.breaks or r.slit is None:
+            continue
+        for q in regions:
+            if q is r or id(q) in gone or q.breaks or q.area_px >= r.area_px:
+                continue
+            if max(q.period, r.period) / min(q.period, r.period) > _MERGE_PERIOD_RATIO:
+                continue
+            if (q.pixels & r.slit).sum() >= _ABSORB_SLIT_SHARE * q.area_px:
+                r.pixels = r.pixels | q.pixels
+                r.members = r.members + q.members
+                r.merged = True
+                gone.add(id(q))
+    return [r for r in regions if id(r) not in gone]
+
+
+def _bridged_again(run: _BreakPass, regions: list[_Broken]) -> list[_Broken]:
+    """Bridging on the re-measured Periods and Angles, one merge per round,
+    at most _BRIDGE_ROUNDS rounds; a merged pair is found, re-measured and
+    filled again from the higher-peak region's values."""
+    for _ in range(_BRIDGE_ROUNDS):
+        merged = _bridge_one(run, regions)
+        if merged is None:
+            break
+        regions = merged
+    return regions
+
+
+def _bridge_one(run: _BreakPass, regions: list[_Broken]) -> list[_Broken] | None:
+    for i, a in enumerate(regions):
+        for j in range(i + 1, len(regions)):
+            b = regions[j]
+            top_a = a.peak_ratio >= b.peak_ratio
+            found = run.bridge(a, b, a.pixels, b.pixels, top_a)
+            if found is None:
+                continue
+            between, brk = found
+            hi = a if top_a else b
+            extra = between.copy()
+            for r in (a, b):
+                if r.slit is not None:
+                    extra |= r.slit
+            new = run.process(a.members + b.members, extra, [brk], start=(hi.period, hi.angle_deg))
+            new.pixels = new.pixels | a.pixels | b.pixels
+            new.merged = True
+            return [r for k, r in enumerate(regions) if k not in (i, j)] + [new]
+    return None
+
+
+def _settled(run: _BreakPass, region: _Broken) -> _Survivor:
+    """The region as a _Survivor; unchanged when it has no break and no merge."""
+    if not region.breaks and not region.merged:
+        (only,) = region.members
+        return only
+    top = region.top
+    depth = run.depth(region) if region.merged else top.depth
+    flat = np.flatnonzero(region.pixels)
+    return _Survivor(
+        peak_ratio=top.peak_ratio,
+        period=region.period,
+        angle_deg=region.angle_deg,
+        depth=depth,
+        pixels=region.pixels,
+        bbox=_bbox(region.pixels),
+        area_px=int(flat.size),
+        first_pixel=int(flat[0]),
+    )
+
+
+def _reported_breaks(
+    label: int, pixels: np.ndarray, found: list[FoundBreak], bins: BinFactors
+) -> list[PhaseBreak]:
+    """Each break's run across its region: the region's pixels within
+    _BREAK_SEGMENT_HALF_WIDTH_PIXELS frame pixels of the line, its extreme
+    points projected on the line, in frame px, col increasing (row increasing
+    on a vertical line). A break with no such pixel is not reported."""
+    if not found:
+        return []
+    rows, cols = np.nonzero(pixels)
+    v, h = pixel_size(bins)
+    y, x = (rows * v).astype(float), (cols * h).astype(float)
+    half = _BREAK_SEGMENT_HALF_WIDTH_PIXELS * max(v, h)
+    out = []
+    for b in found:
+        on = np.abs(b.side(y, x)) <= half
+        if not on.any():
+            continue
+        u = b.along(y[on], x[on])
+        t = math.radians(b.line_angle_deg)
+        line = []
+        for along in (float(u.min()), float(u.max())):
+            row, col = frame_px(
+                bins, b.point[0] + along * math.sin(t), b.point[1] + along * math.cos(t)
+            )
+            line.append((float(row), float(col)))
+        out.append(PhaseBreak(region=label, line=tuple(line), jump_rad=b.jump_rad))
+    return out

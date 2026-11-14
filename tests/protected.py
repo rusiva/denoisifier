@@ -292,9 +292,16 @@ BREAK_SIDE_EXCLUDE_PERIODS = 2.5
 BREAK_LIT_SIGMA_PX = 10.0
 BREAK_LIT_LEVEL = 0.1
 BREAK_PHASE_ATOL = 1e-9  # the generator's break phase, noise-free
-# _local_phase unit tests on noise-free phasor fields.
-BREAK_EXACT_POSITION_TOL_PERIODS = 0.25
+# _local_phase unit tests on noise-free phasor fields. The position tolerance is the finder's
+# sample stride (_BREAK_SAMPLE_STRIDE_PERIODS); measured max 0.364 P over 480 noise-free runs
+# (09-critic-4; raised from 0.25 with the orchestrator's approval, ticket 09 Comments).
+BREAK_EXACT_POSITION_TOL_PERIODS = 0.5
 BREAK_EXACT_JUMP_TOL_RAD = 0.05
+# The blurred-step phasor field of those tests against break_response of a hard-step frame, over
+# twice the depth, inside this radius (px) of the centre: measured max 0.043 at 60 px (P 8,
+# lines 0, 30, 90; 09-critic-4: 0.06); the frame edge raises it to 0.19 at 90 px.
+BREAK_PHASOR_FIELD_RADIUS_PX = 60.0
+BREAK_PHASOR_FIELD_ATOL = 0.1
 # Two parallel breaks this many Periods apart (P1 v2 validation 20/20 at 6 P), at case
 # Periods of at least BREAK_PAIR_MIN_PERIOD.
 BREAK_PAIR_SEPARATION_PERIODS = 6

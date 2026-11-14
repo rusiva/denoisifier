@@ -50,6 +50,7 @@ STAMPED_FILES: tuple[str, ...] = tuple(
             "src/denoisifier/analysis.py",
             "src/denoisifier/_local_stripes.py",
             "src/denoisifier/_data_quality.py",
+            "src/denoisifier/_local_phase.py",
             # generator
             "src/denoisifier/synthetic.py",
             # calibration
