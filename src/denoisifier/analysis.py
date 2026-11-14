@@ -66,9 +66,10 @@ from denoisifier._local_stripes import (
     LocalStripes,
     _Spectrum,
     estimate_local_stripes,
+    searched_periods,
 )
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
-from denoisifier.report import BoundingBox, Region, Report
+from denoisifier.report import BinFactors, BoundingBox, Region, Report
 
 _log = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ def analyse(
     calibration: Calibration | None = None,
     threshold: float | None = None,
     clip_level: float | None = None,
+    bin_factors: BinFactors | None = None,
 ) -> Report:
     """Find the Striped Regions of ``frame`` and measure each one's Period, Angle and depth.
 
@@ -233,6 +235,14 @@ def analyse(
         )
     if not np.all(np.isfinite(frame)):
         raise ValueError("frame contains non-finite values (NaN or infinity)")
+    bins = BinFactors() if bin_factors is None else bin_factors
+    if not isinstance(bins, BinFactors):
+        raise TypeError(f"bin_factors must be a BinFactors, got {bin_factors!r}")
+    if not len(searched_periods(bins)):
+        raise ValueError(
+            f"at {bins} binning no Period from {_PERIODS[0]:g} to {_PERIODS[-1]:g} px "
+            "can be searched: every one falls under 2 frame pixels"
+        )
     threshold = _resolve_threshold(false_alarm_rate, calibration, threshold)
     if not threshold >= 0:
         raise ValueError(f"threshold must be >= 0 (or inf), got {threshold!r}")
@@ -244,8 +254,8 @@ def analyse(
     work, spikes = reject_spikes(frame)
     clipped = find_clipped(frame, clip_level) & ~spikes
     light = _light(work)
-    local = estimate_local_stripes(work, light)
-    survivors = _qualifying_regions(work, light, local, clipped)
+    local = estimate_local_stripes(work, light, bins)
+    survivors = _qualifying_regions(work, light, local, clipped, bins)
     score = max((g.peak_ratio for g in survivors), default=0.0)
     reported = [g for g in survivors if g.peak_ratio > threshold]
     reported.sort(key=lambda g: (-g.area_px, -g.peak_ratio, g.first_pixel))
@@ -342,13 +352,17 @@ class _Survivor:
 
 
 def _qualifying_regions(
-    frame: np.ndarray, light: np.ndarray, local: LocalStripes, clipped: np.ndarray
+    frame: np.ndarray,
+    light: np.ndarray,
+    local: LocalStripes,
+    clipped: np.ndarray,
+    bins: BinFactors,
 ) -> list[_Survivor]:
     """Every size-qualifying group after overlaps are settled (threshold-free).
     ``clipped`` (bool, frame shape) is left out of each region's depth only."""
     if not light.any() or not local.ratio.max() > 0:
         return []
-    filters = _Filters(_Spectrum(frame), light)
+    filters = _Filters(_Spectrum(frame, bins), light)
     candidates = _grow_candidates(local, light, filters)
     groups = _merge(candidates, local, filters)
     # A group shallower than the ratio floor's depth _A0 is not stripes (it
@@ -361,7 +375,7 @@ def _qualifying_regions(
         and _passes_size_rule(g, filters)
         and not _is_leakage(g, candidates, frame, filters)
     ]
-    return [_refined(s, filters) for s in _settle_overlaps(qualifying, clipped)]
+    return [_refined(s, filters) for s in _settle_overlaps(qualifying, clipped, bins)]
 
 
 class _Filters:
@@ -437,7 +451,11 @@ def _grow_candidates(local: LocalStripes, light: np.ndarray, filters: _Filters) 
         seed = _split_by_period(seed, bank_step, peak)
         core = seed & _component((ratio >= _CORE_FRACTION * peak_ratio) & free, peak)
         period, angle_deg = _phase_steps(
-            local.response, seed, float(local.period[peak]), float(local.angle_deg[peak])
+            local.response,
+            seed,
+            float(local.period[peak]),
+            float(local.angle_deg[peak]),
+            filters.spec.bins,
         )
         depth = filters.depth(period, angle_deg)
         grown = _grow(depth, seed, seed, light)
@@ -487,10 +505,11 @@ def _split_by_period(seed: np.ndarray, bank_step: np.ndarray, peak: tuple[int, i
 
 
 def _phase_steps(
-    response: np.ndarray, area: np.ndarray, period: float, angle_deg: float
+    response: np.ndarray, area: np.ndarray, period: float, angle_deg: float, bins: BinFactors
 ) -> tuple[float, float]:
     """Fine Period and Angle over ``area`` from the summed neighbour products
-    of the complex ``response``.
+    of the complex ``response``, in sensor px under ``bins`` (each axis's
+    frame phase step over its bin factor).
 
     Local frequency from the phase step between neighbours (not np.gradient
     of the phase: central differences are biased at short Periods).
@@ -502,7 +521,8 @@ def _phase_steps(
         return period, angle_deg
     cx = (response[:, 1:] * np.conj(response[:, :-1]))[h_pairs].sum()
     cy = (response[1:, :] * np.conj(response[:-1, :]))[v_pairs].sum()
-    fx, fy = np.angle(cx) / (2 * np.pi), np.angle(cy) / (2 * np.pi)
+    fx = np.angle(cx) / (2 * np.pi) / bins.horizontal
+    fy = np.angle(cy) / (2 * np.pi) / bins.vertical
     f = np.hypot(fx, fy)
     if not f > 0:
         return period, angle_deg
@@ -514,7 +534,9 @@ def _merge(candidates: list[_Candidate], local: LocalStripes, filters: _Filters)
     member_lists: list[list[_Candidate]] = []
     for c in candidates:
         for members in member_lists:
-            if all(_compatible(c, m) for m in members) and any(_near(c, m) for m in members):
+            if all(_compatible(c, m) for m in members) and any(
+                _near(c, m, filters.spec.bins) for m in members
+            ):
                 members.append(c)
                 break
         else:
@@ -533,7 +555,9 @@ def _merge(candidates: list[_Candidate], local: LocalStripes, filters: _Filters)
             # member's seed area: a lower member's seed can lie in the skirt
             # of the stripes, where the depth is lower.
             seed = np.logical_or.reduce([m.seed for m in members])
-            period, angle_deg = _phase_steps(local.response, seed, top.period, top.angle_deg)
+            period, angle_deg = _phase_steps(
+                local.response, seed, top.period, top.angle_deg, filters.spec.bins
+            )
             tuned_depth = filters.depth(period, angle_deg)
             grown = _grow(tuned_depth, top.seed, seed, filters.light)
         groups.append(
@@ -563,31 +587,44 @@ def _compatible(a: _Candidate, b: _Candidate) -> bool:
     return ratio <= _MERGE_PERIOD_RATIO and abs(a.angle_deg - b.angle_deg) <= _MERGE_ANGLE_DEG
 
 
-def _near(a: _Candidate | _Group, b: _Candidate | _Group) -> bool:
-    """``a``'s grown extent touches or lies within _MERGE_GAP_PERIODS Periods of ``b``'s."""
+def _near(a: _Candidate | _Group, b: _Candidate | _Group, bins: BinFactors) -> bool:
+    """``a``'s grown extent touches or lies within _MERGE_GAP_PERIODS Periods
+    of ``b``'s (sensor px under ``bins``)."""
     if (a.grown & b.grown).any():
         return True
     gap = _MERGE_GAP_PERIODS * max(a.period, b.period)
     box = _bbox(a.grown)
-    pad = int(np.ceil(gap)) + 1
+    pad = int(np.ceil(gap / min(bins.horizontal, bins.vertical))) + 1
     r0, r1 = max(box.row_start - pad, 0), min(box.row_stop + pad, a.grown.shape[0])
     c0, c1 = max(box.col_start - pad, 0), min(box.col_stop + pad, a.grown.shape[1])
     window_b = b.grown[r0:r1, c0:c1]
     if not window_b.any():
         return False
-    distance = ndimage.distance_transform_edt(~a.grown[r0:r1, c0:c1])
+    distance = _edt(~a.grown[r0:r1, c0:c1], bins)
     return bool(distance[window_b].min() <= gap)
+
+
+def _edt(mask: np.ndarray, bins: BinFactors) -> np.ndarray:
+    """Euclidean distance transform of ``mask`` in sensor px; ``sampling`` is
+    passed only when binned, so the 1x1 call is the unbinned one."""
+    if bins == BinFactors():
+        return np.asarray(ndimage.distance_transform_edt(mask))
+    return np.asarray(
+        ndimage.distance_transform_edt(mask, sampling=(bins.vertical, bins.horizontal))
+    )
 
 
 def _passes_size_rule(group: _Group, filters: _Filters) -> bool:
     """At least 3x2 Periods: half-peak width on the re-tuned depth, half-peak
     height on the short size-only filter (see MIN_HALF_DEPTH_*_PERIODS)."""
     p = group.period
+    bins = filters.spec.bins
+    # Spans are measured in frame px; the rule is in sensor px.
     width = _half_peak_span(group.tuned_depth, group.top_core, axis=1)
-    if width < MIN_HALF_DEPTH_WIDTH_PERIODS * p:
+    if width * bins.horizontal < MIN_HALF_DEPTH_WIDTH_PERIODS * p:
         return False
     height = _half_peak_span(filters.size_depth(p, group.angle_deg), group.top_core, axis=0)
-    return bool(height >= MIN_HALF_DEPTH_HEIGHT_PERIODS * p)
+    return bool(height * bins.vertical >= MIN_HALF_DEPTH_HEIGHT_PERIODS * p)
 
 
 def _half_peak_span(depth: np.ndarray, core: np.ndarray, axis: int) -> float:
@@ -650,10 +687,10 @@ def _is_leakage(
         if s.peak_ratio <= group.peak_ratio or any(s is m for m in group.members):
             continue
         # Leaked depth is below its source's; and leakage reaches about a window.
-        if own >= s.depth or not _near(s, group):
+        if own >= s.depth or not _near(s, group, filters.spec.bins):
             continue
         without = np.where(s.grown, filters.mean(s.period), frame)
-        rest = _Filters(_Spectrum(without), filters.light)
+        rest = _Filters(_Spectrum(without, filters.spec.bins), filters.light)
         if _median_depth(rest.depth(group.period, group.angle_deg), group.top_seed) < (
             _LEAK_FRACTION * own
         ):
@@ -668,12 +705,18 @@ def _refined(region: _Survivor, filters: _Filters) -> _Survivor:
     period, angle_deg = region.period, region.angle_deg
     for _ in range(_REFINE_STEPS):
         period, angle_deg = _phase_steps(
-            filters.spec.gabor(period, angle_deg), region.pixels, period, angle_deg
+            filters.spec.gabor(period, angle_deg),
+            region.pixels,
+            period,
+            angle_deg,
+            filters.spec.bins,
         )
     return dataclasses.replace(region, period=period, angle_deg=angle_deg)
 
 
-def _settle_overlaps(groups: list[_Group], clipped: np.ndarray) -> list[_Survivor]:
+def _settle_overlaps(
+    groups: list[_Group], clipped: np.ndarray, bins: BinFactors
+) -> list[_Survivor]:
     """Give each pixel claimed by several groups to the one with the highest
     depth there; drop groups left empty; measure the rest."""
     if not groups:
@@ -693,7 +736,7 @@ def _settle_overlaps(groups: list[_Group], clipped: np.ndarray) -> list[_Survivo
                 peak_ratio=g.peak_ratio,
                 period=g.period,
                 angle_deg=g.angle_deg,
-                depth=_interior_depth(g.tuned_depth, pixels, clipped, g.period),
+                depth=_interior_depth(g.tuned_depth, pixels, clipped, g.period, bins),
                 pixels=pixels,
                 bbox=_bbox(pixels),
                 area_px=int(flat.size),
@@ -704,7 +747,7 @@ def _settle_overlaps(groups: list[_Group], clipped: np.ndarray) -> list[_Survivo
 
 
 def _interior_depth(
-    depth: np.ndarray, pixels: np.ndarray, clipped: np.ndarray, period: float
+    depth: np.ndarray, pixels: np.ndarray, clipped: np.ndarray, period: float, bins: BinFactors
 ) -> float:
     """Median depth over the interior of a region: its pixels at least
     _INTERIOR_FRACTION of the deepest pixel's distance from the region's edge.
@@ -719,10 +762,11 @@ def _interior_depth(
     recover the depth when a large share of a region is clipped (above about a
     fifth): the reported depth then drifts toward the flattened value, with
     no per-region flag; ``Report.clipped_pixels`` is the frame-level warning."""
-    distance = ndimage.distance_transform_edt(pixels)
+    distance = _edt(pixels, bins)
     interior = distance >= _INTERIOR_FRACTION * distance.max()
     if clipped.any():
-        weight = gaussian_filter(clipped.astype(float), sigma=(_ALONG * period, _ACROSS * period))
+        sigma = (_ALONG * period / bins.vertical, _ACROSS * period / bins.horizontal)
+        weight = gaussian_filter(clipped.astype(float), sigma=sigma)
         unclipped = interior & (weight < _CLIPPED_WEIGHT_MAX)
         if unclipped.any():
             return _median_depth(depth, unclipped)

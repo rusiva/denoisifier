@@ -7,16 +7,27 @@ phase; its window along the stripes makes it select by Angle. Mottle and
 Noise are isotropic, so the same bank rotated 90 deg (the reference) measures
 their energy at the same scale and place, and the ratio of the two is
 self-normalising across light level, EM gain and mottle strength.
+
+Binned frames (``BinFactors``, ticket 08): every Period and Angle here is in
+sensor pixels. The frequency grid of ``_Spectrum`` is in cycles per sensor
+pixel (each axis's frame frequency divided by its bin factor), so a filter
+specified by a sensor Period and Angle is exactly the frame filter at the
+converted frame Period and Angle (under 1x2 a 10 deg filter sits at 19.4 deg
+in the frame). A bank Period is searched only when every bank filter at it,
+stripe filters and their 90 deg references alike, keeps a frame Period of at
+least ``MIN_ARRAY_PERIOD_PX`` (``searched_periods``); the rest of the bank's
+range is ``unresolved_period_range``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.ndimage import uniform_filter
+
+from denoisifier.report import BinFactors
 
 # Bank: 18 Periods geometric from 3 to 20 px (x1.12 apart), stripe filters at
 # Angles -10..10 deg every 5 deg, reference filters at the same + 90 deg.
@@ -39,6 +50,50 @@ _PAD = 32
 # with A0 = 1e-3 they reached ~420. What this means for shallow stripes
 # depends on the Threshold and is noted in analysis.py.
 _A0 = 3e-3
+
+# The shortest frame Period (px) a bank filter may have; below it the filter
+# is past the frame's Nyquist limit (2 px). Prototype P1 of ticket 08: under
+# 2x1, sensor Period 4.2 px (2.1 frame px) still resolved 8 of 8 frames
+# within 0.1% in Period and 0.02 deg in Angle.
+MIN_ARRAY_PERIOD_PX = 2.0
+
+
+def _frame_frequency_scales(bins: BinFactors) -> tuple[np.ndarray, np.ndarray]:
+    """``(stripe, reference)``: for each bank Angle, the frame frequency of a
+    bank filter over its sensor frequency, ``hypot(h cos t, v sin t)`` at the
+    filter's wavevector angle ``t`` (the Angle for stripe filters, + 90 deg
+    for their references)."""
+    h, v = bins.horizontal, bins.vertical
+    t = np.deg2rad(np.asarray(_STRIPE_ANGLES_DEG))
+    stripe = np.hypot(h * np.cos(t), v * np.sin(t))
+    reference = np.hypot(h * np.cos(t + np.pi / 2), v * np.sin(t + np.pi / 2))
+    return stripe, reference
+
+
+def searched_periods(bins: BinFactors) -> np.ndarray:
+    """The bank Periods (sensor px, in ``_PERIODS`` order) at which every
+    bank filter, stripe and reference, keeps a frame Period of at least
+    ``MIN_ARRAY_PERIOD_PX``; ``_PERIODS`` itself at 1x1."""
+    stripe, reference = _frame_frequency_scales(bins)
+    scale = max(stripe.max(), reference.max())
+    keep = _PERIODS / scale >= MIN_ARRAY_PERIOD_PX
+    return _PERIODS if keep.all() else _PERIODS[keep]
+
+
+def unresolved_period_range(bins: BinFactors) -> tuple[float, float, str] | None:
+    """``(3.0, limit, by)``: the part of the bank's Period range (sensor px)
+    that is not searched under ``bins``, or ``None`` when all of it is.
+    ``limit`` is ``MIN_ARRAY_PERIOD_PX`` times the largest frame-over-sensor
+    frequency of any bank filter; ``by`` names the filters that set it:
+    ``"stripe"``, ``"reference"`` or ``"both"``."""
+    stripe, reference = _frame_frequency_scales(bins)
+    s, r = float(stripe.max()), float(reference.max())
+    limit = MIN_ARRAY_PERIOD_PX * max(s, r)
+    shortest = float(_PERIODS[0])
+    if limit <= shortest:
+        return None
+    by = "both" if np.isclose(s, r) else ("stripe" if s > r else "reference")
+    return shortest, limit, by
 
 
 @dataclass(frozen=True)
@@ -66,14 +121,15 @@ class LocalStripes:
 
 
 class _Spectrum:
-    """The padded frame's FFT and its frequency grid (x = columns, y = rows)."""
+    """The padded frame's FFT and its frequency grid (x = columns, y = rows),
+    in cycles per sensor pixel: each axis's frame frequency over its bin factor."""
 
-    def __init__(self, frame: np.ndarray):
+    def __init__(self, frame: np.ndarray, bins: BinFactors):
+        self.bins = bins
         padded = np.pad(frame, _PAD, mode="reflect")
         self.f = np.fft.fft2(padded)
-        # fftfreq is float64 at runtime; numpy's stub says floating[Any].
-        self.fy = cast(NDArray[np.float64], np.fft.fftfreq(padded.shape[0])[:, None])
-        self.fx = cast(NDArray[np.float64], np.fft.fftfreq(padded.shape[1])[None, :])
+        self.fy = np.fft.fftfreq(padded.shape[0])[:, None] / bins.vertical
+        self.fx = np.fft.fftfreq(padded.shape[1])[None, :] / bins.horizontal
 
     def filtered(self, kernel: np.ndarray) -> np.ndarray:
         return np.fft.ifft2(self.f * kernel)[_PAD:-_PAD, _PAD:-_PAD]
@@ -98,15 +154,20 @@ def _window(
     return np.exp(-0.5 * ((across / sigma_across) ** 2 + (along / sigma_along) ** 2))
 
 
-def gabor_at(frame: np.ndarray, period: float, angle_deg: float) -> tuple[np.ndarray, np.ndarray]:
+def gabor_at(
+    frame: np.ndarray, period: float, angle_deg: float, bins: BinFactors
+) -> tuple[np.ndarray, np.ndarray]:
     """``(response, local_mean)`` of one bank-style filter at any Period and Angle."""
-    spec = _Spectrum(frame)
+    spec = _Spectrum(frame, bins)
     return spec.gabor(period, angle_deg), spec.local_mean(period)
 
 
-def estimate_local_stripes(frame: np.ndarray, light: np.ndarray) -> LocalStripes:
-    """Run the bank over ``frame``; ``light`` (bool, frame shape) masks the dark surround."""
-    spec = _Spectrum(frame)
+def estimate_local_stripes(frame: np.ndarray, light: np.ndarray, bins: BinFactors) -> LocalStripes:
+    """Run the bank over ``frame``; ``light`` (bool, frame shape) masks the dark
+    surround. Periods and Angles are in sensor px under ``bins``; only
+    ``searched_periods(bins)`` are run."""
+    spec = _Spectrum(frame, bins)
+    h, v = bins.horizontal, bins.vertical
     shape = frame.shape
     best_ratio = np.zeros(shape)
     best_period = np.zeros(shape)
@@ -114,7 +175,7 @@ def estimate_local_stripes(frame: np.ndarray, light: np.ndarray) -> LocalStripes
     best_response = np.zeros(shape, dtype=complex)
     best_mean = np.zeros(shape)
 
-    for p in _PERIODS:
+    for p in searched_periods(bins):
         stripe = np.stack([spec.gabor(p, a) for a in _STRIPE_ANGLES_DEG])
         stripe_energy = np.abs(stripe) ** 2
         angle_index = np.argmax(stripe_energy, axis=0)
@@ -124,7 +185,8 @@ def estimate_local_stripes(frame: np.ndarray, light: np.ndarray) -> LocalStripes
         )
         mean = spec.local_mean(p)
 
-        box = (max(3, round(2 * p)), max(3, round(3 * p)))  # 2p tall, 3p wide
+        # 2p tall, 3p wide, in sensor px, as frame px.
+        box = (max(3, round(2 * p / v)), max(3, round(3 * p / h)))
         floor = (_A0 * np.abs(uniform_filter(mean, box)) / 2) ** 2
         denom = np.maximum(uniform_filter(e_reference, box), floor)
         ratio = np.zeros(shape)

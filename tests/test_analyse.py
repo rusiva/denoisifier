@@ -10,9 +10,10 @@ import pytest
 from scipy import ndimage
 from scipy.ndimage import gaussian_filter
 
+from binning import bin_sensor_frame, bin_truth_mask
 from borderline import BORDERLINE, borderline_frame
 from cases import CASES, case_frame, clipped_at
-from denoisifier import Report, analyse, analysis
+from denoisifier import BinFactors, Report, analyse, analysis
 from denoisifier.analysis import _ENVELOPE_SIGMA
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.synthetic import (
@@ -26,6 +27,7 @@ from inner_loop import WIDE, diagonal, inner
 from protected import (
     AC4_MIN_CLIPPED_PIXELS,
     BBOX_TOL_PERIODS,
+    BINNING_TEST_SEEDS,
     BORDERLINE_SCORE_WINDOW,
     CANDIDATE_CAP_HEADROOM,
     CLIP_DEPTH_EPS,
@@ -58,6 +60,7 @@ from protected import (
     PERIOD_REL_TOL,
     PHASE_BREAK_TEST_SEED,
     PROFILE_ONLY_TEST_SEEDS,
+    REGION_EDGE_PX,
     REGION_FRAME_SHAPE,
     REGION_TEST_SEEDS,
     REPORT_TO_JSON_TEST_SEED,
@@ -1233,3 +1236,191 @@ def test_candidate_cap_has_headroom_over_the_calibration_reach():
     assert analysis._MAX_CANDIDATES >= CANDIDATE_CAP_HEADROOM * reach, (
         f"cap {analysis._MAX_CANDIDATES} < {CANDIDATE_CAP_HEADROOM} x reach {reach}"
     )
+
+
+# Ticket 08: bin factors (plan .scratch/stripe-detector/handoffs/08-plan.md, section 5).
+
+
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [(0, ValueError), (-1, ValueError), (1.5, TypeError), (True, TypeError), ("2", TypeError)],
+)
+@pytest.mark.parametrize("axis", ["horizontal", "vertical"])
+def test_invalid_bin_factors_raise(value, error, axis):
+    with pytest.raises(error, match=axis):
+        BinFactors(**{axis: value})
+
+
+def test_bin_factors_read_back_from_their_dict():
+    b = BinFactors(horizontal=2, vertical=3)
+    assert b.to_dict() == {"horizontal": 2, "vertical": 3}
+    assert BinFactors.from_dict({"horizontal": 2, "vertical": 3}) == b
+    assert BinFactors() == BinFactors(1, 1)
+    for bad in (
+        {"horizontal": 2},
+        {"horizontal": 2, "vertical": 1, "x": 1},
+        [2, 1],
+        {"horizontal": "2", "vertical": 1},
+    ):
+        with pytest.raises(ValueError, match="bin factor"):
+            BinFactors.from_dict(bad)
+
+
+def _identity_frame(kind):
+    """A frame of each kind for the 1x1 identity (AC 5), and its no-option Report."""
+    seed = BINNING_TEST_SEEDS[0]
+    if kind == "two regions":
+        s, report = two_region_case(TWO_REGION_TEST_SEEDS[0], *TWO_REGION_PAIRS[0])
+        return s.frame, report
+    if kind == "clear stripes":
+        s, report = analysed(
+            seed=seed, shape=SHAPE, period=8, angle_deg=6, modulation_depth=0.5, **TYPICAL
+        )
+        return s.frame, report
+    if kind == "spikes and clipped":
+        s, _ = clipped_at(
+            MILD_CLIP_LEVEL_FRACTION,
+            generate,
+            seed=seed,
+            shape=SHAPE,
+            period=12,
+            angle_deg=-8,
+            modulation_depth=0.5,
+            spikes=SPIKE_TEST_COUNT,
+            **TYPICAL,
+        )
+        report = analyse(s.frame)
+        assert report.spike_pixels > 0
+        assert report.clipped_pixels > 0
+        return s.frame, report
+    s, report = analysed(seed=seed, shape=SHAPE, modulation_depth=0.0, **TYPICAL)
+    return s.frame, report
+
+
+@pytest.mark.parametrize(
+    "kind", ["clear stripes", "two regions", "spikes and clipped", "stripe-free mottled"]
+)
+def test_one_by_one_binning_equals_no_option(kind):
+    frame, plain = _identity_frame(kind)
+    binned = analyse(frame, bin_factors=BinFactors(1, 1))
+    assert binned == plain
+    assert np.array_equal(binned.labels, plain.labels)
+    assert binned.to_json() == plain.to_json()
+    if kind != "stripe-free mottled":
+        assert plain.regions
+
+
+def _binned(seed, h, v, frame_shape=SHAPE, **kwargs):
+    """``(Synthetic at sensor size, the frame block-summed h x v)``; the frame is
+    ``frame_shape``, so the sensor is ``frame_shape`` times (v, h)."""
+    rows, cols = frame_shape
+    s = generate(seed=seed, shape=(rows * v, cols * h), **kwargs)
+    return s, bin_sensor_frame(s.frame, h, v)
+
+
+def _spectral_peak_angle_deg(frame):
+    """Angle (deg) of the strongest 2D FFT peak of ``frame`` minus its local
+    mean, over Periods 3-40 frame px with a positive horizontal frequency."""
+    detail = frame - gaussian_filter(frame, sigma=_ENVELOPE_SIGMA)
+    power = np.abs(np.fft.fft2(detail)) ** 2
+    fy = np.fft.fftfreq(frame.shape[0])[:, None]
+    fx = np.fft.fftfreq(frame.shape[1])[None, :]
+    f = np.hypot(fx, fy)
+    power[(fx <= 0) | (f < 1 / 40) | (f > 1 / 3)] = 0
+    r, c = np.unravel_index(np.argmax(power), power.shape)
+    return float(np.degrees(np.arctan2(fy[r, 0], fx[0, c])))
+
+
+@pytest.mark.parametrize("angle_deg", [10, -10])
+def test_one_by_two_binning_reports_the_physical_angle(angle_deg):
+    """AC 1: a physical 10 deg tilt is about 19.4 deg in a 1x2-binned frame and
+    is reported as about 10 deg."""
+    s, frame = _binned(
+        BINNING_TEST_SEEDS[0], 1, 2, period=8, angle_deg=angle_deg, modulation_depth=0.5, **TYPICAL
+    )
+    in_frame = np.degrees(np.arctan(2 * np.tan(np.radians(angle_deg))))
+    assert abs(in_frame) == pytest.approx(19.43, abs=0.01)
+    assert abs(_spectral_peak_angle_deg(frame) - in_frame) <= 2.0
+    report = analyse(frame, bin_factors=BinFactors(horizontal=1, vertical=2))
+    (region,) = report.regions
+    assert_matches_truth(region.period_px, region.angle_deg, s.truth)
+
+
+@pytest.mark.parametrize("angle_deg", [0, 10])
+def test_two_by_one_binning_reports_the_physical_period(angle_deg):
+    """AC 2: a physical 12 px Period in a 2x1-binned frame is 6 frame px and is
+    reported as about 12 px."""
+    s, frame = _binned(
+        BINNING_TEST_SEEDS[1], 2, 1, period=12, angle_deg=angle_deg, modulation_depth=0.5, **TYPICAL
+    )
+    report = analyse(frame, bin_factors=BinFactors(horizontal=2, vertical=1))
+    (region,) = report.regions
+    assert abs(region.period_px - 12) <= PERIOD_REL_TOL * 12
+    assert not abs(region.period_px - 6) <= PERIOD_REL_TOL * 6
+    assert_matches_truth(region.period_px, region.angle_deg, s.truth)
+
+
+def test_binned_region_bbox_and_mask_are_in_frame_pixels():
+    """AC 4: under 2x1 the bbox and the mask are in frame px, the Period in sensor px."""
+    h, v, period = 2, 1, 12
+    rows, cols = SHAPE
+    region = StripedRegion(
+        center=((rows * v - 1) / 2, (cols * h - 1) / 2),
+        semi_axes=(5.0 * period, 6.6 * period),
+        rotation_deg=0.0,
+        edge_px=REGION_EDGE_PX,
+        period=float(period),
+        angle_deg=4.0,
+        modulation_depth=0.5,
+    )
+    s, frame = _binned(
+        BINNING_TEST_SEEDS[2], h, v, regions=[region], mottle="scorched", **TYPICAL_NOISE
+    )
+    report = analyse(frame, bin_factors=BinFactors(h, v))
+    assert report.labels.shape == frame.shape == SHAPE
+    (found,) = report.regions
+    (truth,) = s.truth.regions
+    assert_matches_truth(found.period_px, found.angle_deg, truth)
+    b = found.bbox
+    assert 0 <= b.row_start < b.row_stop <= rows
+    assert 0 <= b.col_start < b.col_stop <= cols
+    r0, r1, c0, c1 = truth_bbox(bin_truth_mask(truth.mask, h, v) >= 0.5)
+    row_tol, col_tol = BBOX_TOL_PERIODS * period / v, BBOX_TOL_PERIODS * period / h
+    for got, want in ((b.row_start, r0), (b.row_stop, r1)):
+        assert abs(got - want) <= row_tol
+    for got, want in ((b.col_start, c0), (b.col_stop, c1)):
+        assert abs(got - want) <= col_tol
+    assert found.area_px == int((report.labels == found.label).sum())
+    assert_labels_consistent(report)
+
+
+@pytest.mark.parametrize("bins", [(2, 1), (1, 2)], ids=["2x1", "1x2"])
+@pytest.mark.parametrize("size", ["below", "above"])
+def test_size_minimum_is_in_sensor_periods_under_binning(bins, size):
+    """The 3x2-Period minimum is in sensor px: the size tests' recipe at sensor
+    size, binned. Below (0.8x) is not reported; above (1.4x) is."""
+    h, v = bins
+    period, factor = 8, (MIN_SIZE_BELOW_FACTOR if size == "below" else MIN_SIZE_ABOVE_FACTOR)
+    rows, cols = SHAPE
+    region = StripedRegion(
+        center=((rows * v - 1) / 2, (cols * h - 1) / 2),
+        semi_axes=SIZE_SHAPES["both"](period, factor),
+        rotation_deg=0.0,
+        edge_px=1.0,
+        period=float(period),
+        angle_deg=0.0,
+        modulation_depth=0.6,
+    )
+    _, frame = _binned(MIN_SIZE_TEST_SEEDS[0], h, v, regions=[region])
+    report = analyse(frame, bin_factors=BinFactors(h, v))
+    if size == "below":
+        assert report.regions == ()
+    else:
+        (found,) = report.regions
+        assert abs(found.period_px - period) <= PERIOD_REL_TOL * period
+
+
+def test_bin_factors_leaving_no_searchable_period_raise():
+    frame = generate(seed=BINNING_TEST_SEEDS[0], shape=SHAPE).frame
+    with pytest.raises(ValueError, match="11x1"):
+        analyse(frame, bin_factors=BinFactors(11, 1))

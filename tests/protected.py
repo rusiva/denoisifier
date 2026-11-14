@@ -264,6 +264,12 @@ CALIBRATION_TINY_STRIPED_TEST_SEEDS = range(50, 60)  # the tiny plan's held-out 
 RUN_POOL_TEST_SEEDS = range(60, 64)  # serial-vs-pool equivalence (plan C2)
 FALSE_ALARM_RATE_OPTION_TEST_SEED = 28  # test_false_alarm_rate_option_sets_the_threshold_...
 
+# Ticket 08 (bin factors; plan .scratch/stripe-detector/handoffs/08-plan.md, section 5).
+# Test frames generated at sensor size, block-summed (tests/binning.py), then analysed.
+BINNING_TEST_SEEDS = range(10, 14)
+# Prototype P1 of ticket 08 (08-prototype-p1.md): seeds it looked at, reserved.
+BINNING_PROTOTYPE_SEEDS = range(108_000, 108_400)
+
 # test_seed_guard.py (ticket agent-gates/04). The held-out free and striped
 # seeds of test_measure_calibrates_inside_the_block_and_evaluates_outside's
 # small SeedPlan.
@@ -316,6 +322,8 @@ USED_SEEDS = [
     range(700_100, 700_140),
     # Ticket 07: scratch range; P1 used 104_000-104_049, the plan review's N6 timing 104_000.
     range(104_000, 104_100),
+    # Ticket 08: prototype P1.
+    BINNING_PROTOTYPE_SEEDS,
 ]
 
 # Calibration seed ranges, by name. tests/seed_guard.py refuses any of these

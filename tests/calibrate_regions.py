@@ -29,7 +29,7 @@ import numpy as np
 
 import seed_guard
 from cases import CASES
-from denoisifier import analyse, analysis
+from denoisifier import BinFactors, analyse, analysis
 from denoisifier._local_stripes import _Spectrum, estimate_local_stripes
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
@@ -258,10 +258,10 @@ def _candidate_reach(frame):
     group (which all take part in settling overlaps) is grown exactly as
     uncapped. 0 when no group qualifies."""
     light = analysis._light(frame)
-    local = estimate_local_stripes(frame, light)
+    local = estimate_local_stripes(frame, light, BinFactors())
     if not light.any() or not local.ratio.max() > 0:
         return {"n_candidates": 0, "reach_last_top": 0, "reach_last_member": 0}
-    filters = analysis._Filters(_Spectrum(frame), light)
+    filters = analysis._Filters(_Spectrum(frame, BinFactors()), light)
     cap = analysis._MAX_CANDIDATES
     analysis._MAX_CANDIDATES = 10_000
     try:

@@ -10,6 +10,45 @@ import numpy as np
 
 
 @dataclass(frozen=True)
+class BinFactors:
+    """How many sensor pixels were summed into one frame pixel along each axis.
+
+    ``horizontal`` bins along a row (the frame's columns), ``vertical`` along a
+    column (its rows); written ``HxV`` (the CLI's ``--bin``). Each is a plain
+    ``int >= 1``: anything else raises ``TypeError`` (not an int, or a bool)
+    or ``ValueError`` (below 1). Named fields, not a tuple, because
+    ``Calibration.shape`` is (rows, cols), the other order.
+    """
+
+    horizontal: int = 1
+    vertical: int = 1
+
+    def __post_init__(self) -> None:
+        for axis in ("horizontal", "vertical"):
+            value = getattr(self, axis)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"bin factor {axis} must be an int, got {value!r}")
+            if value < 1:
+                raise ValueError(f"bin factor {axis} must be at least 1, got {value!r}")
+
+    def __str__(self) -> str:
+        return f"{self.horizontal}x{self.vertical}"
+
+    def to_dict(self) -> dict[str, int]:
+        return {"horizontal": int(self.horizontal), "vertical": int(self.vertical)}
+
+    @classmethod
+    def from_dict(cls, d: object) -> BinFactors:
+        """Read ``{"horizontal": h, "vertical": v}``; ValueError on anything else."""
+        if not isinstance(d, dict) or set(d) != {"horizontal", "vertical"}:
+            raise ValueError(f"bin factors must be {{'horizontal': h, 'vertical': v}}, got {d!r}")
+        try:
+            return cls(horizontal=d["horizontal"], vertical=d["vertical"])
+        except TypeError as e:
+            raise ValueError(str(e)) from None
+
+
+@dataclass(frozen=True)
 class BoundingBox:
     """Half-open pixel box, like slices: ``labels[row_start:row_stop, col_start:col_stop]``."""
 
