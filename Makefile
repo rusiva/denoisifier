@@ -2,7 +2,7 @@
 UV     := uv run --locked
 PYTEST := $(UV) pytest
 
-.PHONY: check check-slow bench measure test-fast fix lock-check lint no-inline-mypy
+.PHONY: check check-slow check-held-out bench measure test-fast fix lock-check lint no-inline-mypy
 
 # The slow-tier stamp (ticket agent-gates/05): tests/slow_stamp.py STAMPED_FILES. check runs it
 # after pytest, so test results are not hidden; a stale stamp fails check.
@@ -12,6 +12,9 @@ check: lock-check lint      ## gate: lock, format, lint, types, every non-slow t
 
 check-slow: lock-check      ## regression check (~6 min; duration: tests/test_slow_regression.py): background only; writes the .gate/ stamp when green
 	$(UV) python tests/slow_stamp.py run -- $(PYTEST) -m slow
+
+check-held-out: lock-check  ## held-out calibration tests (~19-24 min): ticket 07 close and measure milestones only, background; writes .gate/held-out-calibration.json
+	$(PYTEST) -m held_out
 
 bench:                      ## speed gate 10 s + ticket-13 target 5 s: idle machine, background; writes .gate/bench.json
 	$(UV) python tests/bench.py

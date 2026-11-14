@@ -58,6 +58,9 @@ STAMPED_FILES: tuple[str, ...] = tuple(
             "src/denoisifier/recalibrate.py",
             # the slow tier and its tests/ imports (protected.py whole: ruling Q3)
             "tests/test_slow_regression.py",
+            "tests/test_slow_calibration.py",
+            "tests/test_held_out_calibration.py",
+            "tests/threshold_calibration.py",
             "tests/feasibility.py",
             "tests/cases.py",
             "tests/protected.py",

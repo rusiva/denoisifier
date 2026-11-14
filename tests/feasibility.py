@@ -33,7 +33,7 @@ from concurrent.futures import ProcessPoolExecutor  # noqa: E402
 from dataclasses import asdict, dataclass  # noqa: E402
 from pathlib import Path  # noqa: E402
 from statistics import median  # noqa: E402
-from typing import Literal, NamedTuple  # noqa: E402
+from typing import Literal, NamedTuple, TypeVar  # noqa: E402
 
 import numpy as np  # noqa: E402
 import scipy  # noqa: E402
@@ -186,6 +186,10 @@ def _frame(seed: int, depth: float, shape: tuple[int, int], case: Case) -> np.nd
     ).frame
 
 
+J = TypeVar("J")
+R = TypeVar("R")
+
+
 def resolve_workers(workers: int | None = None) -> int:
     """The worker process count: ``workers``, else three quarters of the
     logical CPUs (12 of 16), leaving the rest for other work."""
@@ -195,11 +199,10 @@ def resolve_workers(workers: int | None = None) -> int:
     return max(1, n - n // 4)
 
 
-def score_batch(
-    seeds: Sequence[int], depth: float, shape: tuple[int, int], workers: int | None = None
-) -> np.ndarray:
-    """Stripe Scores of generated frames, in seed order whatever the worker count."""
-    jobs = [(seed, depth, shape) for seed in seeds]
+def run_pool(fn: Callable[[J], R], jobs: Sequence[J], workers: int | None = None) -> list[R]:
+    """``fn`` applied to each job in a guarded spawn pool, results in job order whatever
+    the worker count; a worker's exception propagates. ``fn`` and the jobs must be
+    picklable (``fn`` a module-level function)."""
     # Spawned workers import NumPy fresh, so the thread variables set above apply.
     # Each worker installs the seed guard with this process's allowed ranges.
     with ProcessPoolExecutor(
@@ -208,7 +211,15 @@ def score_batch(
         initializer=seed_guard.install_worker,
         initargs=(seed_guard.worker_allowance(),),
     ) as ex:
-        return np.array(list(ex.map(_score_one, jobs, chunksize=4)), dtype=float)
+        return list(ex.map(fn, jobs, chunksize=4))
+
+
+def score_batch(
+    seeds: Sequence[int], depth: float, shape: tuple[int, int], workers: int | None = None
+) -> np.ndarray:
+    """Stripe Scores of generated frames, in seed order whatever the worker count."""
+    jobs = [(seed, depth, shape) for seed in seeds]
+    return np.array(run_pool(_score_one, jobs, workers), dtype=float)
 
 
 def _count_above(scores: np.ndarray, threshold: float) -> int:

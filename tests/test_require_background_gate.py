@@ -39,6 +39,7 @@ def bash(command: str, **extra) -> str:
         "make check-slow",
         "make bench",
         "make measure",
+        "make check-held-out",
         "make -C . check-slow",
         "timeout 5 make check-slow",
         "timeout 900 make check-slow",

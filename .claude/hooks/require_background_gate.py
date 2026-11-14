@@ -5,9 +5,10 @@ Adapted from polsigns (.claude/hooks/require_background_gate.py) for ticket
 agent-gates/05. The Bash tool's `timeout` is clamped to 600000 ms (10 min); a
 larger value is silently ignored and the call is killed at 10 min with exit 143.
 `make check-slow` (about 6 min idle, longer under load; duration:
-tests/test_slow_regression.py), `make bench` (timing on an idle machine) and
-`make measure` (about 39 min) belong in the background, with nothing else
-running meanwhile. This hook makes the foreground form unrepresentable.
+tests/test_slow_regression.py), `make check-held-out` (about 19-24 min; ticket
+stripe-detector/07), `make bench` (timing on an idle machine) and `make measure`
+(about 39 min) belong in the background, with nothing else running meanwhile.
+This hook makes the foreground form unrepresentable.
 
 Scope: this is about the harness clock only. It has nothing to do with the
 pytest-timeout limits (60 s per test globally; 1200 s for the whole
@@ -37,8 +38,9 @@ import re
 import shlex
 import sys
 
-# Targets that must run in the background (ticket agent-gates/05; CLAUDE.md "Gates").
-_LONG_TARGETS = frozenset({"check-slow", "bench", "measure"})
+# Targets that must run in the background (ticket agent-gates/05; CLAUDE.md "Gates";
+# check-held-out: ticket stripe-detector/07, W7).
+_LONG_TARGETS = frozenset({"check-slow", "check-held-out", "bench", "measure"})
 
 _MARKER_WORD = "hook-allow-foreground"
 _ESCAPE_MARKER = f"# {_MARKER_WORD}"

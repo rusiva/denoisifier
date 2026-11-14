@@ -49,6 +49,7 @@ addopts = ["-m", "not slow"]
 markers = [
     "slow: long measurement runs (feasibility gate); `make check-slow`",
     "wide: seeds and cross-products beyond the inner loop's first ones (tests/inner_loop.py); deselected by make test-fast, run by make check",
+    "held_out: held-out statistical calibration tests (ticket 07); slow too; excluded from make check-slow, run by make check-held-out at a ticket's close and at make measure milestones",
 ]
 # A misspelt marker or config key, or an xfail that passes, fails the run.
 strict_markers = true
