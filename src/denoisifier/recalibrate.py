@@ -15,8 +15,7 @@ import argparse
 import sys
 
 from denoisifier.calibration import calibrate_folder
-from denoisifier.cli import bin_factors_arg
-from denoisifier.report import BinFactors
+from denoisifier.report import add_bin_option
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,13 +40,9 @@ def main(argv: list[str] | None = None) -> int:
         metavar="LEVEL",
         help="clip level for every frame (default: detected per frame); 'inf' turns it off",
     )
-    parser.add_argument(
-        "--bin",
-        type=bin_factors_arg,
-        default=BinFactors(),
-        metavar="HxV",
-        dest="bin_factors",
-        help="bin factors of every frame as HORIZONTALxVERTICAL (default 1x1); recorded in "
+    add_bin_option(
+        parser,
+        "bin factors of every frame as HORIZONTALxVERTICAL (default 1x1); recorded in "
         "the Calibration's settings when not 1x1",
     )
     parser.add_argument(

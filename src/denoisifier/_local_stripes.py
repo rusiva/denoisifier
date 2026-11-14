@@ -15,13 +15,16 @@ specified by a sensor Period and Angle is exactly the frame filter at the
 converted frame Period and Angle (under 1x2 a 10 deg filter sits at 19.4 deg
 in the frame). A bank Period is searched only when every bank filter at it,
 stripe filters and their 90 deg references alike, keeps a frame Period of at
-least ``MIN_ARRAY_PERIOD_PX`` (``searched_periods``); the rest of the bank's
-range is ``unresolved_period_range``.
+least ``MIN_FRAME_PERIOD_PX`` (``searched_periods``); the rest of the bank's
+range is ``unresolved_periods``. Every sensor/frame conversion of a length or
+a frequency, here and in analysis.py, goes through the helpers below
+(``frame_px``, ``sensor_frequency``, ``pixel_size``).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal, TypeVar, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -52,48 +55,80 @@ _PAD = 32
 _A0 = 3e-3
 
 # The shortest frame Period (px) a bank filter may have; below it the filter
-# is past the frame's Nyquist limit (2 px). Prototype P1 of ticket 08: under
-# 2x1, sensor Period 4.2 px (2.1 frame px) still resolved 8 of 8 frames
-# within 0.1% in Period and 0.02 deg in Angle.
-MIN_ARRAY_PERIOD_PX = 2.0
+# is past the frame's Nyquist limit. Prototype P1 of ticket 08: under 2x1,
+# sensor Period 4.2 px (2.1 frame px) still resolved 8 of 8 frames within 0.1%
+# in Period and 0.02 deg in Angle.
+MIN_FRAME_PERIOD_PX = 2.0
+
+# A length (px) or a frequency (cycles/px), or a grid of them.
+_Value = TypeVar("_Value", float, NDArray[np.float64])
+
+
+def frame_px(bins: BinFactors, height: _Value, width: _Value) -> tuple[_Value, _Value]:
+    """A height (down the frame) and a width (across it) in sensor px, in frame px."""
+    return height / bins.vertical, width / bins.horizontal
+
+
+def sensor_frequency(bins: BinFactors, fy: _Value, fx: _Value) -> tuple[_Value, _Value]:
+    """Frequencies down (``fy``) and across (``fx``) the frame, in cycles per
+    frame px, in cycles per sensor px."""
+    return fy / bins.vertical, fx / bins.horizontal
+
+
+def pixel_size(bins: BinFactors) -> tuple[int, int]:
+    """A frame pixel's (height, width) in sensor px."""
+    return bins.vertical, bins.horizontal
+
+
+def _frame_frequency_scale(bins: BinFactors, t: np.ndarray) -> np.ndarray:
+    """The frame frequency of a filter over its sensor frequency, at each
+    wavevector angle ``t`` (radians from the frame's x axis):
+    ``hypot(h cos t, v sin t)``."""
+    return np.asarray(np.hypot(bins.horizontal * np.cos(t), bins.vertical * np.sin(t)))
 
 
 def _frame_frequency_scales(bins: BinFactors) -> tuple[np.ndarray, np.ndarray]:
-    """``(stripe, reference)``: for each bank Angle, the frame frequency of a
-    bank filter over its sensor frequency, ``hypot(h cos t, v sin t)`` at the
-    filter's wavevector angle ``t`` (the Angle for stripe filters, + 90 deg
-    for their references)."""
-    h, v = bins.horizontal, bins.vertical
+    """``(stripe, reference)``: ``_frame_frequency_scale`` at each bank
+    Angle, for the stripe filters and for their references (+ 90 deg)."""
     t = np.deg2rad(np.asarray(_STRIPE_ANGLES_DEG))
-    stripe = np.hypot(h * np.cos(t), v * np.sin(t))
-    reference = np.hypot(h * np.cos(t + np.pi / 2), v * np.sin(t + np.pi / 2))
-    return stripe, reference
+    return _frame_frequency_scale(bins, t), _frame_frequency_scale(bins, t + np.pi / 2)
 
 
 def searched_periods(bins: BinFactors) -> np.ndarray:
     """The bank Periods (sensor px, in ``_PERIODS`` order) at which every
     bank filter, stripe and reference, keeps a frame Period of at least
-    ``MIN_ARRAY_PERIOD_PX``; ``_PERIODS`` itself at 1x1."""
+    ``MIN_FRAME_PERIOD_PX``; ``_PERIODS`` itself at 1x1."""
     stripe, reference = _frame_frequency_scales(bins)
     scale = max(stripe.max(), reference.max())
-    keep = _PERIODS / scale >= MIN_ARRAY_PERIOD_PX
+    keep = _PERIODS / scale >= MIN_FRAME_PERIOD_PX
     return _PERIODS if keep.all() else _PERIODS[keep]
 
 
-def unresolved_period_range(bins: BinFactors) -> tuple[float, float, str] | None:
-    """``(3.0, limit, by)``: the part of the bank's Period range (sensor px)
-    that is not searched under ``bins``, or ``None`` when all of it is.
-    ``limit`` is ``MIN_ARRAY_PERIOD_PX`` times the largest frame-over-sensor
-    frequency of any bank filter; ``by`` names the filters that set it:
-    ``"stripe"``, ``"reference"`` or ``"both"``."""
+@dataclass(frozen=True)
+class UnresolvedPeriods:
+    """The part of the bank's Period range, ``shortest`` up to ``limit``
+    (sensor px), that is not searched under some bin factors. ``by`` names
+    the filters that fall under ``MIN_FRAME_PERIOD_PX`` frame px there."""
+
+    shortest: float
+    limit: float
+    by: Literal["stripe", "reference", "both"]
+
+
+def unresolved_periods(bins: BinFactors) -> UnresolvedPeriods | None:
+    """The bank's unsearched Periods under ``bins``, or ``None`` when all are
+    searched. ``limit`` is ``MIN_FRAME_PERIOD_PX`` times the largest
+    frame-over-sensor frequency of any bank filter."""
     stripe, reference = _frame_frequency_scales(bins)
     s, r = float(stripe.max()), float(reference.max())
-    limit = MIN_ARRAY_PERIOD_PX * max(s, r)
+    limit = MIN_FRAME_PERIOD_PX * max(s, r)
     shortest = float(_PERIODS[0])
     if limit <= shortest:
         return None
-    by = "both" if np.isclose(s, r) else ("stripe" if s > r else "reference")
-    return shortest, limit, by
+    by: Literal["stripe", "reference", "both"] = (
+        "both" if np.isclose(s, r) else ("stripe" if s > r else "reference")
+    )
+    return UnresolvedPeriods(shortest=shortest, limit=limit, by=by)
 
 
 @dataclass(frozen=True)
@@ -128,8 +163,10 @@ class _Spectrum:
         self.bins = bins
         padded = np.pad(frame, _PAD, mode="reflect")
         self.f = np.fft.fft2(padded)
-        self.fy = np.fft.fftfreq(padded.shape[0])[:, None] / bins.vertical
-        self.fx = np.fft.fftfreq(padded.shape[1])[None, :] / bins.horizontal
+        # fftfreq is float64 at runtime; numpy's stub says floating[Any].
+        fy = cast(NDArray[np.float64], np.fft.fftfreq(padded.shape[0])[:, None])
+        fx = cast(NDArray[np.float64], np.fft.fftfreq(padded.shape[1])[None, :])
+        self.fy, self.fx = sensor_frequency(bins, fy, fx)
 
     def filtered(self, kernel: np.ndarray) -> np.ndarray:
         return np.fft.ifft2(self.f * kernel)[_PAD:-_PAD, _PAD:-_PAD]
@@ -167,7 +204,6 @@ def estimate_local_stripes(frame: np.ndarray, light: np.ndarray, bins: BinFactor
     surround. Periods and Angles are in sensor px under ``bins``; only
     ``searched_periods(bins)`` are run."""
     spec = _Spectrum(frame, bins)
-    h, v = bins.horizontal, bins.vertical
     shape = frame.shape
     best_ratio = np.zeros(shape)
     best_period = np.zeros(shape)
@@ -185,8 +221,9 @@ def estimate_local_stripes(frame: np.ndarray, light: np.ndarray, bins: BinFactor
         )
         mean = spec.local_mean(p)
 
-        # 2p tall, 3p wide, in sensor px, as frame px.
-        box = (max(3, round(2 * p / v)), max(3, round(3 * p / h)))
+        # 2p tall, 3p wide (sensor px), in frame px.
+        height, width = frame_px(bins, 2 * p, 3 * p)
+        box = (max(3, round(height)), max(3, round(width)))
         floor = (_A0 * np.abs(uniform_filter(mean, box)) / 2) ** 2
         denom = np.maximum(uniform_filter(e_reference, box), floor)
         ratio = np.zeros(shape)

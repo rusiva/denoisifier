@@ -63,11 +63,16 @@ from denoisifier._local_stripes import (
     _ALONG,
     _PAD,
     _PERIODS,
+    MIN_FRAME_PERIOD_PX,
     LocalStripes,
+    UnresolvedPeriods,
     _Spectrum,
     estimate_local_stripes,
+    frame_px,
+    pixel_size,
     searched_periods,
-    unresolved_period_range,
+    sensor_frequency,
+    unresolved_periods,
 )
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.report import BinFactors, BoundingBox, Region, Report
@@ -239,7 +244,8 @@ def analyse(
     pixels and are converted into frame coordinates before searching; the
     bboxes, areas, the Mask and the pixel counts stay in frame pixels
     (``Report.UNITS``). Bank Periods at which a stripe or reference filter
-    falls under 2 frame pixels are not searched: ``Report.unresolved_period_px``
+    falls under ``MIN_FRAME_PERIOD_PX`` frame pixels (the frame's Nyquist
+    limit) are not searched: ``Report.unresolved_period_px``
     and a ``Report.warnings`` entry say so (under 2x1 or 1x2, Periods below
     4 px). Factors that leave no Period searchable raise ``ValueError``.
     The Modulation Depth is measured on the frame as given, not corrected
@@ -257,13 +263,11 @@ def analyse(
         )
     if not np.all(np.isfinite(frame)):
         raise ValueError("frame contains non-finite values (NaN or infinity)")
-    bins = BinFactors() if bin_factors is None else bin_factors
-    if not isinstance(bins, BinFactors):
-        raise TypeError(f"bin_factors must be a BinFactors, got {bin_factors!r}")
+    bins = BinFactors.of(bin_factors)
     if not len(searched_periods(bins)):
         raise ValueError(
             f"at {bins} binning no Period from {_PERIODS[0]:g} to {_PERIODS[-1]:g} px "
-            "can be searched: every one falls under 2 frame pixels"
+            f"can be searched: every one falls under {MIN_FRAME_PERIOD_PX:g} frame pixels"
         )
     threshold, used = _resolve_threshold(false_alarm_rate, calibration, threshold)
     if not threshold >= 0:
@@ -296,7 +300,7 @@ def analyse(
                 area_px=g.area_px,
             )
         )
-    unresolved = unresolved_period_range(bins)
+    unresolved = unresolved_periods(bins)
     warnings = [] if unresolved is None else [_unresolved_warning(unresolved, bins)]
     if used is not None:
         warnings += _coverage_note(used, frame.shape, bins)
@@ -309,28 +313,30 @@ def analyse(
         clipped_pixels=int(clipped.sum()),
         labels=labels,
         bin_factors=bins,
-        unresolved_period_px=None if unresolved is None else (unresolved[0], unresolved[1]),
+        unresolved_period_px=(
+            None if unresolved is None else (unresolved.shortest, unresolved.limit)
+        ),
         warnings=tuple(warnings),
     )
 
 
-def _unresolved_warning(unresolved: tuple[float, float, str], bins: BinFactors) -> str:
+def _unresolved_warning(unresolved: UnresolvedPeriods, bins: BinFactors) -> str:
     """The Report warning for the unsearched part of the Period range, naming
-    the filters that fall under 2 frame pixels there."""
-    _, limit, by = unresolved
-    if by == "stripe":
+    the filters that fall under ``MIN_FRAME_PERIOD_PX`` frame pixels there."""
+    limit, under = unresolved.limit, f"under {MIN_FRAME_PERIOD_PX:g} frame pixels"
+    if unresolved.by == "stripe":
         return (
             f"Periods below {limit:g} px cannot be resolved at {bins} binning: the stripes "
-            "fall under 2 frame pixels; they were not searched"
+            f"fall {under}; they were not searched"
         )
-    if by == "reference":
+    if unresolved.by == "reference":
         return (
             f"Periods below {limit:g} px were not searched at {bins} binning: the 90-deg "
-            "reference filters fall under 2 frame pixels (the stripes do not)"
+            f"reference filters fall {under} (the stripes do not)"
         )
     return (
         f"Periods below {limit:g} px cannot be resolved at {bins} binning: the stripes and "
-        "their 90-deg reference filters fall under 2 frame pixels; they were not searched"
+        f"their 90-deg reference filters fall {under}; they were not searched"
     )
 
 
@@ -445,16 +451,24 @@ def _qualifying_regions(
         and _passes_size_rule(g, filters)
         and not _is_leakage(g, candidates, frame, filters)
     ]
-    return [_refined(s, filters) for s in _settle_overlaps(qualifying, clipped, bins)]
+    return [_refined(s, filters) for s in _settle_overlaps(qualifying, clipped, filters.bins)]
 
 
 class _Filters:
-    """Re-tuned filters on one shared spectrum of the frame (one forward FFT)."""
+    """Re-tuned filters on one shared spectrum of the frame (one forward FFT).
+
+    The bin factors enter the region steps once, with the spectrum; every
+    step reads them as ``filters.bins`` and hands them to the helpers that
+    take no ``_Filters`` (``_phase_steps``, ``_near``, ``_settle_overlaps``)."""
 
     def __init__(self, spec: _Spectrum, light: np.ndarray):
         self.spec = spec
         self.light = light
         self._means: dict[float, np.ndarray] = {}
+
+    @property
+    def bins(self) -> BinFactors:
+        return self.spec.bins
 
     def mean(self, period: float) -> np.ndarray:
         """The bank-style filter's local mean at ``period`` (cached)."""
@@ -525,7 +539,7 @@ def _grow_candidates(local: LocalStripes, light: np.ndarray, filters: _Filters) 
             seed,
             float(local.period[peak]),
             float(local.angle_deg[peak]),
-            filters.spec.bins,
+            filters.bins,
         )
         depth = filters.depth(period, angle_deg)
         grown = _grow(depth, seed, seed, light)
@@ -591,8 +605,7 @@ def _phase_steps(
         return period, angle_deg
     cx = (response[:, 1:] * np.conj(response[:, :-1]))[h_pairs].sum()
     cy = (response[1:, :] * np.conj(response[:-1, :]))[v_pairs].sum()
-    fx = np.angle(cx) / (2 * np.pi) / bins.horizontal
-    fy = np.angle(cy) / (2 * np.pi) / bins.vertical
+    fy, fx = sensor_frequency(bins, np.angle(cy) / (2 * np.pi), np.angle(cx) / (2 * np.pi))
     f = np.hypot(fx, fy)
     if not f > 0:
         return period, angle_deg
@@ -605,7 +618,7 @@ def _merge(candidates: list[_Candidate], local: LocalStripes, filters: _Filters)
     for c in candidates:
         for members in member_lists:
             if all(_compatible(c, m) for m in members) and any(
-                _near(c, m, filters.spec.bins) for m in members
+                _near(c, m, filters.bins) for m in members
             ):
                 members.append(c)
                 break
@@ -626,7 +639,7 @@ def _merge(candidates: list[_Candidate], local: LocalStripes, filters: _Filters)
             # of the stripes, where the depth is lower.
             seed = np.logical_or.reduce([m.seed for m in members])
             period, angle_deg = _phase_steps(
-                local.response, seed, top.period, top.angle_deg, filters.spec.bins
+                local.response, seed, top.period, top.angle_deg, filters.bins
             )
             tuned_depth = filters.depth(period, angle_deg)
             grown = _grow(tuned_depth, top.seed, seed, filters.light)
@@ -664,7 +677,7 @@ def _near(a: _Candidate | _Group, b: _Candidate | _Group, bins: BinFactors) -> b
         return True
     gap = _MERGE_GAP_PERIODS * max(a.period, b.period)
     box = _bbox(a.grown)
-    pad = int(np.ceil(gap / min(bins.horizontal, bins.vertical))) + 1
+    pad = int(np.ceil(max(frame_px(bins, gap, gap)))) + 1
     r0, r1 = max(box.row_start - pad, 0), min(box.row_stop + pad, a.grown.shape[0])
     c0, c1 = max(box.col_start - pad, 0), min(box.col_stop + pad, a.grown.shape[1])
     window_b = b.grown[r0:r1, c0:c1]
@@ -679,22 +692,22 @@ def _edt(mask: np.ndarray, bins: BinFactors) -> np.ndarray:
     passed only when binned, so the 1x1 call is the unbinned one."""
     if bins == BinFactors():
         return np.asarray(ndimage.distance_transform_edt(mask))
-    return np.asarray(
-        ndimage.distance_transform_edt(mask, sampling=(bins.vertical, bins.horizontal))
-    )
+    return np.asarray(ndimage.distance_transform_edt(mask, sampling=pixel_size(bins)))
 
 
 def _passes_size_rule(group: _Group, filters: _Filters) -> bool:
     """At least 3x2 Periods: half-peak width on the re-tuned depth, half-peak
     height on the short size-only filter (see MIN_HALF_DEPTH_*_PERIODS)."""
     p = group.period
-    bins = filters.spec.bins
-    # Spans are measured in frame px; the rule is in sensor px.
+    # The rule is in sensor px; the spans are measured in frame px.
+    min_height, min_width = frame_px(
+        filters.bins, MIN_HALF_DEPTH_HEIGHT_PERIODS * p, MIN_HALF_DEPTH_WIDTH_PERIODS * p
+    )
     width = _half_peak_span(group.tuned_depth, group.top_core, axis=1)
-    if width * bins.horizontal < MIN_HALF_DEPTH_WIDTH_PERIODS * p:
+    if width < min_width:
         return False
     height = _half_peak_span(filters.size_depth(p, group.angle_deg), group.top_core, axis=0)
-    return bool(height * bins.vertical >= MIN_HALF_DEPTH_HEIGHT_PERIODS * p)
+    return bool(height >= min_height)
 
 
 def _half_peak_span(depth: np.ndarray, core: np.ndarray, axis: int) -> float:
@@ -757,10 +770,10 @@ def _is_leakage(
         if s.peak_ratio <= group.peak_ratio or any(s is m for m in group.members):
             continue
         # Leaked depth is below its source's; and leakage reaches about a window.
-        if own >= s.depth or not _near(s, group, filters.spec.bins):
+        if own >= s.depth or not _near(s, group, filters.bins):
             continue
         without = np.where(s.grown, filters.mean(s.period), frame)
-        rest = _Filters(_Spectrum(without, filters.spec.bins), filters.light)
+        rest = _Filters(_Spectrum(without, filters.bins), filters.light)
         if _median_depth(rest.depth(group.period, group.angle_deg), group.top_seed) < (
             _LEAK_FRACTION * own
         ):
@@ -779,7 +792,7 @@ def _refined(region: _Survivor, filters: _Filters) -> _Survivor:
             region.pixels,
             period,
             angle_deg,
-            filters.spec.bins,
+            filters.bins,
         )
     return dataclasses.replace(region, period=period, angle_deg=angle_deg)
 
@@ -835,7 +848,7 @@ def _interior_depth(
     distance = _edt(pixels, bins)
     interior = distance >= _INTERIOR_FRACTION * distance.max()
     if clipped.any():
-        sigma = (_ALONG * period / bins.vertical, _ACROSS * period / bins.horizontal)
+        sigma = frame_px(bins, _ALONG * period, _ACROSS * period)
         weight = gaussian_filter(clipped.astype(float), sigma=sigma)
         unclipped = interior & (weight < _CLIPPED_WEIGHT_MAX)
         if unclipped.any():

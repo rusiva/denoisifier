@@ -25,30 +25,13 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import os
-import re
 import sys
 from pathlib import Path
 
 from denoisifier.analysis import analyse
 from denoisifier.calibration import Calibration
 from denoisifier.frame_io import read_frame, write_mask_csv
-from denoisifier.report import BinFactors
-
-BIN_HELP = (
-    "bin factors of the frame as HORIZONTALxVERTICAL (default 1x1). Period, Angle and the "
-    "3x2-Period minimum are in sensor pixels; bboxes, areas and the mask are in frame pixels."
-)
-
-
-def bin_factors_arg(text: str) -> BinFactors:
-    """argparse ``type=`` for ``--bin HxV`` (case-insensitive ``x``)."""
-    m = re.fullmatch(r"(\d+)[xX](\d+)", text)
-    if m is None:
-        raise argparse.ArgumentTypeError(f"expected HORIZONTALxVERTICAL such as 1x2, got {text!r}")
-    try:
-        return BinFactors(horizontal=int(m[1]), vertical=int(m[2]))
-    except ValueError as e:
-        raise argparse.ArgumentTypeError(str(e)) from None
+from denoisifier.report import add_bin_option
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -107,13 +90,10 @@ def main(argv: list[str] | None = None) -> int:
         help="a calibration JSON (written by python -m denoisifier.recalibrate) to set the "
         "threshold on instead of the stored one",
     )
-    parser.add_argument(
-        "--bin",
-        type=bin_factors_arg,
-        default=BinFactors(),
-        metavar="HxV",
-        dest="bin_factors",
-        help=BIN_HELP,
+    add_bin_option(
+        parser,
+        "bin factors of the frame as HORIZONTALxVERTICAL (default 1x1). Period, Angle and the "
+        "3x2-Period minimum are in sensor pixels; bboxes, areas and the mask are in frame pixels.",
     )
     args = parser.parse_args(argv)
 

@@ -27,6 +27,8 @@ from inner_loop import WIDE, diagonal, inner
 from protected import (
     AC4_MIN_CLIPPED_PIXELS,
     BBOX_TOL_PERIODS,
+    BINNED_FRAME_ANGLE_DEG,
+    BINNED_FRAME_ANGLE_TOL_DEG,
     BINNING_TEST_SEEDS,
     BORDERLINE_SCORE_WINDOW,
     CANDIDATE_CAP_HEADROOM,
@@ -1346,7 +1348,7 @@ def test_one_by_two_binning_reports_the_physical_angle(angle_deg):
         BINNING_TEST_SEEDS[0], 1, 2, period=8, angle_deg=angle_deg, modulation_depth=0.5, **TYPICAL
     )
     in_frame = np.degrees(np.arctan(2 * np.tan(np.radians(angle_deg))))
-    assert abs(in_frame) == pytest.approx(19.43, abs=0.01)
+    assert abs(in_frame) == pytest.approx(BINNED_FRAME_ANGLE_DEG, abs=BINNED_FRAME_ANGLE_TOL_DEG)
     assert abs(_spectral_peak_angle_deg(frame) - in_frame) <= 2.0
     report = analyse(frame, bin_factors=BinFactors(horizontal=1, vertical=2))
     (region,) = report.regions
@@ -1437,11 +1439,11 @@ REPORT_UNITS = {
     "period_px": "sensor px",
     "angle_deg": "degrees from vertical, sensor geometry",
     "modulation_depth": "relative to the local envelope, as measured on the (binned) frame",
-    "bbox": "frame px (binned array; file layout when transposed)",
-    "area_px": "frame px (binned array)",
-    "mask": "frame px (binned array; file layout when transposed)",
-    "spike_pixels": "frame px (binned array)",
-    "clipped_pixels": "frame px (binned array)",
+    "bbox": "frame px (file layout when transposed)",
+    "area_px": "frame px",
+    "mask": "frame px (file layout when transposed)",
+    "spike_pixels": "frame px",
+    "clipped_pixels": "frame px",
     "unresolved_period_px": "sensor px",
 }
 

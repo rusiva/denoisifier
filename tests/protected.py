@@ -269,6 +269,9 @@ FALSE_ALARM_RATE_OPTION_TEST_SEED = 28  # test_false_alarm_rate_option_sets_the_
 BINNING_TEST_SEEDS = range(10, 14)
 # Prototype P1 of ticket 08 (08-prototype-p1.md): seeds it looked at, reserved.
 BINNING_PROTOTYPE_SEEDS = range(108_000, 108_400)
+# AC 1: a 10 deg sensor Angle under 1x2 is this Angle (deg) in the frame, within the tol.
+BINNED_FRAME_ANGLE_DEG = 19.43
+BINNED_FRAME_ANGLE_TOL_DEG = 0.01
 
 # test_seed_guard.py (ticket agent-gates/04). The held-out free and striped
 # seeds of test_measure_calibrates_inside_the_block_and_evaluates_outside's

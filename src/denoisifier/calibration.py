@@ -215,9 +215,7 @@ def stripe_free_score(
     return analyse(frame, threshold=np.inf, clip_level=clip_level, bin_factors=bin_factors).score
 
 
-def _with_bin_factors(
-    settings: Mapping[str, object] | None, bin_factors: BinFactors | None
-) -> dict[str, object]:
+def _with_bin_factors(settings: Mapping[str, object] | None, bins: BinFactors) -> dict[str, object]:
     """``settings`` plus ``"bin_factors"`` when they are not 1x1 (so 1x1
     settings, and the stored calibration's digest, are unchanged). A
     ``"bin_factors"`` key already in ``settings`` is refused: the recorded
@@ -228,7 +226,6 @@ def _with_bin_factors(
             "settings may not contain 'bin_factors': pass bin_factors= instead, "
             "which the frames are scored at and which is recorded"
         )
-    bins = BinFactors() if bin_factors is None else bin_factors
     if bins != BinFactors():
         out["bin_factors"] = bins.to_dict()
     return out
@@ -247,8 +244,10 @@ def calibrate(
     false-alarm rate depends on it. ``bin_factors`` (default 1x1) are the
     frames' bin factors, passed to ``analyse`` and recorded in ``settings``
     when not 1x1. Raises ValueError on no frames, differing shapes, a
-    non-finite score or ``settings`` that already hold ``"bin_factors"``."""
-    settings = _with_bin_factors(settings, bin_factors)
+    non-finite score or ``settings`` that already hold ``"bin_factors"``;
+    TypeError when ``bin_factors`` is not a ``BinFactors``."""
+    bins = BinFactors.of(bin_factors)
+    settings = _with_bin_factors(settings, bins)
     ids: list[str] = []
     scores: list[float] = []
     shapes: set[tuple[int, int]] = set()
@@ -257,7 +256,7 @@ def calibrate(
         shapes.add((int(frame.shape[0]), int(frame.shape[1])) if frame.ndim == 2 else (0, 0))
         _check_one_shape(shapes)
         ids.append(frame_id)
-        scores.append(stripe_free_score(frame, clip_level=clip_level, bin_factors=bin_factors))
+        scores.append(stripe_free_score(frame, clip_level=clip_level, bin_factors=bins))
     if not ids:
         raise ValueError("no frames to calibrate on")
     (shape,) = shapes
@@ -290,12 +289,14 @@ def calibrate_folder(
     (default 1x1) are passed to ``analyse`` for every frame and recorded in
     ``settings`` when not 1x1.
     Raises ValueError when ``clip_level`` is NaN, no file matches, a file
-    cannot be read (naming the file), or the shapes differ.
+    cannot be read (naming the file), or the shapes differ; TypeError when
+    ``bin_factors`` is not a ``BinFactors``.
     """
     if clip_level is not None:
         clip_level = float(clip_level)
         if np.isnan(clip_level):
             raise ValueError(f"clip_level must be a number or inf, got {clip_level!r}")
+    bins = BinFactors.of(bin_factors)
     root = Path(folder)
     paths = sorted(
         p
@@ -305,7 +306,7 @@ def calibrate_folder(
     if not paths:
         raise ValueError(f"no .csv or .asc files in {root}")
     t0 = time.perf_counter()
-    jobs = [(p, drop_axis_column, transpose, clip_level, bin_factors) for p in paths]
+    jobs = [(p, drop_axis_column, transpose, clip_level, bins) for p in paths]
     if workers > 1:
         with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("spawn")) as ex:
             results = list(ex.map(_score_file, jobs))
@@ -325,7 +326,7 @@ def calibrate_folder(
                 clip_level if clip_level is None or np.isfinite(clip_level) else str(clip_level)
             ),
         },
-        bin_factors,
+        bins,
     )
     run_info = {
         "folder": root.resolve().name,
@@ -345,7 +346,7 @@ def calibrate_folder(
 
 
 def _score_file(
-    job: tuple[Path, bool, bool, float | None, BinFactors | None],
+    job: tuple[Path, bool, bool, float | None, BinFactors],
 ) -> tuple[tuple[int, int], float]:
     path, drop_axis_column, transpose, clip_level, bin_factors = job
     try:

@@ -17,7 +17,7 @@ denoisifier._local_stripes :: _ACROSS :: 1.0
 denoisifier._local_stripes :: _ALONG :: 1.5
 denoisifier._local_stripes :: _PAD :: 32
 denoisifier._local_stripes :: _A0 :: 0.003
-denoisifier._local_stripes :: MIN_ARRAY_PERIOD_PX :: 2.0
+denoisifier._local_stripes :: MIN_FRAME_PERIOD_PX :: 2.0
 
 denoisifier.analysis :: MIN_SIDE :: 40
 denoisifier.analysis :: _ENVELOPE_SIGMA :: 10.0
@@ -145,6 +145,8 @@ protected :: MASK_TAIL :: 1e-12
 protected :: OUTSIDE_REGIONS_RTOL :: 1e-09
 protected :: BINNING_TEST_SEEDS :: range(10, 14)
 protected :: BINNING_PROTOTYPE_SEEDS :: range(108000, 108400)
+protected :: BINNED_FRAME_ANGLE_DEG :: 19.43
+protected :: BINNED_FRAME_ANGLE_TOL_DEG :: 0.01
 protected :: MEASURE_PLAN_FREE_TEST_SEEDS :: range(40, 50)
 protected :: MEASURE_PLAN_STRIPED_TEST_SEEDS :: range(50, 60)
 protected :: FEASIBILITY_SCRIPT_TIMEOUT_S :: 45

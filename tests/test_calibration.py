@@ -407,3 +407,13 @@ def test_settings_with_bin_factors_are_refused():
         calibrate(frames, settings=settings)
     with pytest.raises(ValueError, match="bin_factors"):
         calibrate(frames, settings=settings, bin_factors=BinFactors(2, 1))
+
+
+@pytest.mark.parametrize("bad", [(2, 1), {"horizontal": 2, "vertical": 1}, "2x1"])
+def test_calibrate_refuses_bin_factors_that_are_not_bin_factors(tmp_path, bad):
+    """Like ``analyse``: a TypeError before any frame is scored."""
+    frames = [("a", _folder_frame(CALIBRATION_FOLDER_TEST_SEEDS[0]))]
+    with pytest.raises(TypeError, match="bin_factors must be a BinFactors"):
+        calibrate(frames, bin_factors=bad)
+    with pytest.raises(TypeError, match="bin_factors must be a BinFactors"):
+        calibrate_folder(_csv_folder_path(tmp_path), bin_factors=bad)

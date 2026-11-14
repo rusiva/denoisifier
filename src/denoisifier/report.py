@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import json
+import re
 from dataclasses import dataclass, field
 from typing import ClassVar
 
@@ -19,6 +21,9 @@ class BinFactors:
     ``int >= 1``: anything else raises ``TypeError`` (not an int, or a bool)
     or ``ValueError`` (below 1). Named fields, not a tuple, because
     ``Calibration.shape`` is (rows, cols), the other order.
+
+    The sensor/frame conversions that use them are in the detector
+    (``denoisifier._local_stripes``), so this class stays data and validation.
     """
 
     horizontal: int = 1
@@ -36,7 +41,27 @@ class BinFactors:
         return f"{self.horizontal}x{self.vertical}"
 
     def to_dict(self) -> dict[str, int]:
-        return {"horizontal": int(self.horizontal), "vertical": int(self.vertical)}
+        return {"horizontal": self.horizontal, "vertical": self.vertical}
+
+    @classmethod
+    def of(cls, value: object) -> BinFactors:
+        """A ``bin_factors=`` option (``analyse``, ``calibrate``,
+        ``calibrate_folder``): ``value`` itself, 1x1 for ``None``, and
+        ``TypeError`` for anything that is not a ``BinFactors``."""
+        if value is None:
+            return cls()
+        if not isinstance(value, cls):
+            raise TypeError(f"bin_factors must be a BinFactors, got {value!r}")
+        return value
+
+    @classmethod
+    def parse(cls, text: str) -> BinFactors:
+        """Read ``HxV`` (horizontal first, ``x`` or ``X``), as ``--bin`` takes
+        it; ValueError on anything else."""
+        m = re.fullmatch(r"(\d+)[xX](\d+)", text)
+        if m is None:
+            raise ValueError(f"expected HORIZONTALxVERTICAL such as 1x2, got {text!r}")
+        return cls(horizontal=int(m[1]), vertical=int(m[2]))
 
     @classmethod
     def from_dict(cls, d: object) -> BinFactors:
@@ -47,6 +72,27 @@ class BinFactors:
             return cls(horizontal=d["horizontal"], vertical=d["vertical"])
         except TypeError as e:
             raise ValueError(str(e)) from None
+
+
+def add_bin_option(parser: argparse.ArgumentParser, help_text: str) -> None:
+    """Add ``--bin HxV`` (``BinFactors.parse``, default 1x1, as
+    ``args.bin_factors``) to ``parser``: the one ``--bin`` of the CLI and of
+    ``python -m denoisifier.recalibrate``."""
+
+    def bin_factors(text: str) -> BinFactors:
+        try:
+            return BinFactors.parse(text)
+        except ValueError as e:
+            raise argparse.ArgumentTypeError(str(e)) from None
+
+    parser.add_argument(
+        "--bin",
+        type=bin_factors,
+        default=BinFactors(),
+        metavar="HxV",
+        dest="bin_factors",
+        help=help_text,
+    )
 
 
 @dataclass(frozen=True)
@@ -81,7 +127,7 @@ class Region:
     the Modulation Depth relative to the local Envelope, as measured on the
     frame as given (binning damps it; see ``analyse``). ``bbox`` is the tight
     box of the region's pixels and ``area_px`` their count, both in frame
-    pixels (the binned array). ``Report.UNITS`` lists each field's unit.
+    pixels. ``Report.UNITS`` lists each field's unit.
     """
 
     label: int
@@ -133,10 +179,11 @@ class Report:
 
     ``bin_factors`` are the frame's ``BinFactors``. Period and Angle are in
     sensor pixels; ``labels``, the bboxes, areas and pixel counts in frame
-    pixels (the binned array); ``UNITS`` names the unit of each field, and
+    pixels; ``UNITS`` names the unit of each field, and
     ``to_dict`` carries it as ``"units"``. ``unresolved_period_px`` is the
     part of the 3-20 px Period range (sensor px) that was not searched
-    because a filter there falls under 2 frame pixels, or ``None``.
+    because a filter there falls under ``MIN_FRAME_PERIOD_PX`` frame pixels
+    (``denoisifier._local_stripes``), or ``None``.
     ``warnings`` are frame-level analysis warnings (that range, and a frame
     the calibration does not cover), separate from ``reader_notes``.
     """
@@ -145,11 +192,11 @@ class Report:
         "period_px": "sensor px",
         "angle_deg": "degrees from vertical, sensor geometry",
         "modulation_depth": "relative to the local envelope, as measured on the (binned) frame",
-        "bbox": "frame px (binned array; file layout when transposed)",
-        "area_px": "frame px (binned array)",
-        "mask": "frame px (binned array; file layout when transposed)",
-        "spike_pixels": "frame px (binned array)",
-        "clipped_pixels": "frame px (binned array)",
+        "bbox": "frame px (file layout when transposed)",
+        "area_px": "frame px",
+        "mask": "frame px (file layout when transposed)",
+        "spike_pixels": "frame px",
+        "clipped_pixels": "frame px",
         "unresolved_period_px": "sensor px",
     }
 
