@@ -4,13 +4,13 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] With 1×2 binning, stripes at a physical 10° tilt (about 19.4° in the array) are detected and reported as about 10°.
-- [ ] With 2×1 binning, a physical period of 12 px is reported as about 12 px (not 6).
-- [ ] With 2×1 binning, the report warns that physical periods below 4 px can't be resolved.
-- [ ] Region bounding boxes and the mask stay in frame (array) coordinates, while measurements are in sensor pixels; the report says which units each field uses.
-- [ ] 1×1 binning gives the same results as no option.
+- [x] With 1×2 binning, stripes at a physical 10° tilt (about 19.4° in the array) are detected and reported as about 10°.
+- [x] With 2×1 binning, a physical period of 12 px is reported as about 12 px (not 6).
+- [x] With 2×1 binning, the report warns that physical periods below 4 px can't be resolved.
+- [x] Region bounding boxes and the mask stay in frame (array) coordinates, while measurements are in sensor pixels; the report says which units each field uses.
+- [x] 1×1 binning gives the same results as no option.
 
 ## Comments
 
@@ -27,3 +27,4 @@
   - **Lockfile rename** (F1): `denoisifier._local_stripes :: MIN_ARRAY_PERIOD_PX :: 2.0` becomes `MIN_FRAME_PERIOD_PX :: 2.0`, value unchanged. Reason: GLOSSARY.md lists "array pixel" as the term to avoid ("Frame pixel"). With it, `Report.UNITS` reads "frame px" instead of "frame px (binned array)", and `test_report_states_units`'s expected strings follow the rename (no check removed or loosened).
   - **Additive protected numbers** (F2): `protected :: BINNED_FRAME_ANGLE_DEG :: 19.43` and `BINNED_FRAME_ANGLE_TOL_DEG :: 0.01`, moved unchanged from an inline `pytest.approx` in `test_one_by_two_binning_reports_the_physical_angle`. Reason: CLAUDE.md keeps test-side tolerances and expected values in `tests/protected.py`.
   - F6 note: the sensor/frame conversions are helpers in the stamped `_local_stripes.py` (`frame_px`, `sensor_frequency`, `pixel_size`), not `BinFactors` methods, so `BinFactors` in the unstamped `report.py` stays data and validation (the reason S3 was passed) and `tests/slow_stamp.py` is untouched. 1x1 output re-diffed against BASE 0032d7f (4 frame kinds, default and `threshold=inf`, with and without `BinFactors(1, 1)`): identical.
+- 2026-11-14, fixer: closing gates at 5175b97 (clean tree). `make check-slow`: exit 0, `5 passed, 1147 deselected in 1257.06s (0:20:57)`. `make check`: exit 0, `1144 passed, 8 deselected in 679.63s (0:11:19)`, stamp check green. No `make measure`: 1x1 detector output is unchanged (identity diff against BASE, and AC 5's tests). Criteria ticked; status resolved.
