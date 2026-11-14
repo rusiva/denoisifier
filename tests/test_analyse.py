@@ -1842,7 +1842,7 @@ def _pass_free(monkeypatch):
     )
 
 
-def _identity_frame(kind, seed):
+def _break_free_frame(kind, seed):
     """(frame, BinFactors) of plan 5.4's identity frames."""
     if kind == "region":
         period, angle_deg = CASES[seed % len(CASES)]
@@ -1867,7 +1867,7 @@ IDENTITY_FRAMES = [
 @pytest.mark.parametrize(("kind", "seed"), IDENTITY_FRAMES)
 def test_frames_without_a_found_break_match_the_pass_free_analysis(monkeypatch, kind, seed):
     """Zero fakes (B4): on break-free frames the pass finds nothing and changes nothing."""
-    frame, bins = _identity_frame(kind, seed)
+    frame, bins = _break_free_frame(kind, seed)
     built = analyse(frame, bin_factors=bins)
     _pass_free(monkeypatch)
     free = analyse(frame, bin_factors=bins)

@@ -64,7 +64,9 @@ def test_the_pass_returns_its_inputs_when_no_break_is_found(monkeypatch):
     monkeypatch.setattr(analysis, "_with_phase_breaks", spy)
     seed = REGION_TEST_SEEDS[0]
     case = CASES[seed % 10]
-    _, report = single_region_case(seed, case.period, case.angle_deg)
+    # The case is cached for the run, so analyse its frame here: the spy must see this call.
+    s, _ = single_region_case(seed, case.period, case.angle_deg)
+    report = analyse(s.frame)
     assert len(report.regions) == 1
     assert [g for g, _ in seen["out"]] == seen["in"]
     assert all(g is h for (g, _), h in zip(seen["out"], seen["in"], strict=True))
