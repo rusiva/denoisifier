@@ -1,0 +1,54 @@
+uv lock --check
+Resolved 25 packages in 1ms
+uv run --locked ruff format --check
+49 files already formatted
+uv run --locked ruff check
+All checks passed!
+uv run --locked mypy
+Success: no issues found in 12 source files
+uv run --locked pytest
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 1095 items / 8 deselected / 1087 selected
+
+tests/test_analyse.py .................................................. [  4%]
+........................................................................ [ 11%]
+........................................................................ [ 17%]
+........................................................................ [ 24%]
+........................................................................ [ 31%]
+........................................................................ [ 37%]
+........................................................................ [ 44%]
+........................................................................ [ 50%]
+........................................................................ [ 57%]
+........................................................................ [ 64%]
+.........................                                                [ 66%]
+tests/test_bench.py .....                                                [ 66%]
+tests/test_calibration.py .................................              [ 70%]
+tests/test_cli.py ...................................                    [ 73%]
+tests/test_data_quality.py ................                              [ 74%]
+tests/test_feasibility_gate.py ..............                            [ 75%]
+tests/test_glossary_terms.py ......                                      [ 76%]
+tests/test_inner_loop.py .......................                         [ 78%]
+tests/test_protected_numbers.py ..........                               [ 79%]
+tests/test_read_frame.py ............................................... [ 83%]
+.....                                                                    [ 84%]
+tests/test_require_background_gate.py ...........................        [ 86%]
+tests/test_seed_guard.py .............                                   [ 88%]
+tests/test_slow_regression_plan.py ........                              [ 88%]
+tests/test_slow_stamp.py ..................................              [ 91%]
+tests/test_synthetic.py ................................................ [ 96%]
+.............................                                            [ 98%]
+tests/test_threshold_calibration.py ...........                          [100%]
+
+================ 1087 passed, 8 deselected in 535.88s (0:08:55) ================
+uv run --locked python tests/slow_stamp.py check
+make check: the slow tier is stale. Changed since the last green make check-slow: Makefile, pyproject.toml, src/denoisifier/_local_stripes.py, src/denoisifier/analysis.py, src/denoisifier/calibration.py, src/denoisifier/recalibrate.py, src/denoisifier/stripe_free_calibration.json, tests/feasibility.py, tests/protected.py, tests/slow_stamp.py, tests/test_held_out_calibration.py, tests/test_slow_calibration.py, tests/test_slow_regression.py, tests/threshold_calibration.py. Run make check-slow in the background (Bash run_in_background, output to a log; about 6 min) and run no other gate meanwhile. The stamp is per working tree: a fresh clone or worktree needs its own run. Stamped files: tests/slow_stamp.py STAMPED_FILES (ticket agent-gates/05).
+make: *** [Makefile:11: check] Error 1
+EXIT=2

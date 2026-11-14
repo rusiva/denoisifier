@@ -11,3 +11,8 @@ Continues `07-implementer-1.md`. HEAD after this commit; steps 0-4 committed, st
 ## Next (once the orchestrator goes on)
 1. Rest of step 5: `PACKAGE_STORED_THRESHOLD`, `PACKAGE_STORED_THRESHOLD_5PCT`, `PACKAGE_CALIBRATION_DIGEST = int(digest_hex, 16)` (int so the lockfile pins it; implementer-1 Q2) in `tests/protected.py`; lockfile lines (scratchpad `lockupd.py`); the stored-file tests (2.2, W4(b)); add the JSON to STAMPED_FILES; switch the slow modules from `protected.X` attribute access to direct imports. Commit.
 2. Steps 6-8 as in the plan.
+
+## Update: continued after the orchestrator's rulings (all recorded in ticket Comments)
+- `0bbaa67` step 5 stored (+ W7 recipe and `test_slow_stamp.py` per ruling 2), `6c4f659` step 6, `491d4af` step 7, `5f6ddf0` step 8.
+- `make check` at `5f6ddf0`: EXIT=2, `1087 passed, 8 deselected in 535.88s`; only the slow-tier stamp step is red (stale, expected). Log `07-implementer-check.log`.
+- Left to the fixer: code review (step 9), step 10 clipped run, `make check-slow` → `make check-held-out` → `make check`; the measured durations then replace the ~20-24 min estimates (Makefile help, `test_slow_regression.py` docstring, hook docstring, CLAUDE.md draft). The stale "about 6 min" in the `tests/slow_stamp.py` check message was not edited (protected surface).
