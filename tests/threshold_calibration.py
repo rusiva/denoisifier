@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import platform
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict
@@ -35,7 +34,6 @@ from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
 import numpy as np
-import scipy
 from scipy.stats import beta
 
 import feasibility
@@ -115,11 +113,9 @@ def run_info(workers: int, t_start: float, load_start: str, frames: int) -> dict
     """Commit, machine, versions, load and wall clock of a run: recorded, never compared."""
     base = feasibility.run_info(workers)
     wall = time.perf_counter() - t_start
+    machine = ("commit", "cpu", "logical_cpus", "workers", "python", "numpy", "scipy")
     return {
-        **{k: base[k] for k in ("commit", "cpu", "logical_cpus", "workers")},
-        "python": platform.python_version(),
-        "numpy": np.__version__,
-        "scipy": scipy.__version__,
+        **{k: base[k] for k in machine},
         "loadavg": {"start": load_start, "end": loadavg()},
         "wall_clock_s": wall,
         "seconds_per_frame": wall / max(frames, 1),

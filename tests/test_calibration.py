@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from scipy.stats import betabinom
 
-from denoisifier import analyse
+from denoisifier import analyse, recalibrate
 from denoisifier._calibration import (
     false_alarm_tolerance,
     rate_interval,
@@ -327,3 +327,27 @@ def test_recalibrate_module_writes_the_folder_calibration(tmp_path):
     written = Calibration.from_json(out.read_text())
     assert written == calibrate_folder(folder)
     assert json.loads(out.read_text())["format"] == 1
+
+
+def test_recalibrate_with_clip_level_inf_turns_clip_detection_off(tmp_path):
+    folder = _csv_folder_path(tmp_path)
+    out = tmp_path / "cal.json"
+    assert recalibrate.main([str(folder), "-o", str(out), "--clip-level", "inf"]) == 0
+    written = Calibration.from_json(out.read_text())
+    cal = calibrate_folder(folder, clip_level=np.inf)
+    assert written == cal
+    frames = [(p.name, read_frame(p).frame) for p in sorted(folder.glob("*.csv"))]
+    assert cal.scores == calibrate(frames, clip_level=np.inf).scores
+    # JSON has no inf: the setting is written as the text the help names.
+    assert cal.settings["clip_level"] == "inf"
+    assert calibrate_folder(folder).settings["clip_level"] is None  # detected per frame
+
+
+def test_folder_calibration_refuses_a_nan_clip_level_before_scoring(tmp_path):
+    with pytest.raises(ValueError, match=r"^clip_level must be a number or inf"):
+        calibrate_folder(_csv_folder_path(tmp_path), clip_level=float("nan"))
+
+
+def test_folder_calibration_records_the_folder_name_not_its_path(tmp_path):
+    cal = calibrate_folder(_csv_folder_path(tmp_path))
+    assert cal.run_info["folder"] == "free"

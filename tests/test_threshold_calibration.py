@@ -14,6 +14,7 @@ import numpy as np
 from scipy.stats import betabinom
 
 import feasibility
+import seed_guard
 import threshold_calibration as tc
 from denoisifier import analyse
 from denoisifier._calibration import false_alarm_tolerance, threshold_rank
@@ -93,6 +94,27 @@ def test_calibrate_synthetic_tiny_plan_is_repeatable():
     assert one.threshold(0.4) == ranked[1]
     assert one.run_info["workers"] == 1
     assert one.run_info["wall_clock_s"] > 0
+
+
+def test_calibrate_synthetic_runs_the_core_on_the_calibration_set_inside_its_block(
+    monkeypatch,
+):
+    """W2: the Calibration Set is scored only inside seed_guard.calibrating(...)."""
+    calls = []
+
+    def core(seeds, shape, workers=None):
+        calls.append((seeds, shape, workers, seed_guard.worker_allowance()))
+        return "calibration"
+
+    monkeypatch.setattr(tc, "calibration_from_seeds", core)
+    assert seed_guard.installed()
+    assert STRIPE_FREE_CALIBRATION_SEEDS not in (seed_guard.worker_allowance() or ())
+    assert tc.calibrate_synthetic(3) == "calibration"
+    ((seeds, shape, workers, allowed),) = calls
+    assert (seeds, shape, workers) == (STRIPE_FREE_CALIBRATION_SEEDS, CALIBRATION_SHAPE, 3)
+    assert allowed is not None
+    assert STRIPE_FREE_CALIBRATION_SEEDS in allowed
+    assert STRIPE_FREE_CALIBRATION_SEEDS not in (seed_guard.worker_allowance() or ())
 
 
 def test_calibration_frames_are_stripe_free_spiked_and_unclipped():

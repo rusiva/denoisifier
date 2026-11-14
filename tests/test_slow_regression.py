@@ -17,10 +17,11 @@ Since ticket 07, `make check-slow` (`-m "slow and not held_out"`) also runs
 tests/test_slow_calibration.py, the calibration reproduction: 300 full frames,
 about 14 min idle (ticket 07 step 5 measured 2.79 s per full frame, 838 s for the
 300, with the default 12 workers), under its own per-test 2400 s timeout. So the
-slow tier takes about 20 min idle in all (an estimate until ticket 07's closing
-`make check-slow` measures it). tests/test_held_out_calibration.py is slow too but
-carries held_out: `make check-slow` does not run it; `make check-held-out` does
-(about 400 full frames plus 20 option analyses, about 19-24 min idle).
+slow tier takes about 20 min idle in all (estimated from the step-5 rate; the
+measured wall clocks are in ticket 07's Comments). tests/test_held_out_calibration.py
+is slow too but carries held_out: `make check-slow` does not run it; `make
+check-held-out` does (400 full frames plus 20 option analyses, about 20 min idle at
+the step-5 rate).
 """
 
 import json

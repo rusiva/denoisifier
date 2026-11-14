@@ -114,7 +114,7 @@ _TERM_GRACE_S = 3.0
 
 _ADVICE = (
     "Run make check-slow in the background (Bash run_in_background, output to a log; about "
-    "6 min) and run no other gate meanwhile. The stamp is per working tree: a fresh clone or "
+    "20 min) and run no other gate meanwhile. The stamp is per working tree: a fresh clone or "
     "worktree needs its own run. Stamped files: tests/slow_stamp.py STAMPED_FILES "
     "(ticket agent-gates/05)."
 )

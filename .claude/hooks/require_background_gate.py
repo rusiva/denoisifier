@@ -4,8 +4,8 @@
 Adapted from polsigns (.claude/hooks/require_background_gate.py) for ticket
 agent-gates/05. The Bash tool's `timeout` is clamped to 600000 ms (10 min); a
 larger value is silently ignored and the call is killed at 10 min with exit 143.
-`make check-slow` (about 6 min idle, longer under load; duration:
-tests/test_slow_regression.py), `make check-held-out` (about 19-24 min; ticket
+`make check-slow` (about 20 min idle, longer under load; duration:
+tests/test_slow_regression.py), `make check-held-out` (about 20 min; ticket
 stripe-detector/07), `make bench` (timing on an idle machine) and `make measure`
 (about 39 min) belong in the background, with nothing else running meanwhile.
 This hook makes the foreground form unrepresentable.

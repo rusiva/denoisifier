@@ -31,7 +31,7 @@ import numpy as np
 import scipy
 from numpy.typing import ArrayLike
 
-from denoisifier._calibration import threshold_for_false_alarm_rate, threshold_rank
+from denoisifier._calibration import threshold_rank
 from denoisifier.frame_io import read_frame
 
 DEFAULT_FALSE_ALARM_RATE = 0.01
@@ -121,7 +121,8 @@ class Calibration:
                 f"a false-alarm rate of {rate} is too high for {n} scores: "
                 f"at most {n / (n + 1):.6g}"
             )
-        return threshold_for_false_alarm_rate(self.scores, rate)
+        # from_scores keeps only finite scores: read the k-th largest directly.
+        return float(np.sort(np.asarray(self.scores, dtype=float))[::-1][k - 1])
 
     def digest(self) -> str:
         """SHA-256 (hex) of the canonical JSON of ids, scores, shape and
@@ -244,9 +245,16 @@ def calibrate_folder(
 
     ``workers > 1`` reads and scores the files in a pool of spawned processes;
     a script that calls it so needs the ``if __name__ == "__main__":`` guard.
-    Raises ValueError when no file matches, a file cannot be read (naming the
-    file), or the shapes differ.
+    ``clip_level`` is passed to ``stripe_free_score`` for every frame (None:
+    detected per frame; ``inf``: clip detection off, recorded in ``settings``
+    as the text ``"inf"``, since JSON has no infinity).
+    Raises ValueError when ``clip_level`` is NaN, no file matches, a file
+    cannot be read (naming the file), or the shapes differ.
     """
+    if clip_level is not None:
+        clip_level = float(clip_level)
+        if np.isnan(clip_level):
+            raise ValueError(f"clip_level must be a number or inf, got {clip_level!r}")
     root = Path(folder)
     paths = sorted(
         p
@@ -269,10 +277,14 @@ def calibrate_folder(
         "source": "folder",
         "drop_axis_column": drop_axis_column,
         "transpose": transpose,
-        "clip_level": clip_level,
+        # JSON has no inf: an infinite clip level (clip detection off) is recorded
+        # as its text; None means detected per frame.
+        "clip_level": (
+            clip_level if clip_level is None or np.isfinite(clip_level) else str(clip_level)
+        ),
     }
     run_info = {
-        "folder": str(root.resolve()),
+        "folder": root.resolve().name,
         "workers": workers,
         "python": platform.python_version(),
         "numpy": np.__version__,

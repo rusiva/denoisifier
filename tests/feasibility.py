@@ -11,6 +11,7 @@ uses for its own verdict. The detector is measured as it is (no tuning).
 from __future__ import annotations
 
 import os
+from typing import Literal, NamedTuple, TypeVar
 
 # Imports no NumPy (seed_guard.py), so it can come before the thread variables.
 import seed_guard
@@ -33,7 +34,6 @@ from concurrent.futures import ProcessPoolExecutor  # noqa: E402
 from dataclasses import asdict, dataclass  # noqa: E402
 from pathlib import Path  # noqa: E402
 from statistics import median  # noqa: E402
-from typing import Literal, NamedTuple, TypeVar  # noqa: E402
 
 import numpy as np  # noqa: E402
 import scipy  # noqa: E402
