@@ -15,7 +15,8 @@ re-store procedure after a score-moving change write the package file
 ``--clipped`` is the one-off measurement of plan 2.8 (step 10): False Alarms on
 CLIPPED_FREE_EVALUATION_SEEDS clipped at CLIP_LEVEL_FRACTION x each seed's clean
 maximum, on the default path, with the exact 95% interval. A measurement, never a
-pass/fail, and never tuned on.
+pass/fail, and never tuned on. Run once at ticket 07 step 10 (commit 59dbd98): 0 of 200
+False Alarms at 100.805, exact 95% interval 0-1.83%; highest clipped score 92.55.
 
 The check functions take a plan and return a result dict; the slow modules
 (test_slow_calibration.py, test_held_out_calibration.py) build the full plans and assert
