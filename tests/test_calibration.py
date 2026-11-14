@@ -1,16 +1,31 @@
+import json
 import re
+import subprocess
+import sys
+from functools import cache
+from pathlib import Path
 
 import numpy as np
 import pytest
 from scipy.stats import betabinom
 
+from denoisifier import analyse
 from denoisifier._calibration import (
     false_alarm_tolerance,
     rate_interval,
     threshold_for_false_alarm_rate,
     threshold_rank,
 )
-from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration
+from denoisifier.calibration import (
+    DEFAULT_FALSE_ALARM_RATE,
+    Calibration,
+    calibrate,
+    calibrate_folder,
+    stripe_free_score,
+)
+from denoisifier.frame_io import read_frame, write_frame_csv
+from denoisifier.synthetic import Emccd, generate
+from protected import CALIBRATION_FOLDER_TEST_SEEDS
 
 TOO_FEW = "^" + re.escape("50 scores are too few for a false-alarm rate of 0.01: need at least 99")
 
@@ -178,3 +193,122 @@ def test_digest_changes_with_any_one_score_and_ignores_run_info():
         assert _cal(changed, settings={"a": 1}).digest() != cal.digest()
     assert _cal(scores, settings={"a": 2}).digest() != cal.digest()
     assert len(cal.digest()) == 64
+
+
+# Folder input (AC 5, plan 2.6): generated 64x64 Stripe-free frames at typical settings.
+
+SOLIS = Path(__file__).parent / "data" / "solis"
+FOLDER_SHAPE = (64, 64)
+
+
+@cache
+def _folder_frame(seed):
+    return generate(
+        seed=seed, shape=FOLDER_SHAPE, modulation_depth=0.0, mottle="scorched", noise=Emccd()
+    ).frame
+
+
+def _csv_folder(folder):
+    """The 12 folder frames as plain CSVs; returns the (name, array as read) pairs, by name."""
+    folder.mkdir(exist_ok=True)
+    for seed in CALIBRATION_FOLDER_TEST_SEEDS:
+        write_frame_csv(_folder_frame(seed), folder / f"frame-{seed}.csv")
+    return [(p.name, read_frame(p).frame) for p in sorted(folder.glob("*.csv"))]
+
+
+def _solis_text(frame):
+    """A frame in the real Solis layout (test_read_frame.py): an axis column 1..N, a
+    trailing comma on every row, two blank lines, then Key: value metadata."""
+    rows = [
+        ",".join([str(i + 1), *(repr(float(v)) for v in row)]) + "," for i, row in enumerate(frame)
+    ]
+    meta = ["Date and Time:                Fri Jun 29 18:42:06 2018", "Exposure Time (secs): 0.5"]
+    return "\n".join([*rows, "", "", *meta]) + "\n"
+
+
+def test_stripe_free_score_is_the_score_of_the_full_pipeline():
+    frame = _folder_frame(CALIBRATION_FOLDER_TEST_SEEDS[0])
+    assert stripe_free_score(frame) == analyse(frame, threshold=0.0).score
+    assert stripe_free_score(frame, clip_level=np.inf) == (
+        analyse(frame, threshold=0.0, clip_level=np.inf).score
+    )
+
+
+def test_folder_of_csv_frames_calibrates_like_the_frames_themselves(tmp_path):
+    frames = _csv_folder(tmp_path / "free")
+    cal = calibrate_folder(tmp_path / "free")
+    assert cal == calibrate(frames, settings=cal.settings)
+    assert cal.ids == tuple(f"frame-{s}.csv" for s in CALIBRATION_FOLDER_TEST_SEEDS)
+    assert cal.shape == FOLDER_SHAPE
+    assert cal.scores == tuple(stripe_free_score(f) for _, f in frames)
+    # n = 12 at 10%: k = floor(1.3) = 1, the largest score.
+    assert cal.threshold(0.1) == max(cal.scores)
+
+
+def test_folder_of_solis_exports_with_a_real_one_calibrates_like_the_frames_as_read(tmp_path):
+    folder = tmp_path / "solis"
+    folder.mkdir()
+    for seed in CALIBRATION_FOLDER_TEST_SEEDS[:11]:
+        (folder / f"gen-{seed}.asc").write_text(_solis_text(_folder_frame(seed)))
+    (folder / "xpos_ypos_crop.asc").write_bytes((SOLIS / "xpos_ypos_crop.asc").read_bytes())
+    (folder / ".hidden.asc").write_text("not a frame\n")
+    (folder / "notes.txt").write_text("not a frame\n")
+    cal = calibrate_folder(folder, drop_axis_column=True)
+    as_read = [
+        (p.name, read_frame(p, drop_axis_column=True).frame)
+        for p in sorted(folder.glob("[!.]*.asc"))
+    ]
+    assert len(as_read) == 12
+    assert cal == calibrate(as_read, settings=cal.settings)
+    assert cal.ids[-1] == "xpos_ypos_crop.asc"
+    assert cal.shape == FOLDER_SHAPE
+
+
+def test_folder_calibration_with_two_workers_is_the_same(tmp_path):
+    _csv_folder(tmp_path / "free")
+    assert calibrate_folder(tmp_path / "free", workers=2) == calibrate_folder(tmp_path / "free")
+
+
+def test_folder_calibration_refuses_an_empty_folder_mixed_shapes_and_unreadable_files(tmp_path):
+    (tmp_path / "empty").mkdir()
+    with pytest.raises(ValueError, match=r"no \.csv or \.asc files"):
+        calibrate_folder(tmp_path / "empty")
+    mixed = tmp_path / "mixed"
+    _csv_folder(mixed)
+    write_frame_csv(np.ones((64, 80)), mixed / "wide.csv")
+    with pytest.raises(ValueError, match="differing shapes"):
+        calibrate_folder(mixed)
+    bad = tmp_path / "bad"
+    _csv_folder(bad)
+    (bad / "kinetic.asc").write_bytes((SOLIS / "kinetic.asc").read_bytes())
+    with pytest.raises(ValueError, match=r"^kinetic\.asc: .*kinetic series"):
+        calibrate_folder(bad, drop_axis_column=True)
+
+
+def test_calibrate_refuses_no_frames_and_mixed_shapes():
+    with pytest.raises(ValueError, match="no frames"):
+        calibrate([])
+    a = _folder_frame(CALIBRATION_FOLDER_TEST_SEEDS[0])
+    with pytest.raises(ValueError, match="differing shapes"):
+        calibrate([("a", a), ("b", np.ones((64, 80)))])
+
+
+def _csv_folder_path(tmp_path):
+    _csv_folder(tmp_path / "free")
+    return tmp_path / "free"
+
+
+def test_recalibrate_module_writes_the_folder_calibration(tmp_path):
+    folder = _csv_folder_path(tmp_path)
+    out = tmp_path / "cal.json"
+    result = subprocess.run(
+        [sys.executable, "-m", "denoisifier.recalibrate", str(folder), "-o", str(out)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    written = Calibration.from_json(out.read_text())
+    assert written == calibrate_folder(folder)
+    assert json.loads(out.read_text())["format"] == 1

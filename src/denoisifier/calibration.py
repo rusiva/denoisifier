@@ -16,13 +16,21 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+import multiprocessing
+import os
+import platform
+import time
+from collections.abc import Iterable, Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
+import scipy
 from numpy.typing import ArrayLike
 
 from denoisifier._calibration import threshold_for_false_alarm_rate, threshold_rank
+from denoisifier.frame_io import read_frame
 
 DEFAULT_FALSE_ALARM_RATE = 0.01
 
@@ -160,3 +168,121 @@ class Calibration:
             )
         except (KeyError, TypeError, IndexError, AttributeError) as e:
             raise ValueError(f"malformed Calibration file: {e!r}") from None
+
+
+def stripe_free_score(frame: np.ndarray, *, clip_level: float | None = None) -> float:
+    """The Stripe Score of ``frame`` as ``analyse`` gives it (spike rejection,
+    clip detection, regions), independent of any Threshold: the one scoring
+    rule of every calibration path."""
+    # Imported here: analysis imports this module for its defaults.
+    from denoisifier.analysis import analyse
+
+    return analyse(frame, threshold=np.inf, clip_level=clip_level).score
+
+
+def calibrate(
+    frames: Iterable[tuple[str, np.ndarray]],
+    *,
+    clip_level: float | None = None,
+    settings: Mapping[str, object] | None = None,
+    run_info: Mapping[str, object] | None = None,
+) -> Calibration:
+    """A Calibration from ``(id, frame)`` pairs of Stripe-free frames, scored
+    serially by ``stripe_free_score``. All frames must have one shape: the
+    false-alarm rate depends on it. Raises ValueError on no frames, differing
+    shapes or a non-finite score."""
+    ids: list[str] = []
+    scores: list[float] = []
+    shapes: set[tuple[int, int]] = set()
+    for frame_id, frame in frames:
+        frame = np.asarray(frame, dtype=float)
+        shapes.add((int(frame.shape[0]), int(frame.shape[1])) if frame.ndim == 2 else (0, 0))
+        _check_one_shape(shapes)
+        ids.append(frame_id)
+        scores.append(stripe_free_score(frame, clip_level=clip_level))
+    if not ids:
+        raise ValueError("no frames to calibrate on")
+    (shape,) = shapes
+    return Calibration.from_scores(ids, scores, shape, settings=settings, run_info=run_info)
+
+
+def calibrate_folder(
+    folder: str | os.PathLike[str],
+    *,
+    drop_axis_column: bool = False,
+    transpose: bool = False,
+    clip_level: float | None = None,
+    workers: int = 1,
+) -> Calibration:
+    """A Calibration from every ``*.csv`` and ``*.asc`` file in ``folder``
+    (not recursive; hidden files skipped; sorted by name), read by
+    ``read_frame`` with the same options for all, and scored by
+    ``stripe_free_score``. Ids are the file names.
+
+    The frames must be Stripe-free and of one shape. Evaluate the result on
+    frames other than these: a Calibration Set is never the frames it is
+    evaluated on.
+
+    ``workers > 1`` reads and scores the files in a pool of spawned processes;
+    a script that calls it so needs the ``if __name__ == "__main__":`` guard.
+    Raises ValueError when no file matches, a file cannot be read (naming the
+    file), or the shapes differ.
+    """
+    root = Path(folder)
+    paths = sorted(
+        p
+        for p in root.iterdir()
+        if p.is_file() and p.suffix.lower() in (".csv", ".asc") and not p.name.startswith(".")
+    )
+    if not paths:
+        raise ValueError(f"no .csv or .asc files in {root}")
+    t0 = time.perf_counter()
+    jobs = [(p, drop_axis_column, transpose, clip_level) for p in paths]
+    if workers > 1:
+        with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("spawn")) as ex:
+            results = list(ex.map(_score_file, jobs))
+    else:
+        results = [_score_file(job) for job in jobs]
+    shapes = {shape for shape, _ in results}
+    _check_one_shape(shapes)
+    (shape,) = shapes
+    settings = {
+        "source": "folder",
+        "drop_axis_column": drop_axis_column,
+        "transpose": transpose,
+        "clip_level": clip_level,
+    }
+    run_info = {
+        "folder": str(root.resolve()),
+        "workers": workers,
+        "python": platform.python_version(),
+        "numpy": np.__version__,
+        "scipy": scipy.__version__,
+        "wall_clock_s": time.perf_counter() - t0,
+    }
+    return Calibration.from_scores(
+        [p.name for p in paths],
+        [score for _, score in results],
+        shape,
+        settings=settings,
+        run_info=run_info,
+    )
+
+
+def _score_file(job: tuple[Path, bool, bool, float | None]) -> tuple[tuple[int, int], float]:
+    path, drop_axis_column, transpose, clip_level = job
+    try:
+        frame = read_frame(path, drop_axis_column=drop_axis_column, transpose=transpose).frame
+        return (int(frame.shape[0]), int(frame.shape[1])), stripe_free_score(
+            frame, clip_level=clip_level
+        )
+    except (OSError, ValueError) as e:
+        raise ValueError(f"{path.name}: {e}") from e
+
+
+def _check_one_shape(shapes: set[tuple[int, int]]) -> None:
+    if len(shapes) > 1:
+        raise ValueError(
+            f"frames of differing shapes {sorted(shapes)}: a Calibration holds one shape, "
+            "since the false-alarm rate depends on it"
+        )

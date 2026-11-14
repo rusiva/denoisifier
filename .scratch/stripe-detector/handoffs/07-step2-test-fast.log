@@ -1,0 +1,35 @@
+uv run --locked pytest -x --ff -m "not slow and not wide"
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 1061 items / 478 deselected / 583 selected
+run-last-failure: 121 known failures not in selected tests
+
+tests/test_analyse.py .................................................. [  8%]
+........................................................................ [ 20%]
+........................................................................ [ 33%]
+............................................                             [ 40%]
+tests/test_bench.py .....                                                [ 41%]
+tests/test_calibration.py ................................               [ 47%]
+tests/test_cli.py ..............................                         [ 52%]
+tests/test_data_quality.py ................                              [ 55%]
+tests/test_feasibility_gate.py ..............                            [ 57%]
+tests/test_glossary_terms.py ......                                      [ 58%]
+tests/test_inner_loop.py .......................                         [ 62%]
+tests/test_protected_numbers.py ..........                               [ 64%]
+tests/test_read_frame.py ............................................... [ 72%]
+.....                                                                    [ 73%]
+tests/test_require_background_gate.py ..........................         [ 77%]
+tests/test_seed_guard.py .............                                   [ 79%]
+tests/test_slow_regression_plan.py ........                              [ 81%]
+tests/test_slow_stamp.py .................................               [ 86%]
+tests/test_synthetic.py ................................................ [ 95%]
+.............................                                            [100%]
+
+=============== 583 passed, 478 deselected in 179.97s (0:02:59) ================
