@@ -4,15 +4,15 @@
 
 **Blocked by:** 05, 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] A repeatable calibration routine produces the stored threshold(s) from calibration seeds.
-- [ ] On held-out stripe-free frames, the false-alarm rate is about 1% (within binomial tolerance); it also matches when another rate (for example 5%) is requested.
-- [ ] On held-out frames, m = 0.2 at typical noise is detected in at least 90% of frames at the default rate.
-- [ ] The report includes the score and the threshold used.
-- [ ] Calibration accepts a folder of frames (synthetic or real) as its stripe-free set.
-- [ ] The statistical tests are marked slow so they can be skipped in quick runs.
-- [ ] `make check-slow` re-runs the calibration routine on the calibration seeds and fails if it no longer reproduces the stored threshold(s). Added 2026-11-10, owner ruling, from `.scratch/agent-gates/spec.md`. If agent-gates ticket 05 has not landed yet, this criterion waits for `make check-slow`.
+- [x] A repeatable calibration routine produces the stored threshold(s) from calibration seeds.
+- [x] On held-out stripe-free frames, the false-alarm rate is about 1% (within binomial tolerance); it also matches when another rate (for example 5%) is requested.
+- [x] On held-out frames, m = 0.2 at typical noise is detected in at least 90% of frames at the default rate.
+- [x] The report includes the score and the threshold used.
+- [x] Calibration accepts a folder of frames (synthetic or real) as its stripe-free set.
+- [x] The statistical tests are marked slow so they can be skipped in quick runs.
+- [x] `make check-slow` re-runs the calibration routine on the calibration seeds and fails if it no longer reproduces the stored threshold(s). Added 2026-11-10, owner ruling, from `.scratch/agent-gates/spec.md`. If agent-gates ticket 05 has not landed yet, this criterion waits for `make check-slow`.
 
 ## Comments
 
@@ -65,3 +65,4 @@
     - `make check-held-out` → EXIT=0, `3 passed, 1096 deselected in 1019.49s (0:16:59)`, `6405366-dirty` (log `07-check-held-out.log`). AC 2a: **0/300** False Alarms at 100.805 (tolerance 0-13), posterior Beta(3 + x, 598 - x) 95% **0.10%-1.20%**; every Report threshold the stored one; option-path mismatches none. AC 2b: **21/300** above the 5% threshold 60.919 (tolerance 3-33). AC 3: **100/100** detected at m = 0.2 (need 90); per-case minimum scores 107.3 (3 px/10°), 147.0 (4/-4°), all others ≥ 205. Stripe-free max 84.37, zeros 33/300.
     - `make check` → EXIT=0, `1091 passed, 8 deselected in 535.27s (0:08:55)`, stamp check green, `6405366-dirty` (log `07-check.log`).
   - Closing wall clocks also in `07-claude-md-draft.md` (CLAUDE.md wording for the owner, P2, still to show). Status unchanged.
+- 2026-11-14, orchestrator closing ruling: the fixer's edit of the exact expected message in `tests/test_slow_stamp.py` (`test_stamped_edit_makes_check_fail_naming_only_that_file`, "about 6 min" -> "about 20 min") is accepted after the fact, under W7. It mirrors the approved duration text in `tests/slow_stamp.py`'s stale-stamp message, changes no logic and no selection, and asserts the message as a whole as before. Every criterion was checked against the closing gates quoted above (`6405366`): AC 1 and AC 7 by `make check-slow`, AC 2 and AC 3 by `make check-held-out`, AC 4-6 by `make check`. `make measure` was skipped on Q8's conditions. Owner items at close: the CLAUDE.md wording in `handoffs/.archived/07-claude-md-draft.md`, and the assumed `CALIBRATION_SPIKES = 30` per full frame (Q3).
