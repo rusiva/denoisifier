@@ -14,6 +14,7 @@ from borderline import BORDERLINE, borderline_frame
 from cases import CASES, case_frame, clipped_at
 from denoisifier import Report, analyse, analysis
 from denoisifier.analysis import _ENVELOPE_SIGMA, THRESHOLD
+from denoisifier.calibration import Calibration
 from denoisifier.synthetic import (
     _SPIKE_BRIGHTNESS,
     _SPIKE_MAX_LENGTH,
@@ -164,6 +165,55 @@ def test_report_has_score_and_threshold():
     plain = analyse(generate(seed=seed, shape=SHAPE, modulation_depth=0.0).frame)
     assert striped.score > striped.threshold
     assert plain.score < plain.threshold
+
+
+# The Threshold options (ticket 07, plan 2.3): an injected Calibration, a false-alarm rate,
+# or an explicit threshold.
+
+
+@cache
+def _option_frame():
+    seed = SCORE_AND_THRESHOLD_TEST_SEED
+    return generate(seed=seed, shape=SHAPE, period=9, modulation_depth=0.6).frame
+
+
+def _scores_1_to_199():
+    # n = 199: k = floor(0.01 * 200) = 2 -> 198; k = floor(0.05 * 200) = 10 -> 190.
+    ids = [f"f{i}" for i in range(199)]
+    return Calibration.from_scores(ids, np.arange(1.0, 200.0), (256, 256))
+
+
+def test_an_injected_calibration_sets_the_threshold_at_the_default_rate():
+    report = analyse(_option_frame(), calibration=_scores_1_to_199())
+    assert report.threshold == 198.0
+    assert report.striped == (report.score > 198.0) == bool(report.regions)
+    assert report.score == analyse(_option_frame(), threshold=0.0).score
+
+
+def test_a_false_alarm_rate_picks_the_threshold_of_the_calibration():
+    report = analyse(_option_frame(), calibration=_scores_1_to_199(), false_alarm_rate=0.05)
+    assert report.threshold == 190.0
+    assert report.striped == (report.score > 190.0) == bool(report.regions)
+
+
+def test_an_explicit_threshold_is_used_as_is():
+    assert analyse(_option_frame(), threshold=123.5).threshold == 123.5
+
+
+@pytest.mark.parametrize("rate", [0.0, 1.0, -0.01])
+def test_an_invalid_false_alarm_rate_raises(rate):
+    with pytest.raises(ValueError, match="false-alarm rate must be between 0 and 1"):
+        analyse(_option_frame(), calibration=_scores_1_to_199(), false_alarm_rate=rate)
+
+
+@pytest.mark.parametrize(
+    "other", [{"false_alarm_rate": 0.05}, {"calibration": "custom"}], ids=["rate", "calibration"]
+)
+def test_an_explicit_threshold_excludes_a_rate_or_a_calibration(other):
+    if "calibration" in other:
+        other = {"calibration": _scores_1_to_199()}
+    with pytest.raises(ValueError, match="threshold= excludes false_alarm_rate= and calibration="):
+        analyse(_option_frame(), threshold=100.0, **other)
 
 
 def test_constant_frame_is_not_striped_and_has_finite_score():

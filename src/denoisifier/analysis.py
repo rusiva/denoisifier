@@ -67,6 +67,7 @@ from denoisifier._local_stripes import (
     _Spectrum,
     estimate_local_stripes,
 )
+from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.report import BoundingBox, Region, Report
 
 _log = logging.getLogger(__name__)
@@ -175,7 +176,12 @@ _LOG_BANK_STEP = float(np.log(_PERIODS[1] / _PERIODS[0]))
 
 
 def analyse(
-    frame: np.ndarray, *, threshold: float = THRESHOLD, clip_level: float | None = None
+    frame: np.ndarray,
+    *,
+    false_alarm_rate: float | None = None,
+    calibration: Calibration | None = None,
+    threshold: float | None = None,
+    clip_level: float | None = None,
 ) -> Report:
     """Find the Striped Regions of ``frame`` and measure each one's Period, Angle and depth.
 
@@ -211,7 +217,7 @@ def analyse(
         )
     if not np.all(np.isfinite(frame)):
         raise ValueError("frame contains non-finite values (NaN or infinity)")
-    threshold = float(threshold)
+    threshold = _resolve_threshold(false_alarm_rate, calibration, threshold)
     if not threshold >= 0:
         raise ValueError(f"threshold must be >= 0 (or inf), got {threshold!r}")
     if clip_level is not None:
@@ -251,6 +257,23 @@ def analyse(
         clipped_pixels=int(clipped.sum()),
         labels=labels,
     )
+
+
+def _resolve_threshold(
+    false_alarm_rate: float | None, calibration: Calibration | None, threshold: float | None
+) -> float:
+    """The Threshold ``analyse`` uses: ``threshold`` as given, else the
+    calibration's Threshold at the false-alarm rate (``None`` takes the
+    stored calibration and ``DEFAULT_FALSE_ALARM_RATE``)."""
+    if threshold is not None:
+        if false_alarm_rate is not None or calibration is not None:
+            raise ValueError("threshold= excludes false_alarm_rate= and calibration=")
+        return float(threshold)
+    if false_alarm_rate is None and calibration is None:
+        return THRESHOLD
+    cal = stored_calibration() if calibration is None else calibration
+    rate = DEFAULT_FALSE_ALARM_RATE if false_alarm_rate is None else false_alarm_rate
+    return cal.threshold(rate)
 
 
 def _light(frame: np.ndarray) -> np.ndarray:

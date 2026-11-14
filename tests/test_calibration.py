@@ -293,6 +293,21 @@ def test_calibrate_refuses_no_frames_and_mixed_shapes():
         calibrate([("a", a), ("b", np.ones((64, 80)))])
 
 
+def test_folder_calibration_round_trips_and_drives_analyse(tmp_path):
+    cal = calibrate_folder(_csv_folder_path(tmp_path))
+    back = Calibration.from_json(cal.to_json())
+    assert back == cal
+    frame = _folder_frame(CALIBRATION_FOLDER_TEST_SEEDS[0])
+    report = analyse(frame, calibration=back, false_alarm_rate=0.1)
+    assert report.threshold == cal.threshold(0.1)
+    assert report.striped == (report.score > cal.threshold(0.1))
+    # 12 scores are too few for the default 1% (k = floor(0.13) = 0).
+    with pytest.raises(
+        ValueError, match=re.escape("12 scores are too few for a false-alarm rate of 0.01")
+    ):
+        analyse(frame, calibration=back)
+
+
 def _csv_folder_path(tmp_path):
     _csv_folder(tmp_path / "free")
     return tmp_path / "free"

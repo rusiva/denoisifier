@@ -14,7 +14,9 @@ Stripe-free 400x1600 frames at typical settings. ``analyse`` uses it at
 
 from __future__ import annotations
 
+import functools
 import hashlib
+import importlib.resources
 import json
 import multiprocessing
 import os
@@ -168,6 +170,23 @@ class Calibration:
             )
         except (KeyError, TypeError, IndexError, AttributeError) as e:
             raise ValueError(f"malformed Calibration file: {e!r}") from None
+
+
+STORED_CALIBRATION_FILE = "stripe_free_calibration.json"
+
+
+@functools.cache
+def stored_calibration() -> Calibration:
+    """The Calibration shipped with the package (``STORED_CALIBRATION_FILE``):
+    the Stripe Scores of 300 generated Stripe-free 400x1600 frames at typical
+    settings (scorched Mottle, about 100 photons at the peak, EMCCD noise, 30
+    Spike events per frame, unclipped). Loaded once."""
+    text = (
+        importlib.resources.files("denoisifier")
+        .joinpath(STORED_CALIBRATION_FILE)
+        .read_text(encoding="utf-8")
+    )
+    return Calibration.from_json(text)
 
 
 def stripe_free_score(frame: np.ndarray, *, clip_level: float | None = None) -> float:
