@@ -1,0 +1,335 @@
+{
+  "plan": {
+    "gate_shape": [
+      256,
+      256
+    ],
+    "probe_shape": [
+      400,
+      1600
+    ],
+    "gate_threshold": 49.7159577445053,
+    "probe_threshold": 85.17105365821853,
+    "striped": [
+      80000,
+      80299
+    ],
+    "free": [
+      81000,
+      81849
+    ],
+    "probe_striped": [
+      82000,
+      82029
+    ],
+    "timed": 3,
+    "min_detected": 280,
+    "max_false_alarms": 24,
+    "probe_min_detected": 26
+  },
+  "striped": {
+    "n": 300,
+    "detected": 300,
+    "cases": [
+      {
+        "period": 3,
+        "angle_deg": 10,
+        "detected": 30,
+        "n": 30,
+        "min_score": 67.73105573966367,
+        "min_over_threshold": 1.3623604736277948
+      },
+      {
+        "period": 5,
+        "angle_deg": 0,
+        "detected": 30,
+        "n": 30,
+        "min_score": 96.80262123391334,
+        "min_over_threshold": 1.9471136758823104
+      },
+      {
+        "period": 8,
+        "angle_deg": 6,
+        "detected": 30,
+        "n": 30,
+        "min_score": 111.76698384247533,
+        "min_over_threshold": 2.248110846357536
+      },
+      {
+        "period": 12,
+        "angle_deg": -8,
+        "detected": 30,
+        "n": 30,
+        "min_score": 109.27981193303138,
+        "min_over_threshold": 2.198083208909099
+      },
+      {
+        "period": 20,
+        "angle_deg": -10,
+        "detected": 30,
+        "n": 30,
+        "min_score": 68.3375646019323,
+        "min_over_threshold": 1.3745599542329061
+      },
+      {
+        "period": 4,
+        "angle_deg": -4,
+        "detected": 30,
+        "n": 30,
+        "min_score": 79.01904720529666,
+        "min_over_threshold": 1.589410136909813
+      },
+      {
+        "period": 16,
+        "angle_deg": 10,
+        "detected": 30,
+        "n": 30,
+        "min_score": 101.70518145096482,
+        "min_over_threshold": 2.0457250763152692
+      },
+      {
+        "period": 6,
+        "angle_deg": -10,
+        "detected": 30,
+        "n": 30,
+        "min_score": 92.97587215694996,
+        "min_over_threshold": 1.8701414269189216
+      },
+      {
+        "period": 10,
+        "angle_deg": 3,
+        "detected": 30,
+        "n": 30,
+        "min_score": 94.62541843075806,
+        "min_over_threshold": 1.903320839498787
+      },
+      {
+        "period": 14,
+        "angle_deg": -6,
+        "detected": 30,
+        "n": 30,
+        "min_score": 131.10824768265283,
+        "min_over_threshold": 2.6371461725916996
+      }
+    ]
+  },
+  "free": {
+    "n": 850,
+    "false_alarms": 4,
+    "max_score": 101.51738269624258
+  },
+  "probe": {
+    "n": 30,
+    "detected": 30,
+    "cases": [
+      {
+        "period": 3,
+        "angle_deg": 10,
+        "detected": 3,
+        "n": 3,
+        "min_score": 127.03069801790825,
+        "min_over_threshold": 1.4914773571742763
+      },
+      {
+        "period": 5,
+        "angle_deg": 0,
+        "detected": 3,
+        "n": 3,
+        "min_score": 218.4978525640171,
+        "min_over_threshold": 2.5654003699522545
+      },
+      {
+        "period": 8,
+        "angle_deg": 6,
+        "detected": 3,
+        "n": 3,
+        "min_score": 366.8922020221738,
+        "min_over_threshold": 4.307710028978499
+      },
+      {
+        "period": 12,
+        "angle_deg": -8,
+        "detected": 3,
+        "n": 3,
+        "min_score": 370.7382930018997,
+        "min_over_threshold": 4.352867283873569
+      },
+      {
+        "period": 20,
+        "angle_deg": -10,
+        "detected": 3,
+        "n": 3,
+        "min_score": 426.5811667336494,
+        "min_over_threshold": 5.008522830367577
+      },
+      {
+        "period": 4,
+        "angle_deg": -4,
+        "detected": 3,
+        "n": 3,
+        "min_score": 148.97051996451972,
+        "min_over_threshold": 1.7490745219886676
+      },
+      {
+        "period": 16,
+        "angle_deg": 10,
+        "detected": 3,
+        "n": 3,
+        "min_score": 389.48987095814704,
+        "min_over_threshold": 4.573031026727981
+      },
+      {
+        "period": 6,
+        "angle_deg": -10,
+        "detected": 3,
+        "n": 3,
+        "min_score": 270.6707800410763,
+        "min_over_threshold": 3.1779667905395
+      },
+      {
+        "period": 10,
+        "angle_deg": 3,
+        "detected": 3,
+        "n": 3,
+        "min_score": 281.7837305223991,
+        "min_over_threshold": 3.3084448109937004
+      },
+      {
+        "period": 14,
+        "angle_deg": -6,
+        "detected": 3,
+        "n": 3,
+        "min_score": 362.87955099805043,
+        "min_over_threshold": 4.2605971795798565
+      }
+    ]
+  },
+  "timing": {
+    "shape": [
+      400,
+      1600
+    ],
+    "seeds": [
+      82000,
+      82001,
+      82002
+    ],
+    "seconds": [
+      5.529570514976513,
+      5.299205363029614,
+      5.300140551000368
+    ],
+    "median_s": 5.300140551000368,
+    "limit_s": 30.0
+  },
+  "run_info": {
+    "commit": "3f09325",
+    "cpu": "AMD Ryzen AI 7 PRO 360 w/ Radeon 880M",
+    "logical_cpus": 16,
+    "workers": 12,
+    "python": "3.11.15",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "rate": 0.01,
+    "modulation_depth": 0.2,
+    "mottle": "scorched",
+    "emccd": {
+      "photons_peak": 100.0,
+      "em_gain": 300.0,
+      "read_noise_e": 50.0,
+      "cic": 0.005
+    },
+    "cases": [
+      [
+        3,
+        10
+      ],
+      [
+        5,
+        0
+      ],
+      [
+        8,
+        6
+      ],
+      [
+        12,
+        -8
+      ],
+      [
+        20,
+        -10
+      ],
+      [
+        4,
+        -4
+      ],
+      [
+        16,
+        10
+      ],
+      [
+        6,
+        -10
+      ],
+      [
+        10,
+        3
+      ],
+      [
+        14,
+        -6
+      ]
+    ],
+    "gate_shape": [
+      256,
+      256
+    ],
+    "probe_shape": [
+      400,
+      1600
+    ],
+    "seeds": {
+      "calibration": [
+        10000,
+        11999
+      ],
+      "held_out_free": [
+        20000,
+        20999
+      ],
+      "held_out_striped": [
+        30000,
+        30499
+      ],
+      "probe_calibration": [
+        70000,
+        70299
+      ],
+      "probe_free": [
+        71000,
+        71199
+      ],
+      "probe_striped": [
+        72000,
+        72099
+      ],
+      "timing": [
+        40000,
+        40000
+      ]
+    }
+  },
+  "wall_clock_s": 310.398247754958,
+  "loadavg": {
+    "start": "0.97 7.18 18.30 2/1234 2272342",
+    "end": "12.91 10.11 16.28 1/1206 2272771"
+  },
+  "threads": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "note": "test collection imported NumPy before feasibility set these, so BLAS threading of the in-process timed frames is not pinned (make bench pins it)"
+  },
+  "run_id": "9ec59c7070a64624a2b13b70118dbcb5"
+}

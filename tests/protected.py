@@ -226,6 +226,33 @@ CLIP_DEPTH_EPS = 0.01  # depth error vs clip_level=inf: max(0.01, P3 largest exc
 # ruling after critic 3): P3 block medians 0.18-1.35; 58.5 with rejection off.
 SPIKE_SCORE_MEDIAN_TOL = 5
 
+# Ticket 07 (calibrated stripe score; plan .scratch/stripe-detector/handoffs/07-plan.md,
+# sections 4, 5 and 7). The Calibration Set is generated only inside the one
+# seed_guard.calibrating(...) block of threshold_calibration.calibrate_synthetic; the
+# held-out ranges are looked at only by make check-held-out, the clipped range once.
+STRIPE_FREE_CALIBRATION_SEEDS = range(100_000, 100_300)  # n = 300 -> k = 3 at 1%, 15 at 5%
+CALIBRATED_FREE_SEEDS = range(101_000, 101_300)  # AC 2 held-out, Stripe-free
+CALIBRATED_STRIPED_SEEDS = range(102_000, 102_100)  # AC 3 held-out, m = WEAK_DEPTH, 10 per case
+CLIPPED_FREE_EVALUATION_SEEDS = range(103_000, 103_200)  # one-off clipped measurement (step 10)
+CALIBRATION_SHAPE = PROBE_SHAPE  # one shipped calibration, at the full frame (ruling Q1)
+# Spike events per calibration frame: a synthetic assumption (ruling Q3, ADR 0002), above
+# the expected real rate, so that spike rejection is exercised; not SPIKE_TEST_COUNT.
+CALIBRATION_SPIKES = 30
+OTHER_FALSE_ALARM_RATE = 0.05  # AC 2b: the other requested rate
+# Per-assertion level of the held-out False Alarm tolerances; their Bonferroni union over
+# AC 2a and 2b stays under CALIBRATION_MAX_FALSE_RED (AC 3 is outside it, plan C1).
+CALIBRATION_TOLERANCE_LEVEL = 0.995
+CALIBRATION_MAX_FALSE_RED = 0.01
+HELD_OUT_OPTION_FRAMES = 20  # AC 2b: frames also analysed with false_alarm_rate=0.05 (N3)
+CALIBRATION_TIMEOUT_S = 2400  # per test of the calibration slow modules (W6)
+# Test seeds of ticket 07 (fixed at step 0, before use).
+CALIBRATION_FOLDER_TEST_SEEDS = range(10, 22)  # AC 5: 12 frames, 64x64
+CALIBRATION_TINY_TEST_SEEDS = range(40, 44)  # the tiny plan's calibration (core, no guard)
+CALIBRATION_TINY_FREE_TEST_SEEDS = range(44, 48)  # the tiny plan's held-out Stripe-free
+CALIBRATION_TINY_STRIPED_TEST_SEEDS = range(50, 60)  # the tiny plan's held-out striped
+RUN_POOL_TEST_SEEDS = range(60, 64)  # serial-vs-pool equivalence (plan C2)
+FALSE_ALARM_RATE_OPTION_TEST_SEED = 28  # test_false_alarm_rate_option_sets_the_threshold_...
+
 # test_seed_guard.py (ticket agent-gates/04). The held-out free and striped
 # seeds of test_measure_calibrates_inside_the_block_and_evaluates_outside's
 # small SeedPlan.
@@ -276,6 +303,8 @@ USED_SEEDS = [
     # Ticket 06: critic 1's scratch checks.
     range(700_000, 700_006),
     range(700_100, 700_140),
+    # Ticket 07: scratch range; P1 used 104_000-104_049, the plan review's N6 timing 104_000.
+    range(104_000, 104_100),
 ]
 
 # Calibration seed ranges, by name. tests/seed_guard.py refuses any of these
@@ -287,4 +316,6 @@ CALIBRATION_SEEDS = {
     "GATE_CALIBRATION_SEEDS": GATE_CALIBRATION_SEEDS,
     "PROBE_CALIBRATION_SEEDS": PROBE_CALIBRATION_SEEDS,
     "REGION_CALIBRATION_SEEDS": REGION_CALIBRATION_SEEDS,
+    # Ticket 07 (W1). THRESHOLD_CALIBRATION_SEEDS stays registered: those seeds stay spent.
+    "STRIPE_FREE_CALIBRATION_SEEDS": STRIPE_FREE_CALIBRATION_SEEDS,
 }
