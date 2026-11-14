@@ -6,7 +6,10 @@ per Striped Region with its ``label``, ``period_px``, ``angle_deg``,
 ``modulation_depth``, ``bbox`` and ``area_px`` (ticket 05 moved the Period,
 Angle and depth from the top level into the regions). ``spike_pixels`` counts
 the pixels rejected as Spikes, ``clipped_pixels`` the Clipped Pixels that were
-not (``--clip-level`` overrides the clip detection). With
+not (``--clip-level`` overrides the clip detection). ``threshold`` is the
+one used: by default the stored calibration's at a 1% false-alarm rate;
+``--false-alarm-rate`` picks another rate and ``--calibration FILE`` another
+calibration (``python -m denoisifier.recalibrate``). With
 ``--mask PATH`` the Mask is written as a CSV laid out like the input grid:
 0 outside every region, k inside the region whose ``label`` is k. Under
 ``--transpose`` the Mask and the bboxes follow the file's layout
@@ -23,6 +26,7 @@ import sys
 from pathlib import Path
 
 from denoisifier.analysis import analyse
+from denoisifier.calibration import Calibration
 from denoisifier.frame_io import read_frame, write_mask_csv
 
 
@@ -67,6 +71,19 @@ def main(argv: list[str] | None = None) -> int:
         "at the frame's maximum; 'inf' turns clipping off; use it after per-pixel dark "
         "subtraction, which breaks the plateau",
     )
+    parser.add_argument(
+        "--false-alarm-rate",
+        type=float,
+        metavar="RATE",
+        help="stripe false-alarm rate the threshold is set at, between 0 and 1 (default: "
+        "0.01), on the stored calibration or on --calibration",
+    )
+    parser.add_argument(
+        "--calibration",
+        metavar="FILE",
+        help="a calibration JSON (written by python -m denoisifier.recalibrate) to set the "
+        "threshold on instead of the stored one",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -77,9 +94,16 @@ def main(argv: list[str] | None = None) -> int:
         frame_file = read_frame(
             args.frame, drop_axis_column=args.drop_axis_column, transpose=args.transpose
         )
-        report = dataclasses.replace(
-            analyse(frame_file.frame, clip_level=args.clip_level), reader_notes=frame_file.notes
+        calibration = None
+        if args.calibration is not None:
+            calibration = Calibration.from_json(Path(args.calibration).read_text(encoding="utf-8"))
+        analysed = analyse(
+            frame_file.frame,
+            false_alarm_rate=args.false_alarm_rate,
+            calibration=calibration,
+            clip_level=args.clip_level,
         )
+        report = dataclasses.replace(analysed, reader_notes=frame_file.notes)
         if args.transpose:
             report = report.in_file_layout()
         text = report.to_json() + "\n"

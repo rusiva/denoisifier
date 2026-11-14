@@ -11,6 +11,7 @@ import pytest
 from borderline import BORDERLINE, borderline_frame
 from cases import case_frame, clipped_at
 from denoisifier import analyse, read_frame
+from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
@@ -22,6 +23,7 @@ from protected import (
     CLI_STRIPED_CSV_TEST_SEED,
     DEPTH_TOL,
     MILD_CLIP_LEVEL_FRACTION,
+    OTHER_FALSE_ALARM_RATE,
     OVERRIDE_LEVEL_FRACTION,
 )
 from regions import truth_bbox
@@ -403,3 +405,55 @@ def test_cli_clip_level_flag_overrides_detection(tmp_path, level):
 def test_cli_fails_cleanly_on_nan_clip_level(tmp_path):
     path, _ = _spiked_clipped_csv(tmp_path)
     _assert_clean_failure(_run(path, "--clip-level", "nan"), "clip_level", "nan")
+
+
+# --- Threshold options (ticket 07, plan 2.4) ------------------------------------------
+
+
+def _threshold_report(tmp_path, *flags):
+    s = generate(seed=CLI_STDOUT_TEST_SEED, modulation_depth=0.0)
+    frame_path = tmp_path / "frame.csv"
+    write_frame_csv(s.frame, frame_path)
+    result = _run(frame_path, *flags)
+    return result, (json.loads(result.stdout) if result.returncode == 0 else None)
+
+
+def test_cli_reports_the_default_score_and_threshold(tmp_path):
+    result, report = _threshold_report(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert report["threshold"] == stored_calibration().threshold(DEFAULT_FALSE_ALARM_RATE)
+    assert report["striped"] == (report["score"] > report["threshold"])
+
+
+def test_cli_false_alarm_rate_sets_the_threshold(tmp_path):
+    _, default = _threshold_report(tmp_path)
+    result, report = _threshold_report(tmp_path, "--false-alarm-rate", OTHER_FALSE_ALARM_RATE)
+    assert result.returncode == 0, result.stderr
+    assert report["threshold"] == stored_calibration().threshold(OTHER_FALSE_ALARM_RATE)
+    assert report["score"] == default["score"]
+    assert report["striped"] == (report["score"] > report["threshold"])
+
+
+def test_cli_zero_false_alarm_rate_is_an_error(tmp_path):
+    result, _ = _threshold_report(tmp_path, "--false-alarm-rate", 0)
+    _assert_clean_failure(result, "false-alarm rate")
+
+
+def test_cli_calibration_file_sets_the_threshold(tmp_path):
+    cal = Calibration.from_scores([f"f{i}" for i in range(199)], np.arange(1.0, 200.0), (64, 64))
+    cal_path = tmp_path / "calibration.json"
+    cal_path.write_text(cal.to_json())
+    result, report = _threshold_report(tmp_path, "--calibration", cal_path)
+    assert result.returncode == 0, result.stderr
+    assert report["threshold"] == cal.threshold(DEFAULT_FALSE_ALARM_RATE) == 198.0
+    result, report = _threshold_report(
+        tmp_path, "--calibration", cal_path, "--false-alarm-rate", OTHER_FALSE_ALARM_RATE
+    )
+    assert result.returncode == 0, result.stderr
+    assert report["threshold"] == cal.threshold(OTHER_FALSE_ALARM_RATE) == 190.0
+    assert "score" in report
+
+
+def test_cli_missing_calibration_file_is_an_error(tmp_path):
+    result, _ = _threshold_report(tmp_path, "--calibration", tmp_path / "missing.json")
+    _assert_clean_failure(result, "missing.json")
