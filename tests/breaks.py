@@ -125,7 +125,10 @@ def two_break_layout(seed):
     g = (2 / 3, 1.0)[(k // 4) % 2]
     offset = (3.0, 10.0)[(k // 2) % 2]
     a = float(CASES[seed % 10].angle_deg)
-    return p, g, (a, a + offset), (PI, PI / 2)[k % 2]
+    # Both Angles inside the searched range (within 10 deg of vertical): mirror the offset when
+    # a + offset would leave it (09-critic-5).
+    second = a + offset if abs(a + offset) <= 10 else a - offset
+    return p, g, (a, second), (PI, PI / 2)[k % 2]
 
 
 @normalised_cache
