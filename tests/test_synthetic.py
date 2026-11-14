@@ -9,6 +9,7 @@ from scipy import ndimage
 
 from cases import case_frame, clipped_at
 from denoisifier import synthetic
+from denoisifier._local_phase import line_side, wrap_jump
 from denoisifier.synthetic import Emccd, PhaseBreakLine, StripedRegion, generate
 from protected import (
     BREAK_PHASE_ATOL,
@@ -432,11 +433,6 @@ def test_spike_and_clipped_masks_are_disjoint():
 _BREAK_POINT = (127.5, 127.5)  # half-integer: no pixel centre lies on a line through it
 
 
-def _wrap(a):
-    """``a`` wrapped to (-pi, pi]."""
-    return -((-a + math.pi) % (2 * math.pi) - math.pi)
-
-
 def _canonical(angle_deg, jump):
     """The plan's canonical line (2.1): angle in (-90, 90], jump with its sign, wrapped."""
     a = (angle_deg + 180.0) % 360.0 - 180.0
@@ -444,14 +440,13 @@ def _canonical(angle_deg, jump):
         a, jump = a + 180.0, -jump
     elif a > 90.0:
         a, jump = a - 180.0, -jump
-    return a, _wrap(jump)
+    return a, float(wrap_jump(jump))
 
 
 def _side(shape, point, angle_deg):
     """The strict positive side of the directed line: d_x (y - y0) - d_y (x - x0) > 0."""
     y, x = np.mgrid[0 : shape[0], 0 : shape[1]].astype(float)
-    t = math.radians(angle_deg)
-    return math.cos(t) * (y - point[0]) - math.sin(t) * (x - point[1]) > 0
+    return line_side(y, x, point, angle_deg) > 0
 
 
 def _broken(angle_deg, jump, **kwargs):
@@ -528,7 +523,7 @@ def test_phase_break_truth_is_canonical(a):
     assert -90 < truth.line_angle_deg <= 90
     assert truth.line_angle_deg == pytest.approx(want_angle, abs=BREAK_PHASE_ATOL)
     assert truth.jump_rad == pytest.approx(want_jump, abs=BREAK_PHASE_ATOL)
-    assert truth.jump_rad == pytest.approx(_wrap(-jump), abs=BREAK_PHASE_ATOL)
+    assert truth.jump_rad == pytest.approx(float(wrap_jump(-jump)), abs=BREAK_PHASE_ATOL)
     assert np.array_equal(truth.shifted, _side(s.frame.shape, _BREAK_POINT, want_angle))
     assert other.line_angle_deg == truth.line_angle_deg
     assert other.jump_rad == pytest.approx(truth.jump_rad, abs=BREAK_PHASE_ATOL)

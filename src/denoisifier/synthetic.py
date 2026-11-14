@@ -25,8 +25,8 @@ short bright streaks on top of the noisy frame, then the frame is clipped:
 ``GroundTruth.spike_mask`` and ``clipped_mask`` record which pixels each one
 touched.
 
-Phase Breaks (``PhaseBreakLine``, ticket 09) add a hard step to the stripe
-phase of every Striped Region (spec forward model):
+Phase Breaks (``PhaseBreakLine``, ticket 09) add a sharp Phase Jump to the
+stripe phase of every Striped Region (spec forward model):
 
     phase_i += sum_b jump_b * [pixel lies on b's positive side]
 
@@ -267,7 +267,7 @@ def generate(
     frame outside the hit pixels.
 
     ``phase_breaks`` (``PhaseBreakLine``s) shift the stripe phase by each
-    line's jump on its positive side, a hard step, in every Striped Region;
+    line's Phase Jump on its positive side, sharp at the line, in every Striped Region;
     without ``regions`` the stripes, and so the breaks, cover the whole
     frame. Each line is canonicalised first (``BreakTruth``) and returned in
     ``GroundTruth.phase_breaks``; every field must be finite and ``point`` a
@@ -511,7 +511,7 @@ def _break_truth(b: PhaseBreakLine, x: _F64, y: _F64) -> BreakTruth:
 
 
 def _break_phase(breaks: tuple[BreakTruth, ...]) -> _F64:
-    """Sum of each break's jump on its positive side: a hard step per line."""
+    """Sum of each break's Phase Jump on its positive side, sharp at each line."""
     total = np.zeros(breaks[0].shifted.shape)
     for b in breaks:
         total[b.shifted] += b.jump_rad

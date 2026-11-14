@@ -22,7 +22,8 @@ sensor Period, so in sensor px. A line at angle ``a`` (degrees, canonical in
 ``(-90, 90]``) has direction ``(cos a, sin a)`` in ``(X, Y)``; its positive
 side is where ``side = cos a (Y - Y0) - sin a (X - X0) > 0``, and the jump is
 the phase on the positive side minus the phase on the other side, wrapped to
-``(-pi, pi]``. The stripe phase grows with ``X cos A + Y sin A``.
+``(-pi, pi]`` (``wrap_jump``), the Phase Jump's range in the GLOSSARY. The
+stripe phase grows with ``X cos A + Y sin A``.
 
 Nothing here is fork-specific; ticket 10 adds to this module.
 """
@@ -31,11 +32,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import numpy as np
 from scipy.special import ndtr
 
-from denoisifier._local_stripes import _Spectrum
+from denoisifier._local_stripes import _Spectrum, pixel_size
 from denoisifier.report import BinFactors
 
 # The finder's window sigmas, in Periods, across and along the stripes. They
@@ -116,13 +118,39 @@ class FoundBreak:
 
     def side(self, y: np.ndarray, x: np.ndarray) -> np.ndarray:
         """Signed distance (sensor px) from the line; positive on the positive side."""
-        t = math.radians(self.line_angle_deg)
-        return np.asarray(math.cos(t) * (y - self.point[0]) - math.sin(t) * (x - self.point[1]))
+        return line_side(y, x, self.point, self.line_angle_deg)
 
     def along(self, y: np.ndarray, x: np.ndarray) -> np.ndarray:
         """Position (sensor px) along the line's direction, from ``point``."""
         t = math.radians(self.line_angle_deg)
         return np.asarray(math.cos(t) * (x - self.point[1]) + math.sin(t) * (y - self.point[0]))
+
+
+def line_side(
+    y: np.ndarray, x: np.ndarray, point: tuple[float, float], line_angle_deg: float
+) -> np.ndarray:
+    """Signed distance (sensor px) of (``y``, ``x``) from the line through
+    ``point`` (Y, X) at ``line_angle_deg``: ``cos a (Y - Y0) - sin a (X - X0)``,
+    positive on the line's positive side."""
+    t = math.radians(line_angle_deg)
+    return np.asarray(math.cos(t) * (y - point[0]) - math.sin(t) * (x - point[1]))
+
+
+def wrap_jump(a: np.ndarray | float) -> np.ndarray:
+    """``a`` (radians) wrapped to ``(-pi, pi]``, the Phase Jump's range; a
+    value already in that range is returned exactly."""
+    a = np.asarray(a, dtype=float)
+    turned = a - 2 * np.pi * np.ceil((a - np.pi) / (2 * np.pi))
+    return np.asarray(np.where((a > -np.pi) & (a <= np.pi), a, turned))
+
+
+def sensor_coordinates(
+    rows: np.ndarray, cols: np.ndarray, bins: BinFactors
+) -> tuple[np.ndarray, np.ndarray]:
+    """Scaled sensor coordinates (Y, X) of frame pixel indices ``rows`` and
+    ``cols``: each index times its bin factor (see the module docstring)."""
+    v, h = pixel_size(bins)
+    return (rows * v).astype(float), (cols * h).astype(float)
 
 
 def frame_period(period: float, angle_deg: float, bins: BinFactors) -> float:
@@ -172,8 +200,15 @@ def break_response(spectrum: _Spectrum, period: float, angle_deg: float) -> np.n
     return z
 
 
-def _wrap(a: np.ndarray | float) -> np.ndarray:
-    return np.asarray((np.asarray(a) + np.pi) % (2 * np.pi) - np.pi)
+class _LineFit(NamedTuple):
+    """One fitted line: its E, angle (degrees; may lie outside (-90, 90]
+    before canonicalisation), offset from the samples' mean (sensor px) and
+    jump (radians)."""
+
+    evidence: float
+    angle_deg: float
+    offset: float
+    jump: float
 
 
 @dataclass
@@ -184,6 +219,26 @@ class _Scan:
     offset: np.ndarray
     evidence: np.ndarray
     jump: np.ndarray
+
+    def fit(self, i: int) -> _LineFit:
+        return _LineFit(
+            float(self.evidence[i]),
+            float(self.angle[i]),
+            float(self.offset[i]),
+            float(self.jump[i]),
+        )
+
+    def best(self) -> _LineFit:
+        """The window with the highest E."""
+        return self.fit(int(np.argmax(self.evidence)))
+
+    def best_near(self, offset: float, span: float) -> _LineFit | None:
+        """The window with the highest E within ``span`` of ``offset``; None
+        when there is none."""
+        near = np.flatnonzero(np.abs(self.offset - offset) <= span)
+        if not len(near):
+            return None
+        return self.fit(int(near[np.argmax(self.evidence[near])]))
 
 
 class _Samples:
@@ -210,8 +265,7 @@ class _Samples:
 
     def offsets(self, line_angle_deg: float) -> np.ndarray:
         """Signed distance of each sample from the line through the samples' mean."""
-        t = math.radians(line_angle_deg)
-        return np.asarray(math.cos(t) * (self.y - self.y0) - math.sin(t) * (self.x - self.x0))
+        return line_side(self.y, self.x, (self.y0, self.x0), line_angle_deg)
 
     def scan(self, angles: np.ndarray) -> _Scan | None:
         """The fit at every offset bin of every angle in ``angles``; None when
@@ -248,7 +302,7 @@ class _Samples:
             count = n_minus + n_plus
             mean_magnitude = cor(m, np.ones(2 * k)) / np.maximum(count, 1)
             det = s11 * s22 - s12**2
-            ok = (n_minus >= self.min_side) & (n_plus >= self.min_side) & (det > 0)
+            valid = (n_minus >= self.min_side) & (n_plus >= self.min_side) & (det > 0)
             det = np.where(det > 0, det, 1)
             c_minus = (s22 * b1 - s12 * b2) / det
             c_plus = (s11 * b2 - s12 * b1) / det
@@ -256,26 +310,22 @@ class _Samples:
             explained = np.real(np.conj(c_minus) * b1 + np.conj(c_plus) * b2) - np.abs(
                 b1 + b2
             ) ** 2 / np.maximum(count, 1)
-            evidence = np.where(ok, explained / np.maximum(count * mean_magnitude**2, 1e-30), -1.0)
+            evidence = np.where(
+                valid, explained / np.maximum(count * mean_magnitude**2, 1e-30), -1.0
+            )
             centre = np.arange(len(evidence)) + k
             out.append((np.full(len(evidence), float(a)), lo + centre * self.bin, evidence, jump))
         if not out:
             return None
         return _Scan(*(np.concatenate(col) for col in zip(*out, strict=True)))
 
-    def best_near(
-        self, angle: float, offset: float, span: float
-    ) -> tuple[float, float, float, float] | None:
-        """(E, angle, offset, jump) of the best window at ``angle`` within
-        ``span`` of ``offset``; None when there is none."""
+    def best_near(self, angle: float, offset: float, span: float) -> _LineFit | None:
+        """The best window at ``angle`` within ``span`` of ``offset``; None
+        when there is none."""
         found = self.scan(np.array([angle]))
         if found is None:
             return None
-        near = np.flatnonzero(np.abs(found.offset - offset) <= span)
-        if not len(near):
-            return None
-        q = near[np.argmax(found.evidence[near])]
-        return float(found.evidence[q]), angle, float(found.offset[q]), float(found.jump[q])
+        return found.best_near(offset, span)
 
 
 def find_phase_breaks(
@@ -312,8 +362,7 @@ def find_phase_breaks(
             a, o, jump = a - 180, -o, -jump
         elif a <= -90:
             a, o, jump = a + 180, -o, -jump
-        if jump <= -math.pi:
-            jump += 2 * math.pi
+        jump = float(wrap_jump(jump))
         t = math.radians(a)
         brk = FoundBreak(
             point=(samples.y0 + o * math.cos(t), samples.x0 - o * math.sin(t)),
@@ -359,67 +408,52 @@ def _samples(
     grid[::stride_r, ::stride_c] = True
     rr, cc = np.nonzero(interior & grid)
     w = zc[rr, cc] * np.exp(-1j * (kx * cc + ky * rr))
+    y, x = sensor_coordinates(rr + r0, cc + c0, bins)
     return _Samples(
         w,
-        ((rr + r0) * v).astype(float),
-        ((cc + c0) * h).astype(float),
+        y,
+        x,
         float(stride_r * stride_c * h * v),
         period,
         angle_deg,
     )
 
 
-def _best_line(samples: _Samples, coarse: np.ndarray) -> tuple[float, float, float, float] | None:
-    """(E, angle, offset from the samples' mean, jump) of the best line:
-    coarse scan, fine scan, then golden-section refinement on long lines.
-    The angle may lie outside (-90, 90]; the caller canonicalises it."""
+def _best_line(samples: _Samples, coarse: np.ndarray) -> _LineFit | None:
+    """The best line (offset from the samples' mean): coarse scan, fine scan,
+    then golden-section refinement on long lines. The angle may lie outside
+    (-90, 90]; the caller canonicalises it."""
     first = samples.scan(coarse)
     if first is None:
         return None
-    k = int(np.argmax(first.evidence))
-    best = (
-        float(first.evidence[k]),
-        float(first.angle[k]),
-        float(first.offset[k]),
-        float(first.jump[k]),
-    )
-    a0, o0 = best[1], best[2]
+    best = first.best()
+    a0, o0 = best.angle_deg, best.offset
     fine = np.arange(
         a0 - _BREAK_FINE_SPAN_DEG, a0 + _BREAK_FINE_SPAN_DEG + 1e-9, _BREAK_FINE_STEP_DEG
     )
     second = samples.scan(fine)
     if second is not None:
-        near = np.flatnonzero(
-            np.abs(second.offset - o0) <= _BREAK_FINE_OFFSET_SPAN_PERIODS * samples.period
-        )
-        if len(near):
-            q = near[np.argmax(second.evidence[near])]
-            best = (
-                float(second.evidence[q]),
-                float(second.angle[q]),
-                float(second.offset[q]),
-                float(second.jump[q]),
-            )
+        fine_best = second.best_near(o0, _BREAK_FINE_OFFSET_SPAN_PERIODS * samples.period)
+        if fine_best is not None:
+            best = fine_best
     tol = math.degrees(_BREAK_LINE_TOL_PERIODS * samples.period / max(samples.extent, 1.0))
     if tol < _BREAK_FINE_STEP_DEG / 2:
         best = _golden(samples, best, tol)
     return best
 
 
-def _golden(
-    samples: _Samples, best: tuple[float, float, float, float], tol: float
-) -> tuple[float, float, float, float]:
+def _golden(samples: _Samples, best: _LineFit, tol: float) -> _LineFit:
     """Golden-section search of the angle within +- half a fine step of
     ``best``, down to ``tol`` degrees; the result replaces ``best`` only when
     its E is higher. Assumes one E peak in that interval."""
-    _, a, o, _ = best
+    a, o = best.angle_deg, best.offset
     span = _BREAK_REFINE_OFFSET_SPAN_PERIODS * samples.period
     lo, hi = a - _BREAK_FINE_STEP_DEG / 2, a + _BREAK_FINE_STEP_DEG / 2
     ratio = (math.sqrt(5) - 1) / 2
     c1, c2 = hi - ratio * (hi - lo), lo + ratio * (hi - lo)
     f1, f2 = samples.best_near(c1, o, span), samples.best_near(c2, o, span)
     while hi - lo > tol and f1 is not None and f2 is not None:
-        if f1[0] >= f2[0]:
+        if f1.evidence >= f2.evidence:
             hi, c2, f2 = c2, c1, f1
             c1 = hi - ratio * (hi - lo)
             f1 = samples.best_near(c1, o, span)
@@ -428,7 +462,7 @@ def _golden(
             c2 = lo + ratio * (hi - lo)
             f2 = samples.best_near(c2, o, span)
     for candidate in (f1, f2):
-        if candidate is not None and candidate[0] > best[0]:
+        if candidate is not None and candidate.evidence > best.evidence:
             best = candidate
     return best
 
@@ -449,13 +483,13 @@ def _accepted(samples: _Samples, brk: FoundBreak) -> bool:
         return False
     edges = np.linspace(u[either].min(), u[either].max() + 1e-9, _BREAK_SEGMENTS + 1)
     pieces = []
-    for q in range(_BREAK_SEGMENTS):
-        inside = (u >= edges[q]) & (u < edges[q + 1])
+    for piece in range(_BREAK_SEGMENTS):
+        inside = (u >= edges[piece]) & (u < edges[piece + 1])
         m, p = minus & inside, plus & inside
         if m.sum() < _BREAK_MIN_PIECE_SAMPLES or p.sum() < _BREAK_MIN_PIECE_SAMPLES:
             continue
         pieces.append(float(np.angle(samples.w[p].sum() * np.conj(samples.w[m].sum()))))
     if not pieces:
         return False
-    spread = float(np.max(np.abs(_wrap(np.array(pieces) - brk.jump_rad))))
+    spread = float(np.max(np.abs(wrap_jump(np.array(pieces) - brk.jump_rad))))
     return spread <= _BREAK_JUMP_SPREAD_RAD

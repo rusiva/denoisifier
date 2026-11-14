@@ -7,6 +7,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 from binning import bin_truth_mask
+from denoisifier._local_phase import wrap_jump
 from protected import (
     ANGLE_TOL_DEG,
     BREAK_CHORD_COVER_MIN,
@@ -58,10 +59,6 @@ def _chord(mask, truth, bins):
     return float(along[near].min()), float(along[near].max())
 
 
-def _wrap(a):
-    return -((-a + math.pi) % (2 * math.pi) - math.pi)
-
-
 def break_problems(found, truth, chord_mask, overshoot_mask, period, bins):
     """Why ``found`` (a ``PhaseBreak``) does not match ``truth`` (a ``BreakTruth``) by plan 5.1's
     line, coverage, overshoot and jump rules ([] when it does). ``chord_mask`` and
@@ -89,7 +86,7 @@ def break_problems(found, truth, chord_mask, overshoot_mask, period, bins):
     dy, dx = y[-1] - y[0], x[-1] - x[0]
     t = math.radians(truth.line_angle_deg)
     jump = found.jump_rad if math.cos(t) * dx + math.sin(t) * dy >= 0 else -found.jump_rad
-    if abs(_wrap(jump - truth.jump_rad)) > BREAK_JUMP_TOL_RAD:
+    if abs(wrap_jump(jump - truth.jump_rad)) > BREAK_JUMP_TOL_RAD:
         problems.append(f"jump: {jump:.3f} (direction-aligned) vs {truth.jump_rad:.3f}")
     return problems
 

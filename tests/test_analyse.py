@@ -18,6 +18,7 @@ from breaks import (
     break_full_frame_case,
     break_pair,
     break_region_case,
+    compatible_pair_frame,
     full_frame_jump,
     ones,
     region_breaks,
@@ -1849,6 +1850,8 @@ def _break_free_frame(kind, seed):
         return single_region_case(seed, period, angle_deg)[0].frame, ONE_BY_ONE
     if kind == "two-region":
         return two_region_case(seed, *TWO_REGION_PAIRS[0])[0].frame, ONE_BY_ONE
+    if kind == "compatible-pair":
+        return compatible_pair_frame(seed).frame, ONE_BY_ONE
     if kind == "binned":
         s, _, bins = break_full_frame_case(seed, (), bins=(2, 1))
         return bin_sensor_frame(s.frame, bins.horizontal, bins.vertical), bins
@@ -1859,6 +1862,7 @@ def _break_free_frame(kind, seed):
 IDENTITY_FRAMES = [
     *inner([("region", seed) for seed in REGION_TEST_SEEDS], key=lambda v: v[1], multi=True),
     *inner([("two-region", seed) for seed in TWO_REGION_TEST_SEEDS], keep=1, multi=True),
+    ("compatible-pair", PHASE_BREAK_TEST_SEEDS[0]),
     ("binned", BINNING_TEST_SEEDS[2]),
     ("stripe-free", PHASE_BREAK_TEST_SEEDS[0]),
 ]
@@ -1866,20 +1870,34 @@ IDENTITY_FRAMES = [
 
 @pytest.mark.parametrize(("kind", "seed"), IDENTITY_FRAMES)
 def test_frames_without_a_found_break_match_the_pass_free_analysis(monkeypatch, kind, seed):
-    """Zero fakes (B4): on break-free frames the pass finds nothing and changes nothing."""
+    """Zero fakes (B4): on break-free frames the pass finds nothing and changes nothing. On the
+    compatible pair, the pass searched the two regions plus the gap between them for a bridging
+    break (spec P1), so the bridge code ran and found nothing."""
     frame, bins = _break_free_frame(kind, seed)
+    domains = []
+    finder = analysis.find_phase_breaks
+
+    def spy(z, domain, *args):
+        domains.append(domain.copy())
+        return finder(z, domain, *args)
+
+    monkeypatch.setattr(analysis, "find_phase_breaks", spy)
     built = analyse(frame, bin_factors=bins)
     _pass_free(monkeypatch)
     free = analyse(frame, bin_factors=bins)
     assert built.phase_breaks == ()
     assert built.to_dict() == free.to_dict()
     assert np.array_equal(built.labels, free.labels)
+    if kind == "compatible-pair":
+        assert len(free.regions) == 2
+        both = (free.labels == 1) | (free.labels == 2)
+        assert any((d & both).sum() == both.sum() and (d & ~both).any() for d in domains)
 
 
 @pytest.mark.parametrize("seed", inner(PHASE_BREAK_TEST_SEEDS))
 def test_two_regions_crossed_by_one_break_stay_apart(seed):
-    """The two_break negative (critic-3 1.3): two regions too far apart in Angle to merge,
-    crossed by one break, are not joined by it."""
+    """Two equal-Period regions too far apart in Angle to merge, crossed by one break (critic-3
+    1.3): no reported region covers BREAK_SIDE_COVER_MIN of both regions' cores."""
     s, report = two_break_case(seed)
     cores = [truth_pixels(t) for t in s.truth.regions]
     for region in report.regions:
@@ -1918,6 +1936,29 @@ def test_phase_breaks_are_not_searched_under_the_frame_period_limit(jump):
     assert report.warnings[0].startswith("Periods below 4 px")
     assert list(report.warnings[1:-1]) == refusals
     assert "calibration" in report.warnings[-1]
+
+
+def test_a_refused_region_keeps_its_warning_when_the_pass_joins_it_to_another(monkeypatch):
+    """Spec P5: a refused region that the pass joins to a region above the frame-period limit
+    (absorbed in its slit, or bridged) keeps its refusal warning, under the label of the region
+    it joined and with its own Period. The pass is replaced by one that hands back the refused
+    region as part of a region at a Period _MERGE_PERIOD_RATIO longer, above the limit."""
+    s, free, bins = _refusal_frame(())
+    (refused,) = free.regions
+
+    def joined(reported, *_):
+        (g,) = reported
+        return [(dataclasses.replace(g, period=g.period * analysis._MERGE_PERIOD_RATIO), [])]
+
+    monkeypatch.setattr(analysis, "_with_phase_breaks", joined)
+    frame = bin_sensor_frame(s.frame, bins.horizontal, bins.vertical)
+    report = analyse(frame, bin_factors=bins)
+    assert len(report.regions) == 1
+    assert report.regions[0].period_px > refused.period_px
+    assert list(report.warnings[1:-1]) == [
+        f"region 1 (Period {refused.period_px:.3g} px): phase breaks were not searched at 2x1 "
+        f"binning: its stripes fall under 2.5 frame pixels along their normal (2.35)"
+    ]
 
 
 PAIR_SEEDS = [s for s in PHASE_BREAK_TEST_SEEDS if CASES[s % 10].period >= BREAK_PAIR_MIN_PERIOD]

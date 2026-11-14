@@ -119,7 +119,9 @@ def break_pair(seed):
 
 
 def two_break_layout(seed):
-    """Plan 5.4's two-region negative: (Period, gap windows, Angles, jump) for ``seed``."""
+    """(Period, gap windows, Angles, jump) of plan 5.4's two-region frame for ``seed``: two
+    equal-Period regions whose Angles differ by more than the merge rule allows, so a break
+    crossing both must leave them apart."""
     k = seed - PHASE_BREAK_TEST_SEEDS[0]
     p = (5, 8, 12, 6)[k % 4]
     g = (2 / 3, 1.0)[(k // 4) % 2]
@@ -147,6 +149,20 @@ def two_break_case(seed):
         **TYPICAL,
     )
     return s, analyse(s.frame)
+
+
+def compatible_pair_frame(seed):
+    """Synthetic: ``two_break_case``'s layout for ``seed`` with no break and both regions at the
+    first Angle, so the two regions are _compatible and close enough for the pass to search the
+    gap between them for a bridging break."""
+    p, g, (a, _), _ = two_break_layout(seed)
+    return generate(
+        seed=seed,
+        shape=TWO_REGION_SHAPE,
+        mottle="scorched",
+        regions=two_regions(p, p, angle_deg=(a, a), gap_windows=g),
+        **TYPICAL,
+    )
 
 
 def region_breaks(report, label):

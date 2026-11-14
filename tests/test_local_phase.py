@@ -2,9 +2,9 @@
 phasor fields and on noise-free generated frames.
 
 The phasor field is what the finder is given on the real path: ``break_response`` of stripes with
-a hard phase step, i.e. ``exp(i k . r)`` times the step blurred by the finder's own window,
+a sharp Phase Break, i.e. ``exp(i k . r)`` times the Phase Jump blurred by the finder's own window,
 ``(1 - Phi(side / sigma_n)) + Phi(side / sigma_n) exp(i jump)``
-(``test_the_phasor_field_is_the_finder_response_to_a_hard_step`` checks this). The plan's
+(``test_the_phasor_field_is_the_finder_response_to_a_sharp_phase_break`` checks this). The plan's
 unblurred field ``exp(i (k . r + jump [side > 0]))`` is outside the finder's contract (ticket 09
 Comments, 09-critic-4)."""
 
@@ -22,6 +22,8 @@ from denoisifier._local_phase import (
     break_response,
     find_phase_breaks,
     frame_period,
+    line_side,
+    wrap_jump,
 )
 from denoisifier._local_stripes import _Spectrum
 from denoisifier.synthetic import PhaseBreakLine, generate
@@ -44,11 +46,6 @@ def _grid():
     return np.mgrid[0 : SHAPE[0], 0 : SHAPE[1]].astype(float)
 
 
-def _side(y, x, point, line_angle_deg):
-    t = math.radians(line_angle_deg)
-    return math.cos(t) * (y - point[0]) - math.sin(t) * (x - point[1])
-
-
 def _field(breaks=(), period=PERIOD, angle_deg=STRIPE_ANGLE, magnitude=None, winding=0):
     """exp(i (2 pi / P (x cos A + y sin A) + sum jump [side > 0] + winding * azimuth))."""
     y, x = _grid()
@@ -56,7 +53,9 @@ def _field(breaks=(), period=PERIOD, angle_deg=STRIPE_ANGLE, magnitude=None, win
     phase = 2 * math.pi / period * (x * math.cos(t) + y * math.sin(t))
     z = np.exp(1j * phase)
     for point, line_angle, jump in breaks:
-        step = ndtr(_side(y, x, point, line_angle) / _finder_sigma_n(period, angle_deg, line_angle))
+        step = ndtr(
+            line_side(y, x, point, line_angle) / _finder_sigma_n(period, angle_deg, line_angle)
+        )
         z = z * (1 - step + step * np.exp(1j * jump))
     if winding:
         z = z * np.exp(1j * winding * np.arctan2(y - CENTER[0], x - CENTER[1]))
@@ -76,10 +75,6 @@ def _canonical(line_angle, jump):
     return line_angle, jump
 
 
-def _wrap(a):
-    return -((-a + math.pi) % (2 * math.pi) - math.pi)
-
-
 def _aligned_jump(found, line_angle_deg):
     """The found jump with directions aligned (plan 5.1): flipped iff the found direction and
     the true direction have a negative dot product (a line near 90 deg may come out at -89)."""
@@ -92,11 +87,11 @@ def _assert_on_line(found, point, line_angle_deg, domain, period=PERIOD):
     ``domain`` (both ends of its chord), and their angles agree."""
     y, x = _grid()
     t = math.radians(line_angle_deg)
-    on = domain & (np.abs(_side(y, x, point, line_angle_deg)) <= 0.5)
+    on = domain & (np.abs(line_side(y, x, point, line_angle_deg)) <= 0.5)
     along = math.cos(t) * (x[on] - point[1]) + math.sin(t) * (y[on] - point[0])
     for u in (along.min(), along.max()):
         py, px = point[0] + u * math.sin(t), point[1] + u * math.cos(t)
-        d = _side(py, px, found.point, found.line_angle_deg)
+        d = line_side(py, px, found.point, found.line_angle_deg)
         assert abs(d) <= BREAK_EXACT_POSITION_TOL_PERIODS * period, (u, d)
 
 
@@ -110,7 +105,7 @@ def test_a_break_is_found_on_its_line_with_its_jump(line_angle, jump):
     want_angle, want_jump = _canonical(line_angle, jump)
     assert -90 < found.line_angle_deg <= 90
     _assert_on_line(found, point, want_angle, domain)
-    assert abs(_wrap(_aligned_jump(found, want_angle) - want_jump)) <= BREAK_EXACT_JUMP_TOL_RAD
+    assert abs(wrap_jump(_aligned_jump(found, want_angle) - want_jump)) <= BREAK_EXACT_JUMP_TOL_RAD
     assert found.evidence > 0
 
 
@@ -141,7 +136,7 @@ def test_a_break_through_a_dim_gap_between_two_parts_is_found():
     domain = _disc()
     (found,) = find_phase_breaks(z, domain, PERIOD, STRIPE_ANGLE, ONE)
     _assert_on_line(found, CENTER, 0.0, domain)
-    assert abs(_wrap(found.jump_rad - math.pi)) <= BREAK_EXACT_JUMP_TOL_RAD
+    assert abs(wrap_jump(found.jump_rad - math.pi)) <= BREAK_EXACT_JUMP_TOL_RAD
 
 
 def test_a_region_too_short_across_the_line_has_no_break():
@@ -186,7 +181,7 @@ def test_break_response_finds_a_break_in_a_generated_frame():
     (found,) = find_phase_breaks(z, domain, PERIOD, STRIPE_ANGLE, ONE)
     t = math.radians(10.0)
     for u in (-90.0, 90.0):
-        d = _side(
+        d = line_side(
             point[0] + u * math.sin(t),
             point[1] + u * math.cos(t),
             found.point,
@@ -197,16 +192,27 @@ def test_break_response_finds_a_break_in_a_generated_frame():
 
 
 @pytest.mark.parametrize("line_angle", [0.0, 90.0])
-def test_the_phasor_field_is_the_finder_response_to_a_hard_step(line_angle):
-    """``break_response`` of noise-free stripes with a hard phase step, over twice the depth,
+def test_the_phasor_field_is_the_finder_response_to_a_sharp_phase_break(line_angle):
+    """``break_response`` of noise-free stripes with a sharp Phase Break, over twice the depth,
     is the blurred-step phasor field away from the frame edge."""
     point = (CENTER[0] + 3.3, CENTER[1] - 1.7)
     y, x = _grid()
     depth = 0.5
     jump = math.pi / 2
-    stripes = 2 * math.pi / PERIOD * x + jump * (_side(y, x, point, line_angle) > 0)
+    stripes = 2 * math.pi / PERIOD * x + jump * (line_side(y, x, point, line_angle) > 0)
     frame = 1 + depth * np.cos(stripes)
     z = break_response(_Spectrum(frame, ONE), PERIOD, STRIPE_ANGLE) / depth
     inner = _disc(BREAK_PHASOR_FIELD_RADIUS_PX)
     error = np.abs(z - _field([(point, line_angle, jump)]))[inner].max()
     assert error <= BREAK_PHASOR_FIELD_ATOL
+
+
+def test_jumps_wrap_to_the_glossary_range():
+    """``wrap_jump`` maps to (-pi, pi], the Phase Jump's range: -pi becomes pi, values already in
+    range come back exactly, and values outside move by whole turns."""
+    inside = np.array([np.nextafter(-math.pi, 0.0), -1.0, 0.0, 1e-20, 2.0, math.pi])
+    assert np.array_equal(wrap_jump(inside), inside)
+    assert wrap_jump(-math.pi) == math.pi
+    assert wrap_jump(3 * math.pi) == pytest.approx(math.pi)
+    assert wrap_jump(1.5 * math.pi) == pytest.approx(-0.5 * math.pi)
+    assert wrap_jump(-1.5 * math.pi) == pytest.approx(0.5 * math.pi)
