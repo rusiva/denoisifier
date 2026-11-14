@@ -12,6 +12,17 @@ from scipy.ndimage import gaussian_filter
 
 from binning import bin_sensor_frame, bin_truth_mask
 from borderline import BORDERLINE, borderline_frame
+from breaks import (
+    GAUSSIAN,
+    ac2_line,
+    break_full_frame_case,
+    break_pair,
+    break_region_case,
+    full_frame_jump,
+    ones,
+    region_breaks,
+    two_break_case,
+)
 from cases import CASES, case_frame, clipped_at
 from denoisifier import BinFactors, BoundingBox, PhaseBreak, Region, Report, analyse, analysis
 from denoisifier.analysis import _ENVELOPE_SIGMA
@@ -31,6 +42,14 @@ from protected import (
     BINNED_FRAME_ANGLE_TOL_DEG,
     BINNING_TEST_SEEDS,
     BORDERLINE_SCORE_WINDOW,
+    BREAK_JUMP_TOL_RAD,
+    BREAK_MIN_FOUND_JUMP_RAD,
+    BREAK_PAIR_MIN_PERIOD,
+    BREAK_REFUSAL_TEST_PERIOD,
+    BREAK_SIDE_COVER_MIN,
+    BREAK_SIGN_TEST_PERIOD,
+    BREAK_SIGN_TEST_SEED,
+    BREAK_SMALL_REGION_PERIODS,
     CANDIDATE_CAP_HEADROOM,
     CLIP_DEPTH_EPS,
     CLIP_LEVEL_FRACTION,
@@ -61,6 +80,7 @@ from protected import (
     PEDESTAL_OFFSET,
     PERIOD_REL_TOL,
     PHASE_BREAK_TEST_SEED,
+    PHASE_BREAK_TEST_SEEDS,
     PROFILE_ONLY_TEST_SEEDS,
     REGION_EDGE_PX,
     REGION_FRAME_SHAPE,
@@ -92,7 +112,13 @@ from regions import (
     two_region_case,
 )
 from shared_cache import analysed
-from truth_match import assert_depth_matches, assert_matches_truth
+from truth_match import (
+    assert_break_matches,
+    assert_depth_matches,
+    assert_matches_truth,
+    assert_region_covers_both_sides,
+    truth_lit_mask,
+)
 
 SHAPE = (256, 256)
 SEEDS = MOTTLED_TEST_SEEDS
@@ -1636,3 +1662,305 @@ def test_calibration_with_matching_bin_factors_has_no_note():
     report = analyse(frame, bin_factors=BinFactors(2, 1), calibration=cal)
     assert len(report.warnings) == 1
     assert "below 4 px" in report.warnings[0]
+
+
+# --- Phase Breaks on the real path (ticket 09, plan 5.2 and 5.4) -----------------------
+
+PI = np.pi
+ONE_BY_ONE = BinFactors()
+AC2_PARAMS = inner(PHASE_BREAK_TEST_SEEDS)
+# AC 3: line Angles far from horizontal, each with jumps pi/2 and pi.
+AC3_CASES = [(a, j) for a in (45.0, 90.0, -60.0) for j in (PI / 2, PI)]
+AC3_PARAMS = diagonal(PHASE_BREAK_TEST_SEEDS[0:2], AC3_CASES)
+FULL_FRAME_BREAK_PARAMS = inner(PHASE_BREAK_TEST_SEEDS[:4])
+# AC 4 and the measurements run on every AC 2 and AC 3 region frame (one shared cache):
+# (seed, jump, line Angle).
+BREAK_REGION_FRAMES = inner(
+    [(seed, ac2_line(seed)[1], ac2_line(seed)[0]) for seed in PHASE_BREAK_TEST_SEEDS],
+    key=lambda v: v[0],
+    multi=True,
+) + diagonal(PHASE_BREAK_TEST_SEEDS[0:2], [(j, a) for a, j in AC3_CASES], seed_first=True)
+
+
+def _ac2_frame(seed):
+    line_angle, jump = ac2_line(seed)
+    return break_region_case(seed, jump, line_angle)
+
+
+def _main_label(report, truth_mask):
+    """The reported region holding the most of ``truth_mask``'s pixels."""
+    assert report.regions, "no region reported"
+    return max(report.regions, key=lambda r: (truth_mask & (report.labels == r.label)).sum()).label
+
+
+def _assert_region_break_found(s, report):
+    """Plan 5.1 on a region frame: the one true break is matched in its region, no extras."""
+    (line,) = s.truth.phase_breaks
+    (region,) = s.truth.regions
+    mask = truth_pixels(region)
+    found = region_breaks(report, _main_label(report, mask))
+    assert len(found) == 1, found
+    assert_break_matches(found, line, mask, mask, region.period, ONE_BY_ONE)
+    return found[0]
+
+
+@pytest.mark.parametrize("seed", AC2_PARAMS)
+def test_phase_breaks_are_found_and_measured(seed):
+    """AC 2: a break of at least pi/2 at typical noise is found within one Period of its true
+    line and its jump within pi/4."""
+    s, report = _ac2_frame(seed)
+    assert abs(s.truth.phase_breaks[0].jump_rad) >= BREAK_MIN_FOUND_JUMP_RAD
+    _assert_region_break_found(s, report)
+
+
+def _full_frame_break(seed):
+    return break_full_frame_case(seed, ((0.0, 0.0, full_frame_jump(seed)),))
+
+
+@pytest.mark.parametrize("seed", FULL_FRAME_BREAK_PARAMS)
+def test_phase_break_in_full_frame_stripes_is_found(seed):
+    """AC 2 on 400x1600 full-frame stripes, with the full-frame chord (plan 5.1)."""
+    s, report, bins = _full_frame_break(seed)
+    (line,) = s.truth.phase_breaks
+    lit = truth_lit_mask(s, bins)
+    found = region_breaks(report, _main_label(report, lit))
+    assert len(found) == 1, found
+    assert_break_matches(found, line, lit, ones(lit.shape), s.truth.period, bins)
+
+
+def test_reported_jump_sign_matches_the_generator():
+    """C1 end to end: a +pi/2 jump on a line at 10 deg is reported as +pi/2, read in the
+    reported point order with no direction flip."""
+    s, report = break_region_case(
+        BREAK_SIGN_TEST_SEED,
+        PI / 2,
+        10.0,
+        noise=GAUSSIAN,
+        period=BREAK_SIGN_TEST_PERIOD,
+        angle_deg=0.0,
+    )
+    found = _assert_region_break_found(s, report)
+    assert abs(found.jump_rad - PI / 2) <= BREAK_JUMP_TOL_RAD
+
+
+@pytest.mark.parametrize(("line_angle", "jump", "seed"), AC3_PARAMS)
+def test_phase_break_at_an_unusual_angle_is_found(line_angle, jump, seed):
+    """AC 3: lines far from horizontal are found as well (plan 5.1)."""
+    s, report = break_region_case(seed, jump, line_angle)
+    _assert_region_break_found(s, report)
+
+
+@pytest.mark.parametrize(("seed", "jump", "line_angle"), BREAK_REGION_FRAMES)
+def test_frame_with_phase_breaks_is_one_striped_region(seed, jump, line_angle):
+    """AC 4 (plan 5.3): Striped, exactly one region, and it covers both sides of the line."""
+    s, report = break_region_case(seed, jump, line_angle)
+    assert report.striped is True
+    assert len(report.regions) == 1
+    assert_labels_consistent(report)
+    (region,) = s.truth.regions
+    assert_region_covers_both_sides(
+        report.labels == 1,
+        truth_pixels(region),
+        s.truth.phase_breaks[0],
+        region.period,
+        ONE_BY_ONE,
+    )
+
+
+@pytest.mark.parametrize("seed", FULL_FRAME_BREAK_PARAMS)
+def test_phase_break_does_not_split_full_frame_stripes(seed):
+    """AC 4 on the AC 2 full frames, against the generator-side lit mask."""
+    s, report, bins = _full_frame_break(seed)
+    assert report.striped is True
+    assert len(report.regions) == 1
+    assert_labels_consistent(report)
+    assert_region_covers_both_sides(
+        report.labels == 1, truth_lit_mask(s, bins), s.truth.phase_breaks[0], s.truth.period, bins
+    )
+
+
+@pytest.mark.parametrize("seed", inner(PHASE_BREAK_TEST_SEEDS[:2]))
+def test_phase_break_does_not_split_paired_gaussian_frames(seed):
+    """AC 4, paired: at Gaussian noise the frames with and without the break are bit-identical
+    off the shifted side; each gives one region, and the break frame's covers both sides."""
+    line_angle, jump = ac2_line(seed)
+    s, report = break_region_case(seed, jump, line_angle, noise=GAUSSIAN)
+    s0, report0 = break_region_case(seed, None, line_angle, noise=GAUSSIAN)
+    (line,) = s.truth.phase_breaks
+    off = ~line.shifted
+    assert np.array_equal(s.frame[off], s0.frame[off])
+    assert line.shifted.any()
+    assert len(report0.regions) == 1
+    assert len(report.regions) == 1
+    (region,) = s.truth.regions
+    assert_region_covers_both_sides(
+        report.labels == 1, truth_pixels(region), line, region.period, ONE_BY_ONE
+    )
+
+
+@pytest.mark.parametrize(("seed", "jump", "line_angle"), BREAK_REGION_FRAMES)
+def test_phase_break_frames_keep_period_angle_and_mask(seed, jump, line_angle):
+    """The region with the most truth pixels keeps its Period, Angle and mask across the break
+    (plan 5.2, measurements in their own test). Depth is BASE's and not asserted here."""
+    s, report = break_region_case(seed, jump, line_angle)
+    (truth,) = s.truth.regions
+    mask = truth_pixels(truth)
+    label = _main_label(report, mask)
+    region = report.regions[label - 1]
+    assert_matches_truth(region.period_px, region.angle_deg, truth)
+    assert iou(report.labels == label, mask) >= MASK_IOU_MIN
+
+
+def test_report_lists_phase_breaks():
+    """AC 5: the JSON lists each found break as {region, line, jump_rad}; a break-free frame
+    lists none."""
+    seed = PHASE_BREAK_TEST_SEEDS[0]
+    _, report = _ac2_frame(seed)
+    data = json.loads(report.to_json())
+    assert data == report.to_dict()
+    assert list(data).index("phase_breaks") == list(data).index("regions") + 1
+    assert data["phase_breaks"]
+    labels = {r["label"] for r in data["regions"]}
+    for entry in data["phase_breaks"]:
+        assert set(entry) == {"region", "line", "jump_rad"}
+        assert entry["region"] in labels
+        assert type(entry["jump_rad"]) is float
+        assert len(entry["line"]) >= 2
+        assert all(len(point) == 2 for point in entry["line"])
+    line_angle, _ = ac2_line(seed)
+    _, free = break_region_case(seed, None, line_angle)
+    assert free.regions
+    assert json.loads(free.to_json())["phase_breaks"] == []
+
+
+def _pass_free(monkeypatch):
+    """``analyse`` with the Phase Break pass replaced by one that returns its inputs."""
+    monkeypatch.setattr(
+        analysis,
+        "_with_phase_breaks",
+        lambda reported, *_: [(g, []) for g in reported],
+    )
+
+
+def _identity_frame(kind, seed):
+    """(frame, BinFactors) of plan 5.4's identity frames."""
+    if kind == "region":
+        period, angle_deg = CASES[seed % len(CASES)]
+        return single_region_case(seed, period, angle_deg)[0].frame, ONE_BY_ONE
+    if kind == "two-region":
+        return two_region_case(seed, *TWO_REGION_PAIRS[0])[0].frame, ONE_BY_ONE
+    if kind == "binned":
+        s, _, bins = break_full_frame_case(seed, (), bins=(2, 1))
+        return bin_sensor_frame(s.frame, bins.horizontal, bins.vertical), bins
+    s = generate(seed=seed, shape=REGION_FRAME_SHAPE, modulation_depth=0.0, **TYPICAL)
+    return s.frame, ONE_BY_ONE
+
+
+IDENTITY_FRAMES = [
+    *inner([("region", seed) for seed in REGION_TEST_SEEDS], key=lambda v: v[1], multi=True),
+    *inner([("two-region", seed) for seed in TWO_REGION_TEST_SEEDS], keep=1, multi=True),
+    ("binned", BINNING_TEST_SEEDS[2]),
+    ("stripe-free", PHASE_BREAK_TEST_SEEDS[0]),
+]
+
+
+@pytest.mark.parametrize(("kind", "seed"), IDENTITY_FRAMES)
+def test_frames_without_a_found_break_match_the_pass_free_analysis(monkeypatch, kind, seed):
+    """Zero fakes (B4): on break-free frames the pass finds nothing and changes nothing."""
+    frame, bins = _identity_frame(kind, seed)
+    built = analyse(frame, bin_factors=bins)
+    _pass_free(monkeypatch)
+    free = analyse(frame, bin_factors=bins)
+    assert built.phase_breaks == ()
+    assert built.to_dict() == free.to_dict()
+    assert np.array_equal(built.labels, free.labels)
+
+
+@pytest.mark.parametrize("seed", inner(PHASE_BREAK_TEST_SEEDS))
+def test_two_regions_crossed_by_one_break_stay_apart(seed):
+    """The two_break negative (critic-3 1.3): two regions too far apart in Angle to merge,
+    crossed by one break, are not joined by it."""
+    s, report = two_break_case(seed)
+    cores = [truth_pixels(t) for t in s.truth.regions]
+    for region in report.regions:
+        own = report.labels == region.label
+        shares = [float((own & core).sum() / core.sum()) for core in cores]
+        assert min(shares) < BREAK_SIDE_COVER_MIN, (region.label, shares)
+
+
+def _refusal_frame(breaks):
+    return break_full_frame_case(
+        BINNING_TEST_SEEDS[0],
+        breaks,
+        bins=(2, 1),
+        period=BREAK_REFUSAL_TEST_PERIOD,
+        angle_deg=0.0,
+    )
+
+
+@pytest.mark.parametrize("jump", [PI, None], ids=["break", "break-free"])
+def test_phase_breaks_are_not_searched_under_the_frame_period_limit(jump):
+    """B7: at a frame Period of 2.35 (between 2.0 and the finder's 2.5), no break is searched,
+    and each reported region gets one refusal warning, in label order, between the
+    unresolved-Periods warning and the coverage note. With the break, BASE splits the region
+    at it and nothing can bridge the halves (a known limitation, plan 8); the count of regions
+    is not pinned."""
+    _, report, _ = _refusal_frame(() if jump is None else ((0.0, 0.0, jump),))
+    assert report.phase_breaks == ()
+    assert report.regions
+    if jump is None:
+        assert len(report.regions) == 1
+    refusals = [
+        f"region {r.label} (Period {r.period_px:.3g} px): phase breaks were not searched at 2x1 "
+        f"binning: its stripes fall under 2.5 frame pixels along their normal (2.35)"
+        for r in report.regions
+    ]
+    assert report.warnings[0].startswith("Periods below 4 px")
+    assert list(report.warnings[1:-1]) == refusals
+    assert "calibration" in report.warnings[-1]
+
+
+PAIR_SEEDS = [s for s in PHASE_BREAK_TEST_SEEDS if CASES[s % 10].period >= BREAK_PAIR_MIN_PERIOD]
+
+
+@pytest.mark.parametrize("seed", inner(PAIR_SEEDS))
+def test_two_parallel_phase_breaks_are_both_found(seed):
+    """Two horizontal breaks BREAK_PAIR_SEPARATION_PERIODS apart: both matched, no extras."""
+    s, report, bins = break_pair(seed)
+    lit = truth_lit_mask(s, bins)
+    found = region_breaks(report, _main_label(report, lit))
+    assert len(found) == 2, found
+    for line in s.truth.phase_breaks:
+        assert_break_matches(found, line, lit, ones(lit.shape), s.truth.period, bins)
+
+
+@pytest.mark.parametrize(
+    ("bins", "seed"),
+    diagonal(BINNING_TEST_SEEDS[2:], [((2, 1),), ((1, 2),)]),
+)
+def test_binned_phase_break_is_found(bins, seed):
+    """Binned frames: the break is matched in sensor geometry (half-pixel centres) and the
+    frame stays one region covering both sides."""
+    s, report, factors = break_full_frame_case(seed, ((0.0, 0.0, PI),), bins=bins)
+    (line,) = s.truth.phase_breaks
+    lit = truth_lit_mask(s, factors)
+    assert report.striped is True
+    assert len(report.regions) == 1
+    found = region_breaks(report, 1)
+    assert len(found) == 1, found
+    assert_break_matches(found, line, lit, ones(lit.shape), s.truth.period, factors)
+    assert_region_covers_both_sides(report.labels == 1, lit, line, s.truth.period, factors)
+
+
+def test_small_region_reports_no_phase_break(monkeypatch):
+    """A region BREAK_SMALL_REGION_PERIODS Periods across its break is too small for the fit
+    window: no break, and the report is the pass-free one."""
+    s, report = break_region_case(
+        PHASE_BREAK_TEST_SEEDS[1], PI / 2, 0.0, height_periods=BREAK_SMALL_REGION_PERIODS
+    )
+    assert report.regions
+    assert report.phase_breaks == ()
+    _pass_free(monkeypatch)
+    free = analyse(s.frame)
+    assert report.to_dict() == free.to_dict()
+    assert np.array_equal(report.labels, free.labels)

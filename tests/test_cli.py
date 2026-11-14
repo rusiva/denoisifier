@@ -10,6 +10,7 @@ import pytest
 
 from binning import bin_sensor_frame
 from borderline import BORDERLINE, borderline_frame
+from breaks import ac2_line, break_region_case
 from cases import case_frame, clipped_at
 from denoisifier import BinFactors, analyse, read_frame
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
@@ -17,6 +18,7 @@ from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
     BINNING_TEST_SEEDS,
+    BREAK_JUMP_TOL_RAD,
     CLI_CLIP_TEST_SEED,
     CLI_MASK_TEST_SEED,
     CLI_MISSING_OUTPUT_DIR_TEST_SEED,
@@ -27,8 +29,9 @@ from protected import (
     MILD_CLIP_LEVEL_FRACTION,
     OTHER_FALSE_ALARM_RATE,
     OVERRIDE_LEVEL_FRACTION,
+    PHASE_BREAK_TEST_SEEDS,
 )
-from regions import truth_bbox
+from regions import truth_bbox, truth_pixels
 from truth_match import assert_matches_truth
 
 SOLIS = Path(__file__).parent / "data" / "solis"
@@ -522,3 +525,41 @@ def test_cli_rejects_malformed_bin(tmp_path, value):
 def test_cli_bin_leaving_no_searchable_period_fails_cleanly(tmp_path):
     path, _ = _binned_csv(tmp_path, 1, 1, modulation_depth=0.0)
     _assert_clean_failure(_run(path, "--bin", "11x1"), "11x1")
+
+
+# Ticket 09: Phase Breaks in the JSON (plan 5.2, AC 5 CLI).
+
+
+def _side(line, pixel):
+    """PhaseBreak's rule: > 0 on the positive side, cross(end - start, p - start) with
+    cross(a, b) = a_col b_row - a_row b_col."""
+    (r0, c0), (r1, c1) = line
+    return (c1 - c0) * (pixel[0] - r0) - (r1 - r0) * (pixel[1] - c0)
+
+
+def test_cli_reports_phase_breaks(tmp_path):
+    seed = PHASE_BREAK_TEST_SEEDS[0]
+    line_angle, jump = ac2_line(seed)
+    s, _ = break_region_case(seed, jump, line_angle)
+    (truth,) = s.truth.phase_breaks
+    plain_path, file_path = tmp_path / "frame.csv", tmp_path / "transposed.csv"
+    write_frame_csv(s.frame, plain_path)
+    write_frame_csv(s.frame.T, file_path)
+    plain = _run(plain_path)
+    flipped = _run(file_path, "--transpose")
+    assert plain.returncode == flipped.returncode == 0
+    assert plain.stderr == flipped.stderr == ""
+    (brk,) = json.loads(plain.stdout)["phase_breaks"]
+    (file_brk,) = json.loads(flipped.stdout)["phase_breaks"]
+    assert file_brk["line"] == [[c, r] for r, c in reversed(brk["line"])]
+    assert file_brk["jump_rad"] == brk["jump_rad"]
+    assert file_brk["region"] == brk["region"]
+    # The reported direction agrees with the truth's (a near-horizontal line, col
+    # increasing), so the shifted side is the positive side, in both layouts.
+    assert abs(brk["jump_rad"] - truth.jump_rad) <= BREAK_JUMP_TOL_RAD
+    region = truth_pixels(s.truth.regions[0])
+    rows, cols = np.nonzero(truth.shifted & region)
+    far = np.argmax(np.abs(rows - truth.point[0]))  # the shifted pixel farthest from the line
+    pixel = (int(rows[far]), int(cols[far]))
+    assert _side(brk["line"], pixel) > 0
+    assert _side(file_brk["line"], pixel[::-1]) > 0

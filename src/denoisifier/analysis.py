@@ -262,6 +262,25 @@ def analyse(
     for binning: summing h pixels across the stripes damps it by
     ``|sin(pi h f) / (h sin(pi f))|`` at sensor frequency f (under 2x1 about
     x0.97 at 12 px, x0.87 at 6 px and x0.73 at 4.2 px).
+
+    Phase Breaks (``Report.phase_breaks``) are searched after the score and
+    the Threshold, in the reported regions and between adjacent compatible
+    ones; the score, the verdict and the set of reported regions never depend
+    on them. A found break may merge two reported regions it separates, fill
+    the slit along it, absorb a break-free region lying in that slit, and
+    re-measure the region's Period and Angle away from the break (kept only
+    when they fit the stripes at least as well as the reported ones). The
+    Modulation Depth is the reported one unless regions merged. A frame with
+    no found break gets the same regions, labels and measurements as without
+    the search. Only straight lines are searched; a region shorter than about
+    8 Periods across a line gets no break on it. The evidence threshold is
+    conservative on purpose until it is calibrated (ticket 11); no
+    false-break rate is claimed. Breaks are not searched in a region whose
+    stripes fall under 2.5 frame pixels along their normal (under binning);
+    ``Report.warnings`` then holds, for each such region, "region {label}
+    (Period {P} px): phase breaks were not searched at {bins} binning: its
+    stripes fall under 2.5 frame pixels along their normal ({frame Period})".
+    There a break is not found, and a region it splits stays split.
     """
     frame = np.asarray(frame, dtype=float)
     if frame.ndim != 2:

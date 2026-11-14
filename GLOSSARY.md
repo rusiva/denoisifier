@@ -76,6 +76,10 @@ _Avoid_: region image, segmentation
 A line across the stripes where every stripe on one side is shifted sideways relative to the other side. Period and angle stay the same on both sides.
 _Avoid_: fault, discontinuity, glitch
 
+**Phase Jump**:
+The stripe phase difference across a Phase Break, in radians, in (-π, π]: the phase on the break's positive side minus the phase on the other side. A jump of π shifts the stripes by half a Period. The stripe phase grows with the column, so a positive jump moves the stripes on the positive side toward column 0 by jump / 2π Periods.
+_Avoid_: phase step, shift size
+
 **Fork**:
 A point where one stripe splits into two, or where a stripe ends.
 _Avoid_: dislocation, defect, branch
