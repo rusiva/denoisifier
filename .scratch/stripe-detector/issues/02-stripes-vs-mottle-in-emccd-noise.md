@@ -4,11 +4,15 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The generator supports scorched mottle (typical strength about 0.4) and multiscale mottle (about 0.35), and the EMCCD chain with configurable photon count at the peak, EM gain (including off), read noise and spurious charge.
-- [ ] Generator self-consistency: m = 0 gives no stripe peak in the spectrum; on a clean striped frame, the true period and angle match the spectral peak.
-- [ ] At about 100 photons at the peak with scorched mottle: stripe-free frames come out not striped, and frames with m ≥ 0.5 come out striped, across a batch of seeds (provisional threshold; formal calibration comes later).
-- [ ] For detected stripes, the report's period, angle and modulation depth are within the spec's tolerances.
-- [ ] Modulation depth is measured relative to the local envelope: it is the same for the same m in bright and dim parts of the profile.
-- [ ] Periods from 3 to 20 px and tilts up to ±10° are detected.
+- [x] The generator supports scorched mottle (typical strength about 0.4) and multiscale mottle (about 0.35), and the EMCCD chain with configurable photon count at the peak, EM gain (including off), read noise and spurious charge.
+- [x] Generator self-consistency: m = 0 gives no stripe peak in the spectrum; on a clean striped frame, the true period and angle match the spectral peak.
+- [x] At about 100 photons at the peak with scorched mottle: stripe-free frames come out not striped, and frames with m ≥ 0.5 come out striped, across a batch of seeds (provisional threshold; formal calibration comes later).
+- [x] For detected stripes, the report's period, angle and modulation depth are within the spec's tolerances.
+- [x] Modulation depth is measured relative to the local envelope: it is the same for the same m in bright and dim parts of the profile.
+- [x] Periods from 3 to 20 px and tilts up to ±10° are detected.
+
+## Comments
+
+Done in `631c3af` (generator: mottle and EMCCD chain), `d3b1150` (local periodicity and orientation detector) and `c0d99ab` (code-review fixes); 187 tests pass (`uv run pytest`, about 7 min). Criteria ticked after checking each against its tests in `tests/test_synthetic.py` and `tests/test_analyse.py`.
