@@ -11,3 +11,7 @@
 - [ ] With 2×1 binning, the report warns that physical periods below 4 px can't be resolved.
 - [ ] Region bounding boxes and the mask stay in frame (array) coordinates, while measurements are in sensor pixels; the report says which units each field uses.
 - [ ] 1×1 binning gives the same results as no option.
+
+## Comments
+
+- 2026-11-14, from ticket 07 (plan Q9): the shipped calibration is at 400x1600 unbinned, and its rate claim does not cover binned frames or frames of a larger light area. Decide here whether a shape or binning mismatch with the calibration is noted in the Report.

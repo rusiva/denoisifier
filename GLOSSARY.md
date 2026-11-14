@@ -83,8 +83,12 @@ A continuous, unbounded measure of how strongly a frame shows stripes; higher me
 _Avoid_: confidence, probability, likelihood, SNR
 
 **Threshold**:
-The stripe score above which the verdict is Striped, set so that about 1% of stripe-free frames are false alarms.
+The stripe score above which the verdict is Striped, set on a Calibration Set at the requested false-alarm rate (default 1%), so that about that share of stripe-free frames are false alarms.
 _Avoid_: cutoff, limit
+
+**Calibration Set**:
+The Stripe-free frames a Threshold is set on; generated or real; never the frames it is evaluated on.
+_Avoid_: training set, reference frames
 
 **Verdict**:
 The detector's yes/no call on a frame: **Striped** if it finds at least one striped region anywhere, however small, otherwise **Not Striped**.

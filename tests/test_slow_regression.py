@@ -12,6 +12,15 @@ module fixture (regression_check) is estimated at about 5-6 min idle with the
 default workers; the 1200 s timeout covers the whole module, so any single test
 or rerun (`-k`, `--lf`) pays for the fixture under it (ticket agent-gates/05, W3).
 Every other test keeps the global 60 s limit.
+
+Since ticket 07, `make check-slow` (`-m "slow and not held_out"`) also runs
+tests/test_slow_calibration.py, the calibration reproduction: 300 full frames,
+about 14 min idle (ticket 07 step 5 measured 2.79 s per full frame, 838 s for the
+300, with the default 12 workers), under its own per-test 2400 s timeout. So the
+slow tier takes about 20 min idle in all (an estimate until ticket 07's closing
+`make check-slow` measures it). tests/test_held_out_calibration.py is slow too but
+carries held_out: `make check-slow` does not run it; `make check-held-out` does
+(about 400 full frames plus 20 option analyses, about 19-24 min idle).
 """
 
 import json

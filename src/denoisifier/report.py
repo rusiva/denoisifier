@@ -72,6 +72,12 @@ class Report:
     pixels lie inside its tight ``bbox`` and number ``area_px``. ``mask()`` is
     the boolean union of the regions.
 
+    ``score`` is the Stripe Score: the highest peak ratio over the qualifying
+    groups (0.0 when there are none). It can change in steps under small
+    pixel changes, because a group appears or vanishes at the size and
+    leakage rules. ``threshold`` is the Threshold used (by default the stored
+    calibration's at a 1% false-alarm rate; see ``analyse``).
+
     ``transposed`` is True when ``labels`` and the bboxes are in the file's
     layout of a transposed read (``in_file_layout``); Period and Angle are
     always in the analysed frame's convention. ``reader_notes`` are the
