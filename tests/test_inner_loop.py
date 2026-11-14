@@ -269,7 +269,7 @@ def test_the_two_region_frame_is_analysed_once_in_the_inner_loop():
         (TWO_REGION_TEST_SEEDS[0], *TWO_REGION_PAIRS[0])
     ]
     verdict = [kind for name, kind in _inner(test_analyse.VERDICT_PARAMS) if name == "two-region"]
-    assert verdict == ["THRESHOLD"]
+    assert verdict == ["default"]
     assert not [t for t in _inner(test_analyse.LOWERING_PARAMS) if t[0] == "two-region"]
 
 

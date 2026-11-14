@@ -34,9 +34,10 @@ _PAD = 32
 # Ratio floor, in Modulation Depth units: the reference energy is never taken
 # below that of a depth-A0 modulation, so noise-free frames (both energies
 # tiny) cannot score on deterministic leakage. With A0 = 3e-3, ticket 01's
-# profile-only frames (Gaussian noise 0 / 0.001 / 0.01, seeds 0-9) score at
-# most ~72; with A0 = 1e-3 they reached ~420. What this means for shallow
-# stripes depends on THRESHOLD and is noted there (analysis.py).
+# profile-only frames (Gaussian noise 0 / 0.001 / 0.01, seeds 0-9) scored at
+# most ~72 on ticket 03's score and at most 38.3 on today's (ticket 07, P1);
+# with A0 = 1e-3 they reached ~420. What this means for shallow stripes
+# depends on the Threshold and is noted in analysis.py.
 _A0 = 3e-3
 
 

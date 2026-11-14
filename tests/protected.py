@@ -21,7 +21,7 @@ DEPTH_TOL = 0.1
 # frequency grid; the horizontal band is the same rotated 90 deg.
 SPECTRAL_BAND_DEG = 12.0
 
-# Borderline frames (borderline.py) must score in (THRESHOLD, this x THRESHOLD).
+# Borderline frames (borderline.py) must score in (T, this x T) at the default threshold T.
 BORDERLINE_SCORE_WINDOW = 1.5
 
 # Feasibility gate (feasibility.py, test_feasibility_gate.py): weak stripes at
@@ -95,7 +95,7 @@ REGRESSION_TINY_PROBE_TEST_SEEDS = range(64, 66)
 
 # Calibration seeds outside the feasibility gate (ticket agent-gates/04).
 # _A0 (_local_stripes.py) was tuned on ticket 01's profile-only frames, seeds
-# 0-9; THRESHOLD (analysis.py) was set on seeds 100-199.
+# 0-9; the former analysis.THRESHOLD (154, removed in ticket 07) was set on seeds 100-199.
 A0_CALIBRATION_SEEDS = range(0, 10)
 THRESHOLD_CALIBRATION_SEEDS = range(100, 200)
 # Ticket 05's region knobs (analysis.py) are tuned on 90_000-90_399 and the
@@ -144,9 +144,11 @@ CLI_MISSING_OUTPUT_DIR_TEST_SEED = 23  # test_cli_fails_cleanly_when_output_dir_
 MOTTLE_NONE_TEST_SEED = 23  # test_mottle_none_is_unchanged_from_ticket_01 (was 3)
 CSV_ROUND_TRIP_TEST_SEED = 25  # test_written_csv_reads_back_as_the_same_frame (was 5)
 SCORE_AND_THRESHOLD_TEST_SEED = 27  # test_report_has_score_and_threshold (was 7)
-# borderline.BORDERLINE. The first entry was (0, 20); 22 is the lowest Period
-# 20 seed in 20-99 that scores in the borderline window (ruling O3).
-BORDERLINE_TEST_CASES = [(22, 20), (13, 5), (13, 8), (12, 20), (16, 8)]
+# borderline.BORDERLINE. Re-picked at ticket 07 step 6 for the stored default threshold
+# by the frozen W4(c) rule (keep a seed still in the window, else the first seed from 10 up
+# in the window at that Period not already chosen for it); was [(22, 20), (13, 5), (13, 8),
+# (12, 20), (16, 8)] at THRESHOLD = 154. Scan table: ticket 07 Comments.
+BORDERLINE_TEST_CASES = [(11, 20), (11, 5), (11, 8), (13, 20), (21, 8)]
 
 # Ticket 05 (Striped Regions): generator tests.
 DIGEST_TEST_SEEDS = range(30, 33)  # test_default_frames_are_unchanged_by_regions

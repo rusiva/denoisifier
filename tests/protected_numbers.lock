@@ -18,7 +18,6 @@ denoisifier._local_stripes :: _ALONG :: 1.5
 denoisifier._local_stripes :: _PAD :: 32
 denoisifier._local_stripes :: _A0 :: 0.003
 
-denoisifier.analysis :: THRESHOLD :: 154.0
 denoisifier.analysis :: MIN_SIDE :: 40
 denoisifier.analysis :: _ENVELOPE_SIGMA :: 10.0
 denoisifier.analysis :: _LIGHT_FRACTION :: 0.1
@@ -130,7 +129,7 @@ protected :: CLI_MISSING_OUTPUT_DIR_TEST_SEED :: 23
 protected :: MOTTLE_NONE_TEST_SEED :: 23
 protected :: CSV_ROUND_TRIP_TEST_SEED :: 25
 protected :: SCORE_AND_THRESHOLD_TEST_SEED :: 27
-protected :: BORDERLINE_TEST_CASES :: [(22, 20), (13, 5), (13, 8), (12, 20), (16, 8)]
+protected :: BORDERLINE_TEST_CASES :: [(11, 20), (11, 5), (11, 8), (13, 20), (21, 8)]
 protected :: DIGEST_TEST_SEEDS :: range(30, 33)
 protected :: REGION_GENERATOR_TEST_SEED :: 33
 protected :: MASK_SATURATION_TOL :: 1e-06

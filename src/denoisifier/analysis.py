@@ -72,15 +72,11 @@ from denoisifier.report import BoundingBox, Region, Report
 
 _log = logging.getLogger(__name__)
 
-# Provisional verdict threshold, carried over from ticket 03: it was set on the
-# old score (the frame's maximum ratio) and is not re-derived on the ticket-05
-# score (the highest peak ratio of a qualifying region). Ticket 07 replaces it
-# with a calibrated value. Its ticket-03 derivation: the log-midpoint of the
-# highest stripe-free max ratio (83.7) and the lowest m = 0.5 max ratio (284.8)
-# on calibration seeds 100-199 (256x256, ~100 photons, EMCCD, scorched and
-# multiscale Mottle). With the ratio floor _A0 = 3e-3, noise-free stripes
-# shallower than about _A0 * sqrt(THRESHOLD) ~ 0.04 are never Striped.
-THRESHOLD = 154.0
+# The verdict threshold is not a constant here: by default it is the stored
+# calibration's (``calibration.stored_calibration()``) Threshold at
+# ``DEFAULT_FALSE_ALARM_RATE`` (ticket 07, ADR 0002). With the ratio floor
+# _A0 = 3e-3, noise-free stripes shallower than about _A0 * sqrt(T) are never
+# Striped at a threshold T (about 0.03 at the stored 1% Threshold).
 
 # Smallest side accepted: 2 x the longest period searched; the sigma = 10
 # envelope filter needs at least that.
@@ -186,9 +182,29 @@ def analyse(
     """Find the Striped Regions of ``frame`` and measure each one's Period, Angle and depth.
 
     ``frame`` is a 2D array of intensities, shape ``(rows, cols)``. It is not
-    modified. ``threshold`` (>= 0, may be ``inf``) is the stripe score above
-    which a region is reported; it changes which regions are reported, never
-    their pixels, bounding boxes or measurements, nor the score.
+    modified.
+
+    The Threshold, the Stripe Score above which a region is reported, is by
+    default the stored calibration's at a 1% false-alarm rate
+    (``DEFAULT_FALSE_ALARM_RATE``): an order statistic of the Stripe Scores of
+    300 generated Stripe-free 400x1600 frames at typical settings (scorched
+    Mottle, about 100 photons at the peak, EMCCD noise, 30 Spike events per
+    frame, unclipped). ``false_alarm_rate`` picks another rate (``0 < rate <
+    1``; the smallest requestable rate is 1/(n + 1)), ``calibration`` another
+    Calibration (for example one made on real frames with
+    ``calibration.calibrate_folder``), and ``threshold`` (>= 0, may be
+    ``inf``) gives the Threshold directly, excluding the other two. The
+    Threshold changes which regions are reported, never their pixels,
+    bounding boxes or measurements, nor the score; ``Report.threshold`` is the
+    one used.
+
+    The stated rate holds for unclipped frames of 400x1600 at typical
+    settings. On crops and smaller frames it is expected to be lower (a
+    smaller light area), but that is not guaranteed; frames with a larger
+    light area and binned frames are not covered. The score can change in
+    steps under small pixel changes, because a group appears or vanishes at
+    the size and leakage rules, so it is a calibrated verdict statistic more
+    than a smooth measure of how close a frame was.
 
     Spike pixels are always rejected first: replaced by the median of their
     column neighbours in a working copy that every later step uses. The count
@@ -269,8 +285,6 @@ def _resolve_threshold(
         if false_alarm_rate is not None or calibration is not None:
             raise ValueError("threshold= excludes false_alarm_rate= and calibration=")
         return float(threshold)
-    if false_alarm_rate is None and calibration is None:
-        return THRESHOLD
     cal = stored_calibration() if calibration is None else calibration
     rate = DEFAULT_FALSE_ALARM_RATE if false_alarm_rate is None else false_alarm_rate
     return cal.threshold(rate)

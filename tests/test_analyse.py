@@ -13,8 +13,8 @@ from scipy.ndimage import gaussian_filter
 from borderline import BORDERLINE, borderline_frame
 from cases import CASES, case_frame, clipped_at
 from denoisifier import Report, analyse, analysis
-from denoisifier.analysis import _ENVELOPE_SIGMA, THRESHOLD
-from denoisifier.calibration import Calibration
+from denoisifier.analysis import _ENVELOPE_SIGMA
+from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.synthetic import (
     _SPIKE_BRIGHTNESS,
     _SPIKE_MAX_LENGTH,
@@ -37,6 +37,7 @@ from protected import (
     DEPTH_REGRESSION_CASES,
     ENVELOPE_TEST_SEEDS,
     EXTREMES_TEST_SEEDS,
+    FALSE_ALARM_RATE_OPTION_TEST_SEED,
     FULL_FRAME_TEST_SEEDS,
     GATE_STORED_THRESHOLD,
     INNER_LOOP_SEED_COUNT,
@@ -48,7 +49,10 @@ from protected import (
     MIN_SIZE_TEST_SEEDS,
     MOTTLED_TEST_SEEDS,
     MULTISCALE_TEST_SEEDS,
+    OTHER_FALSE_ALARM_RATE,
     OVERRIDE_LEVEL_FRACTION,
+    PACKAGE_STORED_THRESHOLD,
+    PACKAGE_STORED_THRESHOLD_5PCT,
     PARTIAL_CLIP_TEST_SEEDS,
     PEDESTAL_OFFSET,
     PERIOD_REL_TOL,
@@ -194,6 +198,42 @@ def test_a_false_alarm_rate_picks_the_threshold_of_the_calibration():
     report = analyse(_option_frame(), calibration=_scores_1_to_199(), false_alarm_rate=0.05)
     assert report.threshold == 190.0
     assert report.striped == (report.score > 190.0) == bool(report.regions)
+
+
+def test_the_default_threshold_is_the_stored_calibration_at_one_percent():
+    """AC 4, default path: no option gives the stored calibration's 1% Threshold."""
+    report = analyse(_option_frame())
+    assert report.threshold == stored_calibration().threshold(DEFAULT_FALSE_ALARM_RATE)
+    assert report.threshold == PACKAGE_STORED_THRESHOLD
+    assert report.striped == (report.score > report.threshold) == bool(report.regions)
+    assert not hasattr(analysis, "THRESHOLD")
+
+
+def test_false_alarm_rate_option_sets_the_threshold_and_verdict():
+    """AC 2b/4: false_alarm_rate=0.05 on the stored calibration gives its 5% Threshold,
+    the verdict ``score > threshold`` and the default path's score."""
+    seed = FALSE_ALARM_RATE_OPTION_TEST_SEED
+    case = CASES[seed % len(CASES)]
+    frame = generate(
+        seed=seed,
+        shape=SHAPE,
+        period=case.period,
+        angle_deg=case.angle_deg,
+        modulation_depth=0.2,
+        noise=Emccd(),
+    ).frame
+    option = analyse(frame, false_alarm_rate=OTHER_FALSE_ALARM_RATE)
+    default = analyse(frame)
+    assert option.threshold == stored_calibration().threshold(OTHER_FALSE_ALARM_RATE)
+    assert option.threshold == PACKAGE_STORED_THRESHOLD_5PCT
+    assert option.striped == (option.score > option.threshold)
+    assert option.score == default.score
+    assert option.score > 0
+
+
+def test_a_zero_false_alarm_rate_raises_on_the_stored_calibration():
+    with pytest.raises(ValueError, match="false-alarm rate must be between 0 and 1"):
+        analyse(_option_frame(), false_alarm_rate=0.0)
 
 
 def test_an_explicit_threshold_is_used_as_is():
@@ -643,8 +683,8 @@ def _analysed_frame(frame):
     return frame, analyse(frame)
 
 
-# Each sweep frame by name: a function giving (frame, its Report at THRESHOLD). The free and
-# striped frames share that analysis with the other tests of the same generate call
+# Each sweep frame by name: a function giving (frame, its Report at the default threshold).
+# The free and striped frames share that analysis with the other tests of the same generate call
 # (shared_cache.analysed); the two-region frame with test_two_regions_* (two_region_case).
 SWEEP_FRAMES = {
     **{
@@ -676,16 +716,19 @@ SWEEP_FRAMES = {
 }
 
 
+# The default path's threshold: the stored calibration at the default rate (ticket 07).
+DEFAULT_THRESHOLD = stored_calibration().threshold(DEFAULT_FALSE_ALARM_RATE)
+
 # The thresholds of the verdict tests, by kind: each kind is its own test
 # item, so no item runs more than three analyses of its frame (the two-region
 # frame takes about 9 s per analysis; the per-test timeout is 60 s).
-SWEEP_THRESHOLDS = ("zero", "THRESHOLD", "score", "above-score", "below-score", "inf")
+SWEEP_THRESHOLDS = ("zero", "default", "score", "above-score", "below-score", "inf")
 
 
 def _sweep_threshold(name, kind):
-    if kind == "THRESHOLD":
-        return THRESHOLD
-    score = _sweep_report(name, "THRESHOLD").score
+    if kind == "default":
+        return DEFAULT_THRESHOLD
+    score = _sweep_report(name, "default").score
     return {
         "zero": 0.0,
         "score": score,
@@ -698,7 +741,7 @@ def _sweep_threshold(name, kind):
 
 @cache
 def _sweep_frame(name):
-    """(frame, Report at THRESHOLD) of sweep frame ``name``, built once per run."""
+    """(frame, Report at the default threshold) of sweep frame ``name``, built once per run."""
     return SWEEP_FRAMES[name]()
 
 
@@ -706,7 +749,7 @@ def _sweep_frame(name):
 def _sweep_report(name, kind):
     """``analyse`` of sweep frame ``name`` at threshold ``kind``, on the real path."""
     frame, report = _sweep_frame(name)
-    if kind == "THRESHOLD":
+    if kind == "default":
         return report
     return analyse(frame, threshold=_sweep_threshold(name, kind))
 
@@ -714,28 +757,29 @@ def _sweep_report(name, kind):
 # The inner loop's striped sweep frames: the first INNER_LOOP_SEED_COUNT seeds.
 _INNER_STRIPED = [f"striped-{seed}" for seed in MOTTLED_TEST_SEEDS[:INNER_LOOP_SEED_COUNT]]
 # The lowering test's inner pairs: every threshold kind, on frames the verdict sweep analyses.
-# Only a pair whose high side is below the score has regions to compare, so (zero, THRESHOLD)
+# Only a pair whose high side is below the score has regions to compare, so (zero, default)
 # and (zero, below-score) carry the teeth; (below-score, score) and (above-score, inf) are
 # there for kind coverage. The two-region frame is wide: the inner loop analyses it once.
-_ZERO_VS_THRESHOLD = frozenset(("zero", "THRESHOLD"))
+_ZERO_VS_DEFAULT = frozenset(("zero", "default"))
 LOWERING_INNER_PAIRS = {
     _INNER_STRIPED[0]: {
-        _ZERO_VS_THRESHOLD,
+        _ZERO_VS_DEFAULT,
         frozenset(("zero", "below-score")),
         frozenset(("below-score", "score")),
         frozenset(("above-score", "inf")),
     },
-    **{name: {_ZERO_VS_THRESHOLD} for name in _INNER_STRIPED[1:]},
-    "overlapping-extents": {_ZERO_VS_THRESHOLD},
+    **{name: {_ZERO_VS_DEFAULT} for name in _INNER_STRIPED[1:]},
+    "overlapping-extents": {_ZERO_VS_DEFAULT},
 }
 
 
 def _verdict_runs_in_the_inner_loop(name, kind):
-    """Every sweep frame at THRESHOLD (one analysis, mostly shared); every threshold kind on
-    the constant frame and on the analyses the lowering test's inner pairs read; and the first
-    stripe-free frame at zero, where it reports groups below THRESHOLD."""
+    """Every sweep frame at the default threshold (one analysis, mostly shared); every
+    threshold kind on the constant frame and on the analyses the lowering test's inner
+    pairs read; and the first stripe-free frame at zero, where it reports groups below
+    the default."""
     return (
-        kind == "THRESHOLD"
+        kind == "default"
         or name == "constant"
         or any(kind in pair for pair in LOWERING_INNER_PAIRS.get(name, ()))
         or (name, kind) == (f"free-{MOTTLED_TEST_SEEDS[0]}", "zero")
@@ -754,7 +798,7 @@ VERDICT_PARAMS = [
 @pytest.mark.parametrize(("name", "kind"), VERDICT_PARAMS)
 def test_verdict_is_striped_exactly_when_a_region_is_reported(name, kind):
     report = _sweep_report(name, kind)
-    assert report.score == _sweep_report(name, "THRESHOLD").score
+    assert report.score == _sweep_report(name, "default").score
     t = _sweep_threshold(name, kind)
     assert report.threshold == t
     assert report.striped == bool(report.regions) == (report.score > t)
@@ -766,12 +810,18 @@ def test_verdict_is_striped_exactly_when_a_region_is_reported(name, kind):
 
 
 def test_sweep_thresholds_are_the_planned_ones():
-    """The kinds give 0, THRESHOLD, the score, its two neighbours and inf."""
+    """The kinds give 0, the default threshold, the score, its two neighbours and inf."""
     name = "striped-" + str(MOTTLED_TEST_SEEDS[0])
-    score = _sweep_report(name, "THRESHOLD").score
+    score = _sweep_report(name, "default").score
     assert score > 0
     got = {_sweep_threshold(name, k) for k in SWEEP_THRESHOLDS}
-    want = {0.0, THRESHOLD, score, np.nextafter(score, np.inf), np.nextafter(score, -np.inf)}
+    want = {
+        0.0,
+        DEFAULT_THRESHOLD,
+        score,
+        np.nextafter(score, np.inf),
+        np.nextafter(score, -np.inf),
+    }
     assert got == want | {np.inf}
 
 
@@ -1052,11 +1102,11 @@ SPIKE_PAIRS = [(seed, clip) for clip in (False, True) for seed in SEEDS]
 def test_spikes_do_not_change_the_verdict_on_stripe_free_frames(seed, clip):
     """The verdict at a threshold T is ``score > T`` (pinned by
     test_verdict_is_striped_exactly_when_a_region_is_reported), so one analysis gives the
-    verdict at THRESHOLD and at GATE_STORED_THRESHOLD. No per-seed score tolerance: the
+    verdict at the default threshold and at GATE_STORED_THRESHOLD. No per-seed score tolerance: the
     score jumps when a sub-threshold group appears or vanishes under the hard group gating
     (ticket 06 Comments, ruling after critic 3; ticket 07)."""
     free, spiked = _spike_pair_scores(seed, clip)
-    assert (spiked > THRESHOLD) == (free > THRESHOLD)
+    assert (spiked > DEFAULT_THRESHOLD) == (free > DEFAULT_THRESHOLD)
     assert (spiked > GATE_STORED_THRESHOLD) == (free > GATE_STORED_THRESHOLD)
 
 
