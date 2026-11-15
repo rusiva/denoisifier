@@ -4,7 +4,7 @@
 
 **Blocked by:** 06, 09, 10
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A repeatable calibration routine sets the break and fork thresholds from calibration seeds.
 - [x] On held-out striped frames with no breaks or forks (scorched mottle, about 100 photons at the peak, spikes present), the number of fake breaks and forks is about 1 per 20 frames or less.
