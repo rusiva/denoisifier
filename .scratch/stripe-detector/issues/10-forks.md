@@ -4,7 +4,7 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The generator places forks with either direction, and returns their true points and directions.
 - [x] Forks are found at typical noise with the correct direction, within one period of the true point.
