@@ -621,7 +621,7 @@ def _top_break_evidence(monkeypatch, frame):
     return max(b.evidence for b in found)
 
 
-def _cli_report(path, out, *args):
+def _in_process_report(path, out, *args):
     assert cli.main([str(path), "-o", str(out), *map(str, args)]) == 0
     return json.loads(out.read_text())
 
@@ -638,8 +638,8 @@ def test_cli_break_fork_false_alarm_rate_reaches_analyse(tmp_path, monkeypatch):
         [f"seed:{i}" for i in range(n)], [top + 0.05] * 10 + low, [0.0] * n, (400, 1600)
     )
     monkeypatch.setattr(analysis, "_stored_break_fork_calibration", lambda: cal)
-    default = _cli_report(path, tmp_path / "default.json")
-    loose = _cli_report(path, tmp_path / "loose.json", "--break-fork-false-alarm-rate", 0.2)
+    default = _in_process_report(path, tmp_path / "default.json")
+    loose = _in_process_report(path, tmp_path / "loose.json", "--break-fork-false-alarm-rate", 0.2)
     read = read_frame(path)  # the CSV round trip and notes, as the CLI reads them
     lib_report = analyse(read.frame, break_fork_false_alarm_rate=0.2)
     lib = json.loads(dataclasses.replace(lib_report, reader_notes=read.notes).to_json())
