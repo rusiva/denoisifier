@@ -664,3 +664,10 @@ def test_cli_break_fork_false_alarm_rate_flag_is_accepted(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "phase_breaks" in json.loads(result.stdout)
     _assert_clean_failure(_run(path, "--break-fork-false-alarm-rate", 0), "between 0 and 1")
+
+
+def test_cli_import_does_not_load_scipy_stats():
+    # Ticket 13 slice 1: the per-frame CLI start does not pay for scipy.stats (~0.4 s).
+    code = "import denoisifier.cli, sys; assert 'scipy.stats' not in sys.modules"
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

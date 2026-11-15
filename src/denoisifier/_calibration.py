@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import ArrayLike
-from scipy.stats import betabinom, binomtest
 
 if TYPE_CHECKING:
     from scipy.stats._distn_infrastructure import rv_discrete_frozen
@@ -64,10 +63,14 @@ def threshold_rank(n: int, rate: float) -> int:
 
 def rate_interval(k: int, n: int, level: float = 0.95) -> tuple[float, float]:
     """Clopper-Pearson (exact) interval for a proportion of k out of n."""
+    from scipy.stats import binomtest  # lazy: keeps ~0.4 s off the CLI start (ticket 13)
+
     ci = binomtest(k, n).proportion_ci(confidence_level=level, method="exact")
     return float(ci.low), float(ci.high)
 
 
 def _false_alarm_count(n_calibration: int, n_held_out: int, rate: float) -> rv_discrete_frozen:
+    from scipy.stats import betabinom  # lazy: keeps ~0.4 s off the CLI start (ticket 13)
+
     k = threshold_rank(n_calibration, rate)
     return betabinom(n_held_out, k, n_calibration + 1 - k)

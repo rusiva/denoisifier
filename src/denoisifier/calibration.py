@@ -19,17 +19,14 @@ import hashlib
 import importlib.resources
 import json
 import math
-import multiprocessing
 import os
 import platform
 import time
 from collections.abc import Iterable, Mapping, Sequence
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-import scipy
 from numpy.typing import ArrayLike
 
 from denoisifier._calibration import threshold_rank
@@ -314,6 +311,10 @@ def calibrate_folder(
     t0 = time.perf_counter()
     jobs = [(p, drop_axis_column, transpose, clip_level, bins) for p in paths]
     if workers > 1:
+        # Lazy imports keep the analyse / CLI start light (ticket 13).
+        import multiprocessing
+        from concurrent.futures import ProcessPoolExecutor
+
         with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("spawn")) as ex:
             results = list(ex.map(_score_file, jobs))
     else:
@@ -334,6 +335,8 @@ def calibrate_folder(
         },
         bins,
     )
+    import scipy  # lazy: only its version is recorded
+
     run_info = {
         "folder": root.resolve().name,
         "workers": workers,
