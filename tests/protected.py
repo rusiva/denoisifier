@@ -319,6 +319,36 @@ BREAK_SMALL_REGION_PERIODS = 5
 BREAK_PROTOTYPE_SEEDS = range(109_000, 109_600)
 BREAK_VALIDATION_SEEDS = range(109_600, 110_460)
 
+# Ticket 10 (Forks; plan .scratch/stripe-detector/handoffs/10-plan.md, sections 5 and 7).
+# Test seeds, never run with forks before the plan; CASES[seed % 10] as above.
+FORK_TEST_SEEDS = range(10, 20)
+# A found fork (truth_match.assert_forks_match, plan 5.1; spec tolerance).
+FORK_POSITION_TOL_PERIODS = 1.0
+# _local_phase unit tests on noise-free phasor fields (P1 noise-free max 0.172 P, 96/96).
+FORK_EXACT_POSITION_TOL_PERIODS = 0.25
+# AC 3 (plan 5.3): a fork this many Periods from a Phase Break's line.
+FORK_NEAR_BREAK_PERIODS = 4.0
+# Two forks this many Periods apart (plan 5.4; P2 pairbig 26/27 at 4 P).
+FORK_PAIR_SEPARATION_PERIODS = 4.0
+# The large round region of AC 3 and the pair test: semi-axes max(this x P, the floor) px.
+FORK_BIG_REGION_SEMI_PERIODS = 11.0
+FORK_BIG_REGION_SEMI_FLOOR_PX = 60.0
+# The correction undoes the generator term: resultant length of the phase difference
+# against the fork-free twin (P2 measured 1.000; the wrong sign at most 0.14).
+FORK_CORRECTION_MIN_RESULTANT = 0.99
+# The sign tests: end-to-end seed, Period (px), the generator test's row offset (Periods)
+# and its frame shape (wide rows, plan review B1).
+FORK_SIGN_TEST_SEED = FORK_TEST_SEEDS[0]
+FORK_SIGN_TEST_PERIOD = 10
+FORK_SIGN_ROW_OFFSET_PERIODS = 5
+FORK_SIGN_FRAME_SHAPE = (400, 1600)
+FORK_PHASE_ATOL = 1e-9  # the generator's fork phase, noise-free
+# Prototypes P1 and P2 of ticket 10 (explore), and the one validation run (2/3 scale).
+# Reserved. 111_200-111_599 and 111_733-111_999 were never generated and stay unused
+# (free for the follow-up ticket 18's explore and validation).
+FORK_PROTOTYPE_SEEDS = range(111_000, 111_200)
+FORK_VALIDATION_SEEDS = range(111_600, 111_733)
+
 # test_seed_guard.py (ticket agent-gates/04). The held-out free and striped
 # seeds of test_measure_calibrates_inside_the_block_and_evaluates_outside's
 # small SeedPlan.
@@ -376,6 +406,10 @@ USED_SEEDS = [
     # Ticket 09: prototype P1 (explore, validations, gate seeds).
     BREAK_PROTOTYPE_SEEDS,
     BREAK_VALIDATION_SEEDS,
+    # Ticket 10: prototypes P1/P2 (explore) and the validation run. 111_200-111_599 and
+    # 111_733-111_999 were never generated: not reserved, free for ticket 18.
+    FORK_PROTOTYPE_SEEDS,
+    FORK_VALIDATION_SEEDS,
 ]
 
 # Calibration seed ranges, by name. tests/seed_guard.py refuses any of these
