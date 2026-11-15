@@ -1,5 +1,5 @@
-"""How close a measured Period, Angle and Modulation Depth, and a found Phase Break, must be to
-the generator's ground truth. The tolerances are protected numbers (protected.py)."""
+"""How close a measured Period, Angle and Modulation Depth, a found Phase Break and found Forks
+must be to the generator's ground truth. The tolerances are protected numbers (protected.py)."""
 
 import math
 
@@ -18,6 +18,7 @@ from protected import (
     BREAK_SIDE_COVER_MIN,
     BREAK_SIDE_EXCLUDE_PERIODS,
     DEPTH_TOL,
+    FORK_POSITION_TOL_PERIODS,
     PERIOD_REL_TOL,
 )
 
@@ -124,3 +125,45 @@ def truth_lit_mask(synthetic, bins):
     smooth = gaussian_filter(synthetic.clean, BREAK_LIT_SIGMA_PX)
     frame = bin_truth_mask(smooth, bins.horizontal, bins.vertical)
     return frame >= BREAK_LIT_LEVEL * frame.max()
+
+
+# --- Forks (ticket 10, plan 5.1) --------------------------------------------------------
+
+
+def fork_problems(report_forks, truth_forks, period, bins):
+    """Why the reported forks (``Fork``s, frame px) do not match the true ones (``ForkTruth``s,
+    sensor px) by plan 5.1 ([] when they do): each true fork has exactly one reported fork
+    within FORK_POSITION_TOL_PERIODS x ``period`` (Euclidean, sensor geometry; frame pixel r
+    has its sensor centre at v r + (v - 1) / 2), with the true direction (as given, never
+    either sign); and every reported fork is matched to a true fork, one to one."""
+    tol = FORK_POSITION_TOL_PERIODS * period
+    found = [_sensor_centres(*f.point, bins) for f in report_forks]
+    problems = []
+    used: dict[int, int] = {}
+    for t, truth in enumerate(truth_forks):
+        near = [
+            i
+            for i, (y, x) in enumerate(found)
+            if math.hypot(y - truth.point[0], x - truth.point[1]) <= tol
+        ]
+        if len(near) != 1:
+            problems.append(f"fork {t} at {truth.point}: {len(near)} reported within {tol:.2f}")
+            continue
+        (i,) = near
+        if report_forks[i].direction != truth.direction:
+            problems.append(
+                f"fork {t}: direction {report_forks[i].direction}, true {truth.direction}"
+            )
+        if i in used:
+            problems.append(f"reported fork {i} matches true forks {used[i]} and {t}")
+        used[i] = t
+    for i, f in enumerate(report_forks):
+        if i not in used:
+            problems.append(f"extra fork {f}")
+    return problems
+
+
+def assert_forks_match(report_forks, truth_forks, period, bins):
+    """Plan 5.1: the reported forks match the true ones, no extras (``fork_problems``)."""
+    problems = fork_problems(report_forks, truth_forks, period, bins)
+    assert not problems, problems
