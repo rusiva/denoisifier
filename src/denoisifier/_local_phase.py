@@ -368,7 +368,7 @@ def find_phase_breaks(
     when its E is above ``min_evidence`` (strict) and its jump and spread pass
     their fixed rules; the search stops at the first line that is not. The
     best line never depends on ``min_evidence``, so the result at a higher
-    limit is a prefix of the result at a lower one.
+    threshold is a prefix of the result at a lower one.
 
     ``[]`` when ``frame_period(period, angle_deg, bins)`` is under
     _BREAK_MIN_FRAME_PERIOD_PX (the caller reports the refusal), when the

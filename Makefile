@@ -13,7 +13,7 @@ check: lock-check lint      ## gate: lock, format, lint, types, every non-slow t
 check-slow: lock-check      ## regression check + calibration reproductions (~23 min; duration: tests/test_slow_regression.py): background only; writes the .gate/ stamp when green
 	$(UV) python tests/slow_stamp.py run -- $(PYTEST) -m "slow and not held_out"
 
-check-held-out: lock-check  ## held-out calibration tests (~60 min; duration: tests/test_slow_regression.py): ticket 07 and 11 close and measure milestones only, background; writes .gate/held-out-calibration.json
+check-held-out: lock-check  ## held-out calibration tests (~60 min; duration: tests/test_slow_regression.py): ticket 07 and 11 close and measure milestones only, background; writes .gate/held-out-calibration.json and .gate/held-out-break-fork.json
 	$(PYTEST) -m held_out
 
 bench:                      ## speed gate 10 s + ticket-13 target 5 s: idle machine, background; writes .gate/bench.json

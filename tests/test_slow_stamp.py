@@ -70,7 +70,7 @@ def test_stamped_edit_makes_check_fail_naming_only_that_file(root, capsys):
     assert out.strip() == (
         "make check: the slow tier is stale. Changed since the last green make check-slow: "
         "src/denoisifier/analysis.py. Run make check-slow in the background (Bash "
-        "run_in_background, output to a log; about 20 min) and run no other gate meanwhile. "
+        "run_in_background, output to a log; about 23 min) and run no other gate meanwhile. "
         "The stamp is per working tree: a fresh clone or worktree needs its own run. "
         "Stamped files: tests/slow_stamp.py STAMPED_FILES (ticket agent-gates/05)."
     )

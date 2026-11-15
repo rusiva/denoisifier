@@ -338,7 +338,7 @@ def analyse(
     pass re-measures under 2.5 frame pixels gets neither Forks nor a warning
     (rare; not measured).
     """
-    limits = _resolve_break_fork_thresholds(break_fork_false_alarm_rate)
+    break_fork = _resolve_break_fork_thresholds(break_fork_false_alarm_rate)
     front = _front_half(
         frame,
         false_alarm_rate=false_alarm_rate,
@@ -353,7 +353,7 @@ def analyse(
     if front.field is not None:
         assert front.filters is not None
         settled = _with_phase_breaks(
-            reported, front.filters, clipped, front.field, break_threshold=limits.breaks
+            reported, front.filters, clipped, front.field, break_threshold=break_fork.breaks
         )
     settled.sort(key=lambda r: (-r[0].area_px, -r[0].peak_ratio, r[0].first_pixel))
 
@@ -377,7 +377,7 @@ def analyse(
     forks: list[Fork] = []
     if front.responses is not None:
         forks = _post_break_forks(
-            settled, refused, front.responses, bins, fork_threshold=limits.forks
+            settled, refused, front.responses, bins, fork_threshold=break_fork.forks
         )
     unresolved = unresolved_periods(bins)
     warnings = [] if unresolved is None else [_unresolved_warning(unresolved, bins)]
@@ -523,7 +523,7 @@ def _break_fork_evidence(
       finds no break. Per reported region (its pixels): the first best line's
       E when it passes the jump and spread rules, else 0; per bridge domain:
       the largest min(E_1..E_j) over the lines j of the greedy sequence (at
-      no evidence limit) that meet the side shares; the largest of these.
+      no evidence threshold) that meet the side shares; the largest of these.
     - ``forks`` (S_f): the largest E of any Fork candidate of the post-break
       search with no break explained away, in the reported regions holding
       no refused one.
@@ -661,7 +661,7 @@ def _region_forks(
 ) -> list[FoundFork]:
     """Every Fork candidate of ``region``: ``find_forks`` on its
     ``fork_domain`` (``owned`` = all regions' pixels) of its response,
-    ``breaks`` explained away. The caller applies its evidence limit."""
+    ``breaks`` explained away. The caller applies its evidence threshold."""
     domain = fork_domain(region.pixels, owned & ~region.pixels, region.period, bins)
     z = responses.response(region.period, region.angle_deg)
     return find_forks(z, domain, region.period, region.angle_deg, bins, breaks)
@@ -1339,12 +1339,12 @@ class _PassRegion:
 @dataclass(frozen=True)
 class _BridgeDomain:
     """Where the bridge search runs for regions ``a`` and ``b`` (pixels
-    ``pa``, ``pb``) and the side shares (_BRIDGE_*_SIDE_SHARE) a found line
+    ``a_pixels``, ``b_pixels``) and the side shares (_BRIDGE_*_SIDE_SHARE) a found line
     must meet: ``need_a`` of one region on one side and ``need_b`` of the
     other on the other."""
 
-    pa: np.ndarray
-    pb: np.ndarray
+    a_pixels: np.ndarray
+    b_pixels: np.ndarray
     gap: np.ndarray
     period: float
     angle_deg: float
@@ -1353,13 +1353,13 @@ class _BridgeDomain:
 
     @property
     def pixels(self) -> np.ndarray:
-        return np.asarray(self.pa | self.pb | self.gap)
+        return np.asarray(self.a_pixels | self.b_pixels | self.gap)
 
     def splits(self, brk: FoundBreak, y: np.ndarray, x: np.ndarray) -> bool:
         """Whether ``brk`` has the two regions on opposite sides (sensor
         coordinates ``y``, ``x`` of every pixel)."""
-        share_a = float((brk.side(y[self.pa], x[self.pa]) > 0).mean())
-        share_b = float((brk.side(y[self.pb], x[self.pb]) > 0).mean())
+        share_a = float((brk.side(y[self.a_pixels], x[self.a_pixels]) > 0).mean())
+        share_b = float((brk.side(y[self.b_pixels], x[self.b_pixels]) > 0).mean())
         return (share_a >= self.need_a and 1 - share_b >= self.need_b) or (
             1 - share_a >= self.need_a and share_b >= self.need_b
         )
@@ -1433,25 +1433,27 @@ class _BreakPass:
         not _compatible or not within _BRIDGE_GAP_PERIODS."""
         if not _compatible(a, b):
             return None
-        pa, pb = a.pixels, b.pixels
+        a_pixels, b_pixels = a.pixels, b.pixels
         gap = _BRIDGE_GAP_PERIODS * max(a.period, b.period)
-        box = _bbox(pa)
+        box = _bbox(a_pixels)
         pad = int(np.ceil(max(frame_px(self.bins, gap, gap)))) + 1
-        r0, r1 = max(box.row_start - pad, 0), min(box.row_stop + pad, pa.shape[0])
-        c0, c1 = max(box.col_start - pad, 0), min(box.col_stop + pad, pa.shape[1])
-        window_b = pb[r0:r1, c0:c1]
+        r0, r1 = max(box.row_start - pad, 0), min(box.row_stop + pad, a_pixels.shape[0])
+        c0, c1 = max(box.col_start - pad, 0), min(box.col_stop + pad, a_pixels.shape[1])
+        window_b = b_pixels[r0:r1, c0:c1]
         if not window_b.any():
             return None
-        if _edt(~pa[r0:r1, c0:c1], self.bins)[window_b].min() > gap:
+        if _edt(~a_pixels[r0:r1, c0:c1], self.bins)[window_b].min() > gap:
             return None
-        between = (_edt(~pa, self.bins) <= gap) & (_edt(~pb, self.bins) <= gap) & self.light
+        between = (
+            (_edt(~a_pixels, self.bins) <= gap) & (_edt(~b_pixels, self.bins) <= gap) & self.light
+        )
         top = a if a.peak_ratio >= b.peak_ratio else b
-        na, nb = int(pa.sum()), int(pb.sum())
+        na, nb = int(a_pixels.sum()), int(b_pixels.sum())
         if na <= nb:
             need_a, need_b = _BRIDGE_SMALL_SIDE_SHARE, _BRIDGE_LARGE_SIDE_SHARE
         else:
             need_a, need_b = _BRIDGE_LARGE_SIDE_SHARE, _BRIDGE_SMALL_SIDE_SHARE
-        return _BridgeDomain(pa, pb, between, top.period, top.angle_deg, need_a, need_b)
+        return _BridgeDomain(a_pixels, b_pixels, between, top.period, top.angle_deg, need_a, need_b)
 
     def process(
         self,

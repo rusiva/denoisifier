@@ -25,6 +25,7 @@ Duration: about 300 full frames for AC 1, 300 full frames (analyse + evidence) f
 import pytest
 
 import break_fork_calibration as bfc
+import threshold_calibration as tc
 from denoisifier.calibration import _BreakForkThresholds, _stored_break_fork_calibration
 from protected import (
     BREAK_FORK_FREE_CALIBRATION_SEEDS,
@@ -43,14 +44,14 @@ STORED = _BreakForkThresholds(
 @pytest.fixture(scope="module")
 def fakes() -> dict:
     result = bfc.held_out_fakes(bfc.HELD_OUT_FAKES)
-    bfc.record(bfc.HELD_OUT_MEASUREMENT, "fakes", result, fresh=True)
+    tc.record(bfc.HELD_OUT_MEASUREMENT, "fakes", result, fresh=True)
     return result
 
 
 @pytest.fixture(scope="module")
 def detection() -> dict:
     result = bfc.held_out_detection(bfc.HELD_OUT_DETECTION)
-    bfc.record(bfc.HELD_OUT_MEASUREMENT, "detection", result)
+    tc.record(bfc.HELD_OUT_MEASUREMENT, "detection", result)
     return result
 
 
@@ -78,7 +79,7 @@ def test_forks_still_found_after_calibration(detection):
 @pytest.mark.timeout(CALIBRATION_TIMEOUT_S)
 def test_break_fork_calibration_reproduces_all_frames():
     result = bfc.reproduction_check(_stored_break_fork_calibration(), bfc.calibrate_break_forks)
-    bfc.record(bfc.HELD_OUT_MEASUREMENT, "reproduction", result)
+    tc.record(bfc.HELD_OUT_MEASUREMENT, "reproduction", result)
     assert result["n"] == len(BREAK_FORK_FREE_CALIBRATION_SEEDS)
     problems = bfc.reproduction_problems(
         result, PACKAGE_BREAK_FORK_BREAK_THRESHOLD, PACKAGE_BREAK_FORK_FORK_THRESHOLD

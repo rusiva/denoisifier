@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 from unittest import mock
 
+import numpy as np
 from scipy.stats import betabinom
 
 import feasibility
@@ -48,6 +49,7 @@ from denoisifier.calibration import (
     _BreakForkThresholds,
     stored_calibration,
 )
+from denoisifier.report import Report
 from denoisifier.synthetic import Synthetic
 from forks import ac2_case
 from protected import (
@@ -72,7 +74,6 @@ ROOT = feasibility.ROOT
 PACKAGE_FILE = ROOT / "src/denoisifier/break_fork_free_calibration.json"
 HELD_OUT_MEASUREMENT = ROOT / ".gate/held-out-break-fork.json"
 ONE_BY_ONE = BinFactors()
-record = tc.record  # the measurement JSON writer (ticket 07)
 
 
 def settings(shape: tuple[int, int], depth: float = BREAK_FORK_CALIBRATION_DEPTH) -> dict[str, Any]:
@@ -97,16 +98,9 @@ def settings(shape: tuple[int, int], depth: float = BREAK_FORK_CALIBRATION_DEPTH
     }
 
 
-def synthetic(
-    seed: int, shape: tuple[int, int], depth: float = BREAK_FORK_CALIBRATION_DEPTH
-) -> Synthetic:
-    """One frame of the calibration recipe (ticket 07's ``synthetic`` at ``depth``)."""
-    return tc.synthetic(seed, shape, depth)
-
-
 def _evidence_job(job: tuple[int, tuple[int, int], float]) -> tuple[float, float, bool]:
     seed, shape, depth = job
-    ev = analysis._break_fork_evidence(synthetic(seed, shape, depth).frame)
+    ev = analysis._break_fork_evidence(tc.synthetic(seed, shape, depth).frame)
     return ev.breaks, ev.forks, ev.striped
 
 
@@ -249,7 +243,7 @@ class FakesPlan(NamedTuple):
     seeds: range
     depth: float
     max_fakes: int
-    case_alarm_frames: int
+    case_alarm: int
 
 
 HELD_OUT_FAKES = FakesPlan(
@@ -257,15 +251,78 @@ HELD_OUT_FAKES = FakesPlan(
     seeds=BREAK_FORK_FREE_HELD_OUT_SEEDS,
     depth=BREAK_FORK_CALIBRATION_DEPTH,
     max_fakes=BREAK_FORK_MAX_FAKES,
-    case_alarm_frames=BREAK_FORK_CASE_ALARM_FRAMES,
+    case_alarm=BREAK_FORK_CASE_ALARM_FRAMES,
 )
+
+
+def reported_with_evidence(frame: np.ndarray) -> tuple[Report, list[float], list[float]]:
+    """``analyse(frame)`` on the default path, with each reported Phase Break's and Fork's
+    own evidence E, in the Report's order. The Report carries no E, so this wraps the two
+    private steps that turn found breaks and Forks into reported ones; their output is
+    unchanged."""
+    real_breaks, real_forks = analysis._reported_breaks, analysis._reported_forks
+    evidence: dict[int, tuple[object, float]] = {}
+
+    def breaks(label: int, pixels: np.ndarray, found: list[Any], bins: BinFactors) -> list[Any]:
+        out = []
+        for b in found:  # one at a time: a break with no pixel on its line is not reported
+            for reported in real_breaks(label, pixels, [b], bins):
+                evidence[id(reported)] = (reported, b.evidence)
+                out.append(reported)
+        return out
+
+    def forks(label: int, found: list[Any], bins: BinFactors) -> list[Any]:
+        out = real_forks(label, found, bins)
+        for reported, f in zip(out, found, strict=True):
+            evidence[id(reported)] = (reported, f.evidence)
+        return out
+
+    with (
+        mock.patch.object(analysis, "_reported_breaks", breaks),
+        mock.patch.object(analysis, "_reported_forks", forks),
+    ):
+        report = analyse(frame)
+    return (
+        report,
+        [evidence[id(b)][1] for b in report.phase_breaks],
+        [evidence[id(f)][1] for f in report.forks],
+    )
+
+
+def fake_entries(
+    seed: int, report: Report, break_e: list[float], fork_e: list[float], truth: np.ndarray
+) -> list[dict[str, Any]]:
+    """One record per reported break and Fork of a break- and Fork-free frame (each a fake):
+    its own E and whether its reported region overlaps no pixel of ``truth`` (the truth
+    regions' pixels)."""
+    case = CASES[seed % len(CASES)]
+    out = []
+    for kind, found, evidence in (
+        ("breaks", report.phase_breaks, break_e),
+        ("forks", report.forks, fork_e),
+    ):
+        for item, e in zip(found, evidence, strict=True):
+            region = report.labels == item.region
+            out.append(
+                {
+                    "seed": seed,
+                    "period": case.period,
+                    "angle_deg": case.angle_deg,
+                    "kind": kind,
+                    "region": int(item.region),
+                    "evidence": float(e),
+                    "in_fake_region": not bool((region & truth).any()),
+                }
+            )
+    return out
 
 
 def _fakes_job(job: tuple[int, tuple[int, int], float]) -> dict[str, Any]:
     seed, shape, depth = job
-    frame = synthetic(seed, shape, depth).frame
-    report = analyse(frame)
-    ev = analysis._break_fork_evidence(frame)
+    s = tc.synthetic(seed, shape, depth)
+    report, break_e, fork_e = reported_with_evidence(s.frame)
+    ev = analysis._break_fork_evidence(s.frame)
+    truth = np.logical_or.reduce([truth_pixels(r) for r in s.truth.regions])
     return {
         "seed": seed,
         "striped": report.striped,
@@ -274,20 +331,42 @@ def _fakes_job(job: tuple[int, tuple[int, int], float]) -> dict[str, Any]:
         "forks": len(report.forks),
         "s_b": ev.breaks,
         "s_f": ev.forks,
-        "regions": [b.region for b in report.phase_breaks] + [f.region for f in report.forks],
+        "fakes": fake_entries(seed, report, break_e, fork_e, truth),
     }
 
 
-def implication_violations(row: dict[str, Any], limits: _BreakForkThresholds) -> list[str]:
+def implication_violations(row: dict[str, Any], thresholds: _BreakForkThresholds) -> list[str]:
     """Plan section 2 at scale, on one frame's report and evidence: a reported break =>
     S_b > T_b; a reported Fork => S_f > T_f or a found break (S_b > T_b); S_b <= T_b and
     S_f <= T_f => no break and no Fork."""
-    found_break = row["s_b"] > limits.breaks
+    found_break = row["s_b"] > thresholds.breaks
     out = []
     if row["breaks"] and not found_break:
         out.append(f"seed {row['seed']}: a reported break with S_b {row['s_b']} <= T_b")
-    if row["forks"] and not (row["s_f"] > limits.forks or found_break):
+    if row["forks"] and not (row["s_f"] > thresholds.forks or found_break):
         out.append(f"seed {row['seed']}: a reported Fork with S_f {row['s_f']} <= T_f, no break")
+    return out
+
+
+def case_summary(rows: list[dict[str, Any]], case_alarm: int) -> list[dict[str, Any]]:
+    """Per case (``CASES[seed % 10]``) with frames: frames, fakes, frames with a fake, and
+    the alarm flag, set when the case has at least ``case_alarm`` fakes (plan section 6;
+    fakes >= frames with a fake, so stricter than a frame count). Recorded, not asserted."""
+    out = []
+    for case in CASES:
+        hit = [r for r in rows if CASES[r["seed"] % len(CASES)] == case]
+        if hit:
+            fakes = sum(r["breaks"] + r["forks"] for r in hit)
+            out.append(
+                {
+                    "period": case.period,
+                    "angle_deg": case.angle_deg,
+                    "n": len(hit),
+                    "fakes": fakes,
+                    "frames_with_fakes": sum(1 for r in hit if r["breaks"] or r["forks"]),
+                    "alarm": fakes >= case_alarm,
+                }
+            )
     return out
 
 
@@ -302,51 +381,21 @@ def held_out_fakes(
     implication check at scale. ``thresholds`` gives the default-path thresholds (default:
     the stored calibration's at the default rate). Asserts nothing."""
     t0, load = time.perf_counter(), loadavg()
-    limits = (thresholds or (lambda: analysis._resolve_break_fork_thresholds(None)))()
+    used = (thresholds or (lambda: analysis._resolve_break_fork_thresholds(None)))()
     rows = feasibility.run_pool(
         _fakes_job, [(s, plan.shape, plan.depth) for s in plan.seeds], workers
     )
-    fakes = []
-    violations: list[str] = []
-    for r in rows:
-        case = CASES[r["seed"] % len(CASES)]
-        for kind in ("breaks", "forks"):
-            for _ in range(r[kind]):
-                fakes.append(
-                    {
-                        "seed": r["seed"],
-                        "period": case.period,
-                        "angle_deg": case.angle_deg,
-                        "kind": kind,
-                        "evidence": r["s_b"] if kind == "breaks" else r["s_f"],
-                        # Full-frame stripes: every reported region lies in the truth.
-                        "in_fake_region": False,
-                    }
-                )
-        violations += implication_violations(r, limits)
+    fakes = [f for r in rows for f in r["fakes"]]
+    violations = [v for r in rows for v in implication_violations(r, used)]
     with_fakes = [r for r in rows if r["breaks"] or r["forks"]]
-    cases = []
-    for case in CASES:
-        hit = [r for r in rows if CASES[r["seed"] % len(CASES)] == case]
-        if hit:
-            frames = sum(1 for r in hit if r["breaks"] or r["forks"])
-            cases.append(
-                {
-                    "period": case.period,
-                    "angle_deg": case.angle_deg,
-                    "n": len(hit),
-                    "fakes": sum(r["breaks"] + r["forks"] for r in hit),
-                    "frames_with_fakes": frames,
-                    "alarm": frames >= plan.case_alarm_frames,
-                }
-            )
+    cases = case_summary(rows, plan.case_alarm)
     n = len(rows)
     return {
         "n": n,
         "seeds": [plan.seeds.start, plan.seeds.stop - 1],
         "shape": list(plan.shape),
         "depth": plan.depth,
-        "thresholds": asdict(limits),
+        "thresholds": asdict(used),
         "not_striped": [r["seed"] for r in rows if not r["striped"]],
         "evidence_disagrees": [r["seed"] for r in rows if r["striped"] != r["evidence_striped"]],
         "count": sum(r["breaks"] + r["forks"] for r in rows),
@@ -360,8 +409,8 @@ def held_out_fakes(
         "fakes": fakes,
         "implication_violations": violations,
         "above_thresholds": {
-            "breaks": sum(r["s_b"] > limits.breaks for r in rows),
-            "forks": sum(r["s_f"] > limits.forks for r in rows),
+            "breaks": sum(r["s_b"] > used.breaks for r in rows),
+            "forks": sum(r["s_f"] > used.forks for r in rows),
         },
         "wall_clock_s": time.perf_counter() - t0,
         "loadavg": {"start": load, "end": loadavg()},
@@ -561,10 +610,10 @@ def main(argv: list[str] | None = None) -> int:
     cal = calibrate_break_forks(args.workers)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(cal.to_json())
-    limits = cal.thresholds(BREAK_FORK_FALSE_ALARM_RATE)
+    thresholds = cal.thresholds(BREAK_FORK_FALSE_ALARM_RATE)
     print(
         f"break and Fork calibration: n = {len(cal.ids)}, thresholds at"
-        f" {BREAK_FORK_FALSE_ALARM_RATE}: {limits}, S_b max {max(cal.break_evidence)!r},"
+        f" {BREAK_FORK_FALSE_ALARM_RATE}: {thresholds}, S_b max {max(cal.break_evidence)!r},"
         f" S_f max {max(cal.fork_evidence)!r}, S_b > 0 on"
         f" {sum(b > 0 for b in cal.break_evidence)}, S_f > 0 on"
         f" {sum(f > 0 for f in cal.fork_evidence)}, digest {cal.digest()},"

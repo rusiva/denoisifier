@@ -457,12 +457,12 @@ class _BreakForkCalibration:
         rate = float(rate)
         if not 0.0 < rate < 1.0:
             raise ValueError(
-                f"break and fork false-alarm rate must be between 0 and 1 (exclusive), got {rate!r}"
+                f"break and Fork false-alarm rate must be between 0 and 1 (exclusive), got {rate!r}"
             )
         n = len(self.ids)
         if math.floor(rate / 2 * (n + 1) + 1e-9) < 1:
             raise ValueError(
-                f"a break and fork false-alarm rate of {rate} is too low for {n} frames: "
+                f"a break and Fork false-alarm rate of {rate} is too low for {n} frames: "
                 f"the smallest is 2 / (n + 1) = {2 / (n + 1):.6g}"
             )
         k = threshold_rank(n, rate / 2)

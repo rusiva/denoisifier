@@ -8,7 +8,9 @@ import importlib.resources
 import json
 import math
 from functools import cache
+from unittest import mock
 
+import numpy as np
 import pytest
 from scipy.stats import betabinom, binom
 
@@ -54,6 +56,7 @@ from protected import (
     PHASE_BREAK_TEST_SEEDS,
     PROBE_SHAPE,
 )
+from regions import truth_pixels
 
 
 def _calibration(breaks, forks, **kwargs):
@@ -312,7 +315,9 @@ def test_break_fork_calibration_tiny_plan_is_repeatable():
     assert one.shape == TINY_SHAPE
     assert one.settings == json.loads(json.dumps(bfc.settings(TINY_SHAPE)))
     serial = [
-        analysis._break_fork_evidence(bfc.synthetic(seed, TINY_SHAPE).frame)
+        analysis._break_fork_evidence(
+            tc.synthetic(seed, TINY_SHAPE, BREAK_FORK_CALIBRATION_DEPTH).frame
+        )
         for seed in BREAK_FORK_TINY_CALIBRATION_TEST_SEEDS
     ]
     assert one.break_evidence == tuple(e.breaks for e in serial)
@@ -351,7 +356,9 @@ def test_calibrate_break_forks_runs_the_core_on_the_calibration_set_inside_its_b
 
 
 def test_break_fork_calibration_frames_are_striped_break_fork_free_spiked_and_unclipped():
-    s = bfc.synthetic(BREAK_FORK_TINY_CALIBRATION_TEST_SEEDS[0], TINY_SHAPE)
+    s = tc.synthetic(
+        BREAK_FORK_TINY_CALIBRATION_TEST_SEEDS[0], TINY_SHAPE, BREAK_FORK_CALIBRATION_DEPTH
+    )
     assert s.truth.spike_pixels > 0
     assert s.truth.clipped_pixels == 0
     assert s.truth.phase_breaks == ()
@@ -394,7 +401,7 @@ TINY_FAKES = bfc.FakesPlan(
     seeds=BREAK_FORK_TINY_FREE_TEST_SEEDS,
     depth=BREAK_FORK_CALIBRATION_DEPTH,
     max_fakes=0,
-    case_alarm_frames=1,
+    case_alarm=1,
 )
 TINY_DETECTION = bfc.DetectionPlan(
     breaks=BREAK_FORK_TINY_BREAK_TEST_SEEDS,
@@ -442,27 +449,27 @@ def test_slow_break_fork_checks_run_on_a_tiny_plan(tmp_path):
     assert any("thresholds" in p for p in bfc.reproduction_problems(result, t.breaks + 1, t.forks))
 
     # Held-out fakes (AC 2), at the tiny calibration's thresholds.
-    limits = _tiny_stored().thresholds(BREAK_FORK_FALSE_ALARM_RATE)
-    fakes = bfc.held_out_fakes(TINY_FAKES, workers=2, thresholds=lambda: limits)
+    tiny = _tiny_stored().thresholds(BREAK_FORK_FALSE_ALARM_RATE)
+    fakes = bfc.held_out_fakes(TINY_FAKES, workers=2, thresholds=lambda: tiny)
     assert fakes["n"] == len(BREAK_FORK_TINY_FREE_TEST_SEEDS)
-    assert fakes["thresholds"] == {"breaks": limits.breaks, "forks": limits.forks}
+    assert fakes["thresholds"] == {"breaks": tiny.breaks, "forks": tiny.forks}
     assert sum(c["n"] for c in fakes["cases"]) == fakes["n"]
     assert 0 <= fakes["frames_with_fakes"] <= fakes["n"]
     assert 0 < fakes["frames_with_fakes_upper_95"] < 1
     assert fakes["implication_violations"] == []
-    assert isinstance(bfc.fake_problems(fakes, limits), list)
-    other_limits = _BreakForkThresholds(breaks=limits.breaks + 1, forks=limits.forks)
-    assert any("thresholds" in p for p in bfc.fake_problems(fakes, other_limits))
+    assert isinstance(bfc.fake_problems(fakes, tiny), list)
+    other = _BreakForkThresholds(breaks=tiny.breaks + 1, forks=tiny.forks)
+    assert any("thresholds" in p for p in bfc.fake_problems(fakes, other))
     many = {**fakes, "count": 1, "breaks": 1, "frames_with_fakes": 1}
-    assert any("above 0" in p for p in bfc.fake_problems(many, limits))
+    assert any("above 0" in p for p in bfc.fake_problems(many, tiny))
     flat = {**fakes, "not_striped": [BREAK_FORK_TINY_FREE_TEST_SEEDS[0]]}
-    assert any("not Striped" in p for p in bfc.fake_problems(flat, limits))
+    assert any("not Striped" in p for p in bfc.fake_problems(flat, tiny))
     # The implication check at scale flags a report the evidence does not bound.
     row = {"seed": 1, "breaks": 1, "forks": 1, "s_b": 0.05, "s_f": 0.2}
-    assert len(bfc.implication_violations(row, limits)) == 2
-    assert bfc.implication_violations({**row, "s_b": 0.5}, limits) == []
-    assert bfc.implication_violations({**row, "breaks": 0, "s_f": 0.5}, limits) == []
-    bfc.record(tmp_path / "m.json", "fakes", fakes, fresh=True)
+    assert len(bfc.implication_violations(row, tiny)) == 2
+    assert bfc.implication_violations({**row, "s_b": 0.5}, tiny) == []
+    assert bfc.implication_violations({**row, "breaks": 0, "s_f": 0.5}, tiny) == []
+    tc.record(tmp_path / "m.json", "fakes", fakes, fresh=True)
 
     # Held-out detection (AC 3(c)), with the paired count at the floors.
     detection = bfc.held_out_detection(TINY_DETECTION, workers=2)
@@ -480,7 +487,7 @@ def test_slow_break_fork_checks_run_on_a_tiny_plan(tmp_path):
         assert any("found on the default path" in p for p in bfc.detection_problems(missed, kind))
         lost = {**detection, kind: {**r, "lost_by_calibration": [seeds[0]]}}
         assert any("lost at the stored" in p for p in bfc.detection_problems(lost, kind))
-    bfc.record(tmp_path / "m.json", "detection", detection)
+    tc.record(tmp_path / "m.json", "detection", detection)
     assert set(json.loads((tmp_path / "m.json").read_text())) == {"fakes", "detection"}
 
 
@@ -535,7 +542,7 @@ def test_the_full_break_fork_plans_are_the_protected_ones():
     assert fakes.seeds is BREAK_FORK_FREE_HELD_OUT_SEEDS
     assert fakes.depth == BREAK_FORK_CALIBRATION_DEPTH
     assert fakes.max_fakes == BREAK_FORK_MAX_FAKES
-    assert fakes.case_alarm_frames == BREAK_FORK_CASE_ALARM_FRAMES
+    assert fakes.case_alarm == BREAK_FORK_CASE_ALARM_FRAMES
     assert len(det.breaks) == BREAK_FORK_DETECTION_BREAK_FRAMES
     assert len(det.forks) == BREAK_FORK_DETECTION_FORK_FRAMES
     assert set(det.breaks) | set(det.forks) == set(BREAK_FORK_DETECTION_HELD_OUT_SEEDS)
@@ -608,3 +615,57 @@ def test_default_thresholds_are_the_stored_calibrations_at_the_default_rate():
     assert analysis._resolve_break_fork_thresholds(None) == (
         _stored_break_fork_calibration().thresholds(DEFAULT_BREAK_FORK_FALSE_ALARM_RATE)
     )
+
+
+def test_held_out_fake_records_carry_each_fakes_own_evidence_and_region():
+    """Plan section 6, AC 2: every fake record carries that break's or Fork's own E (not the
+    frame's scalar) and whether its reported region overlaps no truth region."""
+    seed = BREAK_FORK_TINY_BREAK_TEST_SEEDS[0]
+    line_angle, jump = ac2_line(seed)
+    s, report = break_region_case(seed, jump, line_angle)
+    settled = []
+
+    def spy(*args, **kwargs):
+        out = real(*args, **kwargs)
+        settled.extend(out)
+        return out
+
+    real = analysis._with_phase_breaks
+    with mock.patch.object(analysis, "_with_phase_breaks", spy):
+        got, break_e, fork_e = bfc.reported_with_evidence(s.frame)
+    assert got.phase_breaks == report.phase_breaks
+    assert got.forks == report.forks
+    assert len(break_e) == len(got.phase_breaks) >= 1
+    assert len(fork_e) == len(got.forks)
+    assert sorted(break_e) == sorted(b.evidence for _, found in settled for b in found)
+    thresholds = analysis._resolve_break_fork_thresholds(None)
+    assert all(e > thresholds.breaks for e in break_e)
+
+    truth = truth_pixels(s.truth.regions[0])
+    entries = bfc.fake_entries(seed, got, break_e, fork_e, truth)
+    assert [e["kind"] for e in entries] == ["breaks"] * len(break_e) + ["forks"] * len(fork_e)
+    assert [e["evidence"] for e in entries] == break_e + fork_e
+    assert not any(e["in_fake_region"] for e in entries)
+    nowhere = bfc.fake_entries(seed, got, break_e, fork_e, np.zeros_like(truth))
+    assert all(e["in_fake_region"] for e in nowhere)
+
+    fork_seed = BREAK_FORK_TINY_FORK_TEST_SEEDS[0]
+    fs, fork_report = ac2_case(fork_seed)
+    got, break_e, fork_e = bfc.reported_with_evidence(fs.frame)
+    assert got.forks == fork_report.forks
+    assert len(fork_e) == len(got.forks) >= 1
+    assert all(e > thresholds.forks for e in fork_e)
+
+
+def test_case_alarm_counts_fakes_not_frames():
+    """Plan section 6: a case with at least ``case_alarm`` fakes (not frames with a fake) of
+    its frames is flagged; both counts are recorded per case."""
+    rows = [
+        {"seed": 0, "breaks": 2, "forks": 1},
+        {"seed": 10, "breaks": 0, "forks": 0},
+        {"seed": 1, "breaks": 0, "forks": 0},
+    ]
+    zero, one = bfc.case_summary(rows, case_alarm=3)
+    assert (zero["n"], zero["fakes"], zero["frames_with_fakes"], zero["alarm"]) == (2, 3, 1, True)
+    assert (one["n"], one["fakes"], one["frames_with_fakes"], one["alarm"]) == (1, 0, 0, False)
+    assert not any(c["alarm"] for c in bfc.case_summary(rows, case_alarm=4))
