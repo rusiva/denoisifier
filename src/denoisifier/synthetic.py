@@ -160,12 +160,12 @@ class BreakTruth:
 @dataclass(frozen=True)
 class ForkPoint:
     """A Fork in the stripes. ``point`` (row, col), px. ``direction`` +1 or
-    -1: the stripe phase gains ``direction * atan2(y - y0, x - x0)`` (x the
-    column, y the row, increasing downward; the spec's charge). Direction
-    +1: going toward row 0 past the fork, one stripe becomes two (a row on
-    the row-0 side crosses one more stripe); -1 the same going away from
-    row 0. The Report's ``Fork.direction`` of a found fork equals this
-    value."""
+    -1, by split direction: +1 when, going toward row 0 past the fork, one
+    stripe becomes two (a row on the row-0 side crosses one more stripe);
+    -1 the same going away from row 0. The stripe phase gains
+    ``direction * atan2(y - y0, x - x0)`` (x the column, y the row,
+    increasing downward; equal to spec.md's charge in frame coordinates).
+    The Report's ``Fork.direction`` of a found fork equals this value."""
 
     point: tuple[float, float]
     direction: int

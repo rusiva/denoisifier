@@ -51,6 +51,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import NamedTuple, Protocol
 
@@ -426,7 +427,7 @@ def _refusal_warning(label: int, region: _Survivor, bins: BinFactors) -> str:
     """The Report warning for a region whose Phase Breaks and Forks were not searched."""
     return (
         f"region {label} (Period {region.period:.3g} px): phase breaks and forks were not "
-        f"searched at "
+        "searched at "
         f"{bins} binning: its stripes fall under {_BREAK_MIN_FRAME_PERIOD_PX:g} frame pixels "
         f"along their normal ({frame_period(region.period, region.angle_deg, bins):.3g})"
     )
@@ -477,6 +478,29 @@ class _ResponseSource(Protocol):
     def response(self, period: float, angle_deg: float) -> np.ndarray: ...
 
 
+def _holds_refused(region: _Survivor, refused: list[_Survivor]) -> bool:
+    """Whether ``region`` holds a pixel of a ``refused`` region (one of them,
+    or a region the break pass joined one into): it gets no Fork search."""
+    return any((region.pixels & r.pixels).any() for r in refused)
+
+
+def _region_forks(
+    region: _Survivor,
+    owned: np.ndarray,
+    responses: _ResponseSource,
+    bins: BinFactors,
+    min_evidence: float,
+    breaks: Sequence[FoundBreak] = (),
+) -> list[FoundFork]:
+    """The Fork candidates of ``region`` with evidence at least
+    ``min_evidence``: ``find_forks`` on its ``fork_domain`` (``owned`` = all
+    regions' pixels) of its response, ``breaks`` explained away."""
+    domain = fork_domain(region.pixels, owned & ~region.pixels, region.period, bins)
+    z = responses.response(region.period, region.angle_deg)
+    found = find_forks(z, domain, region.period, region.angle_deg, bins, breaks)
+    return [f for f in found if f.evidence >= min_evidence]
+
+
 def _pre_break_forks(
     reported: list[_Survivor], refused: list[_Survivor], responses: _Responses, bins: BinFactors
 ) -> list[FoundFork]:
@@ -486,12 +510,8 @@ def _pre_break_forks(
     owned = np.logical_or.reduce([g.pixels for g in reported])
     out = []
     for g in reported:
-        if any(g is r for r in refused):
-            continue
-        domain = fork_domain(g.pixels, owned & ~g.pixels, g.period, bins)
-        z = responses.response(g.period, g.angle_deg)
-        found = find_forks(z, domain, g.period, g.angle_deg, bins)
-        out += [f for f in found if f.evidence >= _FORK_GATE_EVIDENCE]
+        if not _holds_refused(g, refused):
+            out += _region_forks(g, owned, responses, bins, _FORK_GATE_EVIDENCE)
     return out
 
 
@@ -511,12 +531,9 @@ def _post_break_forks(
     owned = np.logical_or.reduce([g.pixels for g, _ in settled])
     out = []
     for label, (g, found) in enumerate(settled, start=1):
-        if any((g.pixels & r.pixels).any() for r in refused):
-            continue
-        domain = fork_domain(g.pixels, owned & ~g.pixels, g.period, bins)
-        z = responses.response(g.period, g.angle_deg)
-        forks = find_forks(z, domain, g.period, g.angle_deg, bins, found)
-        out += _reported_forks(label, [f for f in forks if f.evidence >= _FORK_MIN_EVIDENCE], bins)
+        if not _holds_refused(g, refused):
+            forks = _region_forks(g, owned, responses, bins, _FORK_MIN_EVIDENCE, found)
+            out += _reported_forks(label, forks, bins)
     out.sort(key=lambda f: (f.region, f.point))
     return out
 

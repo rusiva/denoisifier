@@ -402,16 +402,22 @@ def find_phase_breaks(
     return found
 
 
+def _bounding_box(mask: np.ndarray) -> tuple[slice, slice]:
+    """The (rows, cols) slices of the smallest box holding every set pixel
+    of ``mask`` (bool, 2D, at least one pixel set)."""
+    rows = np.flatnonzero(mask.any(axis=1))
+    cols = np.flatnonzero(mask.any(axis=0))
+    return slice(int(rows[0]), int(rows[-1]) + 1), slice(int(cols[0]), int(cols[-1]) + 1)
+
+
 def _samples(
     z: np.ndarray, domain: np.ndarray, period: float, angle_deg: float, bins: BinFactors
 ) -> _Samples | None:
     """The demodulated interior samples of ``domain``; None when it is too small."""
     if not domain.any():
         return None
-    rows = np.flatnonzero(domain.any(axis=1))
-    cols = np.flatnonzero(domain.any(axis=0))
-    r0, c0 = int(rows[0]), int(cols[0])
-    crop = np.s_[r0 : int(rows[-1]) + 1, c0 : int(cols[-1]) + 1]
+    crop = _bounding_box(domain)
+    r0, c0 = crop[0].start, crop[1].start
     zc, dom = z[crop], domain[crop]
     magnitude = np.abs(zc)
     interior = dom & (magnitude >= _BREAK_MIN_MAGNITUDE_FRACTION * np.median(magnitude[dom]))
@@ -542,9 +548,7 @@ def fork_domain(
     out = np.zeros(pixels.shape, dtype=bool)
     if not pixels.any():
         return out
-    rows = np.flatnonzero(pixels.any(axis=1))
-    cols = np.flatnonzero(pixels.any(axis=0))
-    box = np.s_[int(rows[0]) : int(rows[-1]) + 1, int(cols[0]) : int(cols[-1]) + 1]
+    box = _bounding_box(pixels)
     pix = pixels[box]
     v, h = pixel_size(bins)
     rho = _FORK_DOMAIN_CLOSE_PERIODS * period
@@ -557,13 +561,15 @@ def fork_domain(
     return out
 
 
-def _box_sum(a: np.ndarray, rr: int, rc: int) -> np.ndarray:
-    """Sum of ``a`` over the box [r - rr, r + rr] x [c - rc, c + rc] about
-    each pixel, zero-padded."""
-    p = np.pad(a, ((rr + 1, rr), (rc + 1, rc)))
-    s = p.cumsum(0).cumsum(1)
-    k1, k2 = 2 * rr + 1, 2 * rc + 1
-    return np.asarray(s[k1:, k2:] - s[:-k1, k2:] - s[k1:, :-k2] + s[:-k1, :-k2])
+def _box_sum(a: np.ndarray, rows: tuple[int, int], cols: tuple[int, int]) -> np.ndarray:
+    """Sum of ``a`` over the box [r - above, r + below] x [c - left, c +
+    right] about each pixel, zero-padded, for ``rows`` = (above, below) and
+    ``cols`` = (left, right); the shape of ``a``."""
+    (above, below), (left, right) = rows, cols
+    padded = np.pad(a, ((above + 1, below), (left + 1, right)))
+    total = padded.cumsum(0).cumsum(1)
+    k1, k2 = above + below + 1, left + right + 1
+    return np.asarray(total[k1:, k2:] - total[:-k1, k2:] - total[k1:, :-k2] + total[:-k1, :-k2])
 
 
 def find_forks(
@@ -612,10 +618,8 @@ def find_forks(
     if not domain.any():
         return []
     v, h = pixel_size(bins)
-    rows = np.flatnonzero(domain.any(axis=1))
-    cols = np.flatnonzero(domain.any(axis=0))
-    r0, c0 = int(rows[0]), int(cols[0])
-    crop = np.s_[r0 : int(rows[-1]) + 1, c0 : int(cols[-1]) + 1]
+    crop = _bounding_box(domain)
+    r0, c0 = crop[0].start, crop[1].start
     zc, dom = z[crop], domain[crop]
     magnitude = np.abs(zc)
     median = float(np.median(magnitude[dom]))
@@ -630,49 +634,45 @@ def find_forks(
     kx = float(np.median(np.angle(zc[:, 1:] * np.conj(zc[:, :-1]))[h_pairs]))
     ky = float(np.median(np.angle(zc[1:, :] * np.conj(zc[:-1, :]))[v_pairs]))
     rr, cc = np.mgrid[0:height, 0:width]
-    w = zc * np.exp(-1j * (kx * cc + ky * rr))
+    demodulated = zc * np.exp(-1j * (kx * cc + ky * rr))
     valid = interior.copy()
     if breaks:
-        w, valid = _stepped_across(w, valid, dom, breaks, (r0, c0), period, angle_deg, bins)
-    dx = np.angle(w[:, 1:] * np.conj(w[:, :-1]))
-    dy = np.angle(w[1:, :] * np.conj(w[:-1, :]))
+        demodulated, valid = _stepped_across(
+            demodulated, valid, dom, breaks, (r0, c0), period, angle_deg, bins
+        )
+    dx = np.angle(demodulated[:, 1:] * np.conj(demodulated[:, :-1]))
+    dy = np.angle(demodulated[1:, :] * np.conj(demodulated[:-1, :]))
     circulation = dx[:-1, :] + dy[:, 1:] - dx[1:, :] - dy[:, :-1]
     # Plaquette (r, c) lies between pixels r..r+1 and c..c+1.
     residues = np.rint(circulation / (2 * np.pi)).astype(np.int64)
     loop = _FORK_LOOP_PERIODS * period
     lr = max(1, round(loop / v))
     lc = max(1, round(loop / h))
-    # The winding about pixel (r, c): plaquettes r-lr..r+lr-1, c-lc..c+lc-1.
-    p = np.pad(residues, ((lr, lr + 1), (lc, lc + 1)))
-    s = np.zeros((p.shape[0] + 1, p.shape[1] + 1), dtype=np.int64)
-    s[1:, 1:] = p.cumsum(0).cumsum(1)
-    br, bc = 2 * lr, 2 * lc
-    winding = (
-        s[br : br + height, bc : bc + width]
-        - s[0:height, bc : bc + width]
-        - s[br : br + height, 0:width]
-        + s[0:height, 0:width]
-    )
+    # The winding about pixel (r, c): plaquettes r-lr..r+lr-1, c-lc..c+lc-1
+    # (residues padded to the crop's shape; plaquette row and column
+    # height-1 and width-1 do not exist).
+    winding = _box_sum(np.pad(residues, ((0, 1), (0, 1))), (lr, lr - 1), (lc, lc - 1))
     bad = (~valid).astype(np.int64)
-    ring_bad = _box_sum(bad, lr, lc) - _box_sum(bad, lr - 1, lc - 1)
+    ring_bad = _box_sum(bad, (lr, lr), (lc, lc)) - _box_sum(bad, (lr - 1, lr - 1), (lc - 1, lc - 1))
     # The whole square must lie inside the crop.
-    ok = ring_bad == 0
-    ok[:lr, :] = ok[-lr:, :] = False
-    ok[:, :lc] = ok[:, -lc:] = False
+    loop_valid = ring_bad == 0
+    loop_valid[:lr, :] = loop_valid[-lr:, :] = False
+    loop_valid[:, :lc] = loop_valid[:, -lc:] = False
     out = []
     for d in (1, -1):
-        labelled, n = ndimage.label(ok & (winding == d))
+        labelled, n = ndimage.label(loop_valid & (winding == d))
         if not n:
             continue
         index = np.arange(1, n + 1)
         count = ndimage.sum_labels(np.ones_like(labelled), labelled, index)
-        cy = ndimage.mean(rr, labelled, index)
-        cx = ndimage.mean(cc, labelled, index)
+        cy, cx = sensor_coordinates(
+            ndimage.mean(rr, labelled, index) + r0, ndimage.mean(cc, labelled, index) + c0, bins
+        )
         for k in range(n):
             area = float(count[k]) * v * h
             out.append(
                 FoundFork(
-                    point=(float((cy[k] + r0) * v), float((cx[k] + c0) * h)),
+                    point=(float(cy[k]), float(cx[k])),
                     direction=d,
                     evidence=area / (2 * loop) ** 2,
                 )
@@ -698,7 +698,7 @@ def forks_explained(z: np.ndarray, forks: Sequence[FoundFork], bins: BinFactors)
 
 
 def _stepped_across(
-    w: np.ndarray,
+    demodulated: np.ndarray,
     valid: np.ndarray,
     dom: np.ndarray,
     breaks: Sequence[FoundBreak],
@@ -707,37 +707,40 @@ def _stepped_across(
     angle_deg: float,
     bins: BinFactors,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """``w`` (demodulated, cropped at ``origin``) with each break's positive
+    """``demodulated`` (cropped at ``origin``) with each break's positive
     side turned back by its jump, and each pixel within
     _FORK_BREAK_BAND_SIGMAS step widths of a line given the value and
     validity of the point at the band's edge on its own side."""
     v, h = pixel_size(bins)
     r0, c0 = origin
-    height, width = w.shape
+    height, width = demodulated.shape
     rr, cc = np.mgrid[0:height, 0:width]
     y, x = sensor_coordinates(rr + r0, cc + c0, bins)
     for b in breaks:
-        w = np.where(b.side(y, x) > 0, w * np.exp(-1j * b.jump_rad), w)
+        demodulated = np.where(
+            b.side(y, x) > 0, demodulated * np.exp(-1j * b.jump_rad), demodulated
+        )
     for b in breaks:
         side = b.side(y, x)
-        g = _FORK_BREAK_BAND_SIGMAS * _finder_sigma_n(period, angle_deg, b.line_angle_deg)
-        band = np.abs(side) < g
+        half_width = _FORK_BREAK_BAND_SIGMAS * _finder_sigma_n(period, angle_deg, b.line_angle_deg)
+        band = np.abs(side) < half_width
         if not band.any():
             continue
         t = math.radians(b.line_angle_deg)
         ny, nx = math.cos(t), -math.sin(t)  # the gradient of side in (Y, X)
-        sb = side[band]
-        shift = np.where(sb >= 0, g - sb, -g - sb) + np.where(sb >= 0, 0.5, -0.5) * max(v, h)
+        band_side = side[band]
+        shift = np.where(band_side >= 0, half_width - band_side, -half_width - band_side)
+        shift += np.where(band_side >= 0, 0.5, -0.5) * max(v, h)
         ty = np.rint((y[band] + shift * ny) / v).astype(int) - r0
         tx = np.rint((x[band] + shift * nx) / h).astype(int) - c0
         inside = (ty >= 0) & (ty < height) & (tx >= 0) & (tx < width)
-        source_ok = np.zeros(sb.shape, dtype=bool)
-        values = np.zeros(sb.shape, dtype=complex)
+        source_ok = np.zeros(band_side.shape, dtype=bool)
+        values = np.zeros(band_side.shape, dtype=complex)
         source_ok[inside] = valid[ty[inside], tx[inside]]
-        values[inside] = w[ty[inside], tx[inside]]
+        values[inside] = demodulated[ty[inside], tx[inside]]
         at = np.nonzero(band)
-        w = w.copy()
-        w[at] = values
+        demodulated = demodulated.copy()
+        demodulated[at] = values
         valid = valid.copy()
         valid[at] = source_ok & dom[at]
-    return w, valid
+    return demodulated, valid
