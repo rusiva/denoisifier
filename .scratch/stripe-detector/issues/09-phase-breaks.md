@@ -4,13 +4,13 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The generator places phase breaks with any line angle and jump, and returns the true line and jump.
-- [ ] Breaks with jumps of π/2 or more are found at typical noise; the reported line is within one period of the truth and the jump within ±π/4.
-- [ ] A break running at an unusual angle (far from horizontal) is still found.
-- [ ] A frame with phase breaks is still recognised as striped, and its region is not split into fake separate regions.
-- [ ] The report lists `phase_breaks`, each with a line and a jump.
+- [x] The generator places phase breaks with any line angle and jump, and returns the true line and jump.
+- [x] Breaks with jumps of π/2 or more are found at typical noise; the reported line is within one period of the truth and the jump within ±π/4.
+- [x] A break running at an unusual angle (far from horizontal) is still found.
+- [x] A frame with phase breaks is still recognised as striped, and its region is not split into fake separate regions.
+- [x] The report lists `phase_breaks`, each with a line and a jump.
 
 ## Comments
 
@@ -48,3 +48,6 @@
   - **P5** a refused region (frame Period under 2.5 px) that the pass joined to another (absorbed, or bridged) lost its refusal warning, since the warning followed the settled region's Period. The warning now follows each region above the Threshold whose search was refused, under the label of the reported region holding its first pixel and with its own Period, in label order. With no found break the warnings are the old ones. Test first (red, then green): `test_a_refused_region_keeps_its_warning_when_the_pass_joins_it_to_another` (the pass replaced by one that hands the refused region back inside a region at a Period `_MERGE_PERIOD_RATIO` longer). A merged region whose own re-measured Period falls under the limit while none of its members was refused gets no warning (its breaks were searched).
   - **Ticket 13** speed note from planner-3 committed as is (`1c767e9`; checked: the diff was only that note).
   - No weakening move: no tolerance, expected value, skip, suppression, selection, lockfile or gate-config change.
+- 2026-11-15, close-out (housekeeping; orchestrator log `handoffs/.archived/09-orchestrator.md`, CLOSED 2026-11-14). Code-review sort: fixed S1-S3, S5-S10, P1, P5 (fixer comment above); S4 skipped (score-path edit); passed S11 (feature envy, no behaviour gain), P2 (`_compatible` Protocol widening, type-only, identity tests cover), P3 (extra public helpers, used across modules); P4 kept as plan and prototype. No owner items.
+  - **Gates** (scores not meant to move, so no `make measure`; background, one at a time, at `ca48498`): `make check-slow` exit 0, `5 passed, 1346 deselected in 1155.80s` (`handoffs/.archived/09-check-slow.log`); `make check` exit 0, `1343 passed, 8 deselected in 1137.38s`, slow stamp check green (`handoffs/.archived/09-check.log`). Criteria ticked on these gates.
+  - **Open for the owner**: the proposed spec.md edit (Report, `phase_breaks`: "list of {region, line as (row, col) points in frame px, jump in radians}"; spec.md still says "polyline") is not applied.
