@@ -289,9 +289,7 @@ def analyse(
     ones). The Modulation Depth is the measured one unless regions merged. A
     frame with no found break gets the same regions, labels and measurements
     as without the search. Only straight lines are searched; a region shorter than about
-    8 Periods across a line gets no break on it. The evidence threshold is
-    conservative on purpose until it is calibrated (ticket 11); no
-    false-break rate is claimed.
+    8 Periods across a line gets no break on it.
 
     Forks (``Report.forks``) are searched after the score and the Threshold
     too, in the reported regions only (a Fork outside every reported region
@@ -308,8 +306,25 @@ def analyse(
     differently. Limits, as measured (``find_forks``): a Fork within about 4
     Periods of its region's edge is not found; two Forks, or a Fork and a
     Phase Break, are resolved 4 Periods apart in a large region and are
-    undefined closer. The evidence thresholds are conservative until they
-    are calibrated (ticket 11); no false-fork rate is claimed.
+    undefined closer.
+
+    A Phase Break or Fork is reported only when its evidence is above a
+    threshold calibrated on stored break- and Fork-free striped frames (ADR
+    0003): ``break_fork_false_alarm_rate`` (default
+    ``DEFAULT_BREAK_FORK_FALSE_ALARM_RATE``, 0.05) is the share of such frames
+    with at least one fake break or Fork, at most; it must lie between 0 and 1
+    and be at least 2 / (n + 1) for the stored n frames. On the stored
+    calibration no frame has any break or Fork evidence, so the thresholds are
+    the conservative floors (``_BREAK_MIN_EVIDENCE``, ``_FORK_MIN_EVIDENCE``)
+    at every valid rate. The rate holds for the declared recipe: 400x1600,
+    full-frame stripes at Modulation Depth 0.5, typical settings with spikes,
+    unbinned, at the stored 1 % stripe Threshold. ``threshold``,
+    ``false_alarm_rate``, ``calibration``, ``bin_factors``, crops, partial
+    regions and weaker stripes change the regions the finders see, and the
+    claim does not cover them; measured on 200 frames each at the floors:
+    depth 0.2, 1 frame with a fake (0.5 %); a partial region over half the
+    frame, 1 frame (0.5 %, 3 fake breaks in a false region at the frame
+    edge). Frames with Forks are not in the set.
 
     Phase Breaks and Forks are not searched in a region whose stripes fall
     under 2.5 frame pixels along their normal (under binning);

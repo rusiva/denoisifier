@@ -22,6 +22,15 @@ measured wall clocks are in ticket 07's Comments). tests/test_held_out_calibrati
 is slow too but carries held_out: `make check-slow` does not run it; `make
 check-held-out` does (400 full frames plus 20 option analyses, about 20 min idle at
 the step-5 rate).
+
+Since ticket 11, `make check-slow` also runs tests/test_slow_break_fork_calibration.py,
+the break and Fork calibration reproduction on the first 60 of its 300 frames (about
+2.5 min idle: ticket 11 P1 measured about 2.5 s per frame for generation and the
+evidence pass with 12 workers), so the slow tier takes about 22-23 min idle.
+`make check-held-out` also runs tests/test_held_out_break_fork.py: the full 300-frame
+reproduction (about 12.5 min), the held-out fake count (300 frames of `analyse` plus
+the evidence pass, about 25 min) and the detection checks (200 frames at 512x512 at
+the stored thresholds and at the floors, about 4 min), so it takes about 60 min idle.
 """
 
 import json

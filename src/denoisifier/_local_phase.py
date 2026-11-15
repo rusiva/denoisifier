@@ -82,9 +82,10 @@ _BREAK_REFINE_OFFSET_SPAN_PERIODS = 1.0
 # Acceptance. E is the fraction of the samples' power near the line that the
 # two-magnitude model explains beyond one value: break-free frames reached
 # 0.082 at most, true breaks of pi/2 0.18 at least (P1 v2, seeds
-# 109_000-109_599). E is the one scalar ticket 11 calibrates; the jump and
-# spread rules stay fixed. The spread: the two side bands are cut into
-# _BREAK_SEGMENTS pieces along the line; each piece with at least
+# 109_000-109_599). E is the one scalar ticket 11 calibrates (ADR 0003):
+# _BREAK_MIN_EVIDENCE is the floor of the calibrated break threshold, which
+# E must exceed (strict); the jump and spread rules stay fixed. The spread:
+# the two side bands are cut into _BREAK_SEGMENTS pieces along the line; each piece with at least
 # _BREAK_MIN_PIECE_SAMPLES samples on each side gives its own jump, and every
 # one must lie within _BREAK_JUMP_SPREAD_RAD of the line's jump.
 _BREAK_MIN_EVIDENCE = 0.1
@@ -114,9 +115,10 @@ _BREAK_MIN_FRAME_PERIOD_PX = 2.5
 # widths (_finder_sigma_n) is stepped across. The domain is the region closed
 # by a disc of _FORK_DOMAIN_CLOSE_PERIODS Periods. A candidate's evidence E
 # is its winding component's area over the loop's area: the pre-break search
-# keeps E >= _FORK_GATE_EVIDENCE, the reported forks E >= _FORK_MIN_EVIDENCE
-# (largest on fork-free and break-only frames 0.000; true forks at least 0.31,
-# P2 explore). E is the scalar ticket 11 calibrates.
+# keeps E >= _FORK_GATE_EVIDENCE, the reported forks E above the calibrated
+# Fork threshold (strict; ticket 11, ADR 0003), whose floor is
+# _FORK_MIN_EVIDENCE (largest on fork-free and break-only frames 0.000; true
+# forks at least 0.31, P2 explore).
 _FORK_LOOP_PERIODS = 2.0
 _FORK_MIN_MAGNITUDE_FRACTION = 0.5
 _FORK_BREAK_BAND_SIGMAS = 2.0
