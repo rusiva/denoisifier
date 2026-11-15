@@ -343,6 +343,8 @@ FORK_SIGN_TEST_PERIOD = 10
 FORK_SIGN_ROW_OFFSET_PERIODS = 5
 FORK_SIGN_FRAME_SHAPE = (400, 1600)
 FORK_PHASE_ATOL = 1e-9  # the generator's fork phase, noise-free
+# The break pass's field against the hand-turned raw response (float rounding only).
+FORK_EXPLAINED_RESPONSE_ATOL = 1e-12
 # Prototypes P1 and P2 of ticket 10 (explore), and the one validation run (2/3 scale).
 # Reserved. 111_200-111_599 and 111_733-111_999 were never generated and stay unused
 # (free for the follow-up ticket 18's explore and validation).

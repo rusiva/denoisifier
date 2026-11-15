@@ -8,7 +8,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from _pytest.mark.structures import ParameterSet
 from scipy import ndimage
 from scipy.ndimage import gaussian_filter
 
@@ -49,6 +48,7 @@ from denoisifier.synthetic import (
 )
 from forks import (
     ac2_case,
+    ac2_direction,
     fork_full_frame_case,
     fork_near_break_case,
     fork_pair_case,
@@ -81,7 +81,7 @@ from protected import (
     ENVELOPE_TEST_SEEDS,
     EXTREMES_TEST_SEEDS,
     FALSE_ALARM_RATE_OPTION_TEST_SEED,
-    FORK_POSITION_TOL_PERIODS,
+    FORK_EXPLAINED_RESPONSE_ATOL,
     FORK_SIGN_TEST_PERIOD,
     FORK_SIGN_TEST_SEED,
     FORK_TEST_SEEDS,
@@ -143,6 +143,7 @@ from truth_match import (
     assert_forks_match,
     assert_matches_truth,
     assert_region_covers_both_sides,
+    matched_forks,
     truth_lit_mask,
 )
 
@@ -2144,7 +2145,9 @@ def test_a_gated_fork_corrects_the_break_pass_field(monkeypatch):
     assert breaks == ()
     y, x = np.mgrid[0 : raw.shape[0], 0 : raw.shape[1]]
     turned = raw * np.exp(1j * np.arctan2(y - fork.point[0], x - fork.point[1]))
-    np.testing.assert_allclose(handed.response(p, a), turned, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(
+        handed.response(p, a), turned, rtol=0, atol=FORK_EXPLAINED_RESPONSE_ATOL
+    )
     np.testing.assert_array_equal(handed.raw.response(p, a), raw)
     assert post
     for z, period, angle_deg, _ in post:
@@ -2186,7 +2189,7 @@ def _fork_period(s):
 
 
 def _full_frame_fork(seed):
-    return fork_full_frame_case(seed, (1, -1)[seed % 2])
+    return fork_full_frame_case(seed, ac2_direction(seed))
 
 
 @pytest.mark.parametrize("seed", inner(FORK_TEST_SEEDS))
@@ -2246,7 +2249,7 @@ def _with_kind(kind, params):
     marks kept."""
     out = []
     for p in params:
-        if isinstance(p, ParameterSet):
+        if hasattr(p, "marks"):  # a pytest.param
             values, marks = tuple(p.values), p.marks
         else:
             values, marks = (p if isinstance(p, tuple) else (p,)), ()
@@ -2330,19 +2333,13 @@ def test_frame_with_forks_is_striped(kind, args):
     notch at a fork, so the fork pixel itself is not asked to be in the region."""
     s, report, bins = _fork_frame(kind, *args)
     assert report.striped is True
-    tol = FORK_POSITION_TOL_PERIODS * _fork_period(s)
-    for truth in s.truth.forks:
-        for fork in report.forks:
-            y = bins.vertical * fork.point[0] + (bins.vertical - 1) / 2
-            x = bins.horizontal * fork.point[1] + (bins.horizontal - 1) / 2
-            if fork.direction != truth.direction or (
-                math.hypot(y - truth.point[0], x - truth.point[1]) > tol
-            ):
-                continue
-            (region,) = [r for r in report.regions if r.label == fork.region]
-            own = report.labels == fork.region
-            domain = fork_domain(own, (report.labels > 0) & ~own, region.period_px, bins)
-            assert domain[_nearest_frame_pixel(truth.point, bins)], (truth, fork)
+    matched = matched_forks(report.forks, s.truth.forks, _fork_period(s), bins)
+    assert matched, (s.truth.forks, report.forks)
+    for truth, fork in matched:
+        (region,) = [r for r in report.regions if r.label == fork.region]
+        own = report.labels == fork.region
+        domain = fork_domain(own, (report.labels > 0) & ~own, region.period_px, bins)
+        assert domain[_nearest_frame_pixel(truth.point, bins)], (truth, fork)
 
 
 def test_report_lists_forks():
@@ -2443,5 +2440,5 @@ def test_forks_are_not_searched_under_the_frame_period_limit():
 )
 def test_binned_fork_is_found(bins, seed):
     """Binned full frames (2x1 and 1x2): the fork is matched in sensor geometry."""
-    s, report, factors = fork_full_frame_case(seed, (1, -1)[seed % 2], bins=bins)
+    s, report, factors = fork_full_frame_case(seed, ac2_direction(seed), bins=bins)
     assert_forks_match(report.forks, s.truth.forks, s.truth.period, factors)

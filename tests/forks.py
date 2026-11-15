@@ -40,7 +40,8 @@ NEAR_ALONG_PERIODS = (-0.5, 0.0, 0.5)
 PAIR_TILTS_DEG = (-20.0, -10.0, 0.0, 10.0, 20.0)
 
 
-def _k(seed):
+def _seed_index(seed):
+    """``seed``'s position in FORK_TEST_SEEDS (cycles the layouts)."""
     return seed - FORK_TEST_SEEDS[0]
 
 
@@ -59,7 +60,7 @@ def ac2_direction(seed):
 
 def ac2_offset(seed, period):
     """(rows, cols): the AC 2 fork's whole-px offset from the region centre."""
-    k = _k(seed)
+    k = _seed_index(seed)
     n = len(AC2_OFFSETS_PERIODS)
     dy = AC2_OFFSETS_PERIODS[k % n]
     dx = AC2_OFFSETS_PERIODS[(2 * k + 1) % n]
@@ -157,7 +158,7 @@ def _big_region_frame(seed, region, breaks, forks):
 
 def near_break_layout(seed):
     """(line Angle, jump, side, along in Periods, direction) of the AC 3 frame of ``seed``."""
-    k = _k(seed)
+    k = _seed_index(seed)
     a = CASES[seed % 10].angle_deg
     return (
         float(a + NEAR_LINE_OFFSETS_DEG[seed % 3]),
@@ -192,7 +193,7 @@ def fork_pair_case(seed):
     """(Synthetic, Report): ``big_region`` with two forks FORK_PAIR_SEPARATION_PERIODS Periods
     apart about its centre, the pair's axis tilted by seed; opposite directions on even seeds,
     equal on odd."""
-    k = _k(seed)
+    k = _seed_index(seed)
     case = CASES[seed % 10]
     p = float(case.period)
     region = big_region(p, case.angle_deg)

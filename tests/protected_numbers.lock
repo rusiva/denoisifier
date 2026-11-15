@@ -265,6 +265,7 @@ protected :: FORK_SIGN_TEST_PERIOD :: 10
 protected :: FORK_SIGN_ROW_OFFSET_PERIODS :: 5
 protected :: FORK_SIGN_FRAME_SHAPE :: (400, 1600)
 protected :: FORK_PHASE_ATOL :: 1e-09
+protected :: FORK_EXPLAINED_RESPONSE_ATOL :: 1e-12
 protected :: FORK_PROTOTYPE_SEEDS :: range(111000, 111200)
 protected :: FORK_VALIDATION_SEEDS :: range(111600, 111733)
 denoisifier._local_phase :: _BREAK_SIGMA_ACROSS_PERIODS :: 1.0

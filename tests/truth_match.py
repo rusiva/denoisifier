@@ -137,15 +137,10 @@ def fork_problems(report_forks, truth_forks, period, bins):
     has its sensor centre at v r + (v - 1) / 2), with the true direction (as given, never
     either sign); and every reported fork is matched to a true fork, one to one."""
     tol = FORK_POSITION_TOL_PERIODS * period
-    found = [_sensor_centres(*f.point, bins) for f in report_forks]
     problems = []
     used: dict[int, int] = {}
-    for t, truth in enumerate(truth_forks):
-        near = [
-            i
-            for i, (y, x) in enumerate(found)
-            if math.hypot(y - truth.point[0], x - truth.point[1]) <= tol
-        ]
+    for t, near in enumerate(_reported_near(report_forks, truth_forks, period, bins)):
+        truth = truth_forks[t]
         if len(near) != 1:
             problems.append(f"fork {t} at {truth.point}: {len(near)} reported within {tol:.2f}")
             continue
@@ -161,6 +156,33 @@ def fork_problems(report_forks, truth_forks, period, bins):
         if i not in used:
             problems.append(f"extra fork {f}")
     return problems
+
+
+def _reported_near(report_forks, truth_forks, period, bins):
+    """Per true fork, the indices of the reported forks within FORK_POSITION_TOL_PERIODS x
+    ``period`` of it (sensor geometry, ``_sensor_centres``)."""
+    tol = FORK_POSITION_TOL_PERIODS * period
+    found = [_sensor_centres(*f.point, bins) for f in report_forks]
+    return [
+        [
+            i
+            for i, (y, x) in enumerate(found)
+            if math.hypot(y - truth.point[0], x - truth.point[1]) <= tol
+        ]
+        for truth in truth_forks
+    ]
+
+
+def matched_forks(report_forks, truth_forks, period, bins):
+    """(true fork, reported fork) for each true fork matched by ``fork_problems``' rule: exactly
+    one reported fork within the tolerance, with the true direction."""
+    pairs = []
+    for truth, near in zip(
+        truth_forks, _reported_near(report_forks, truth_forks, period, bins), strict=True
+    ):
+        if len(near) == 1 and report_forks[near[0]].direction == truth.direction:
+            pairs.append((truth, report_forks[near[0]]))
+    return pairs
 
 
 def assert_forks_match(report_forks, truth_forks, period, bins):
