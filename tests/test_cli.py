@@ -16,6 +16,7 @@ from denoisifier import BinFactors, analyse, read_frame
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import Emccd, StripedRegion, generate
+from forks import ac2_case
 from protected import (
     BINNING_TEST_SEEDS,
     BREAK_JUMP_TOL_RAD,
@@ -26,6 +27,7 @@ from protected import (
     CLI_STDOUT_TEST_SEED,
     CLI_STRIPED_CSV_TEST_SEED,
     DEPTH_TOL,
+    FORK_TEST_SEEDS,
     MILD_CLIP_LEVEL_FRACTION,
     OTHER_FALSE_ALARM_RATE,
     OVERRIDE_LEVEL_FRACTION,
@@ -563,3 +565,21 @@ def test_cli_reports_phase_breaks(tmp_path):
     pixel = (int(rows[far]), int(cols[far]))
     assert _side(brk["line"], pixel) > 0
     assert _side(file_brk["line"], pixel[::-1]) > 0
+
+
+def test_cli_reports_forks(tmp_path):
+    """AC 5 through the CLI: a CSV with one fork gives one entry; with ``--transpose`` on the
+    transposed file, the point is swapped and the direction equal."""
+    s, _ = ac2_case(FORK_TEST_SEEDS[0])
+    plain_path, file_path = tmp_path / "frame.csv", tmp_path / "transposed.csv"
+    write_frame_csv(s.frame, plain_path)
+    write_frame_csv(s.frame.T, file_path)
+    plain = _run(plain_path)
+    flipped = _run(file_path, "--transpose")
+    assert plain.returncode == flipped.returncode == 0
+    assert plain.stderr == flipped.stderr == ""
+    (fork,) = json.loads(plain.stdout)["forks"]
+    (file_fork,) = json.loads(flipped.stdout)["forks"]
+    assert file_fork["point"] == fork["point"][::-1]
+    assert file_fork["direction"] == fork["direction"] == s.truth.forks[0].direction
+    assert file_fork["region"] == fork["region"]

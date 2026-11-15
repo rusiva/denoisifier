@@ -1,5 +1,6 @@
 import dataclasses
 import json
+import math
 import re
 from functools import cache
 from itertools import combinations
@@ -7,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from _pytest.mark.structures import ParameterSet
 from scipy import ndimage
 from scipy.ndimage import gaussian_filter
 
@@ -35,6 +37,7 @@ from denoisifier import (
     analyse,
     analysis,
 )
+from denoisifier._local_phase import _FORK_LOOP_PERIODS, fork_domain
 from denoisifier.analysis import _ENVELOPE_SIGMA
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.synthetic import (
@@ -43,6 +46,13 @@ from denoisifier.synthetic import (
     Emccd,
     StripedRegion,
     generate,
+)
+from forks import (
+    ac2_case,
+    fork_full_frame_case,
+    fork_near_break_case,
+    fork_pair_case,
+    fork_region_case,
 )
 from inner_loop import WIDE, diagonal, inner
 from protected import (
@@ -71,6 +81,10 @@ from protected import (
     ENVELOPE_TEST_SEEDS,
     EXTREMES_TEST_SEEDS,
     FALSE_ALARM_RATE_OPTION_TEST_SEED,
+    FORK_POSITION_TOL_PERIODS,
+    FORK_SIGN_TEST_PERIOD,
+    FORK_SIGN_TEST_SEED,
+    FORK_TEST_SEEDS,
     FULL_FRAME_TEST_SEEDS,
     GATE_STORED_THRESHOLD,
     INNER_LOOP_SEED_COUNT,
@@ -115,6 +129,7 @@ from regions import (
     assert_labels_consistent,
     iou,
     match,
+    semi_axes,
     single_region,
     single_region_case,
     truth_bbox,
@@ -125,6 +140,7 @@ from shared_cache import analysed
 from truth_match import (
     assert_break_matches,
     assert_depth_matches,
+    assert_forks_match,
     assert_matches_truth,
     assert_region_covers_both_sides,
     truth_lit_mask,
@@ -2146,3 +2162,274 @@ def test_refused_regions_are_not_searched_for_forks(monkeypatch):
     report = analyse(frame, bin_factors=bins)
     assert report.regions
     assert calls == []
+
+
+# Ticket 10: Forks on the real path (plan 5).
+
+FORK_FULL_FRAME_PARAMS = inner(FORK_TEST_SEEDS[:4])
+
+
+def _fork_period(s):
+    return s.truth.regions[0].period if s.truth.regions else s.truth.period
+
+
+def _full_frame_fork(seed):
+    return fork_full_frame_case(seed, (1, -1)[seed % 2])
+
+
+@pytest.mark.parametrize("seed", inner(FORK_TEST_SEEDS))
+def test_forks_are_found_with_their_direction(seed):
+    """AC 2: one fork in a 09-size region (typical noise, scorched, depth 0.5), at the centre
+    plus a whole-px offset of up to one Period per axis, is found within one Period with its
+    direction (plan 5.1), and no break is reported."""
+    s, report = ac2_case(seed)
+    assert_forks_match(report.forks, s.truth.forks, _fork_period(s), ONE_BY_ONE)
+    assert report.phase_breaks == ()
+
+
+@pytest.mark.parametrize("seed", FORK_FULL_FRAME_PARAMS)
+def test_fork_in_full_frame_stripes_is_found(seed):
+    """AC 2 on 400x1600 full-frame stripes, the fork at the centre."""
+    s, report, bins = _full_frame_fork(seed)
+    assert_forks_match(report.forks, s.truth.forks, s.truth.period, bins)
+    assert report.phase_breaks == ()
+
+
+@pytest.mark.parametrize("direction", [1, -1])
+def test_reported_fork_direction_matches_the_generator(direction):
+    """AC 1 end to end: at Gaussian noise and no Spikes, the reported direction is the
+    generator's, for +1 and -1."""
+    s, report = fork_region_case(
+        FORK_SIGN_TEST_SEED,
+        direction=direction,
+        offset=(0, 0),
+        noise=GAUSSIAN,
+        period=FORK_SIGN_TEST_PERIOD,
+        angle_deg=0.0,
+    )
+    assert [f.direction for f in report.forks] == [direction]
+    assert_forks_match(report.forks, s.truth.forks, FORK_SIGN_TEST_PERIOD, ONE_BY_ONE)
+
+
+@pytest.mark.parametrize("seed", inner(FORK_TEST_SEEDS))
+def test_fork_near_a_phase_break_is_found_and_kept_apart(seed):
+    """AC 3 (plan 5.3): a fork FORK_NEAR_BREAK_PERIODS Periods from a break's line, in a region
+    large enough (``big_region``) that the fork lies about 4 Periods or more inside its edge:
+    the fork is matched (plan 5.1), the break is matched (09's metric), and exactly one fork
+    and one break are reported, in the same region. Closer than 4 Periods is undefined (the
+    ``find_forks`` limits)."""
+    s, report = fork_near_break_case(seed)
+    (region,) = s.truth.regions
+    (line,) = s.truth.phase_breaks
+    assert_forks_match(report.forks, s.truth.forks, region.period, ONE_BY_ONE)
+    (fork,) = report.forks
+    (brk,) = report.phase_breaks
+    assert brk.region == fork.region
+    mask = truth_pixels(region)
+    assert_break_matches([brk], line, mask, mask, region.period, ONE_BY_ONE)
+
+
+def _with_kind(kind, params):
+    """``params`` (plain values, tuples or ``pytest.param``s) as (kind, args) parameters,
+    marks kept."""
+    out = []
+    for p in params:
+        if isinstance(p, ParameterSet):
+            values, marks = tuple(p.values), p.marks
+        else:
+            values, marks = (p if isinstance(p, tuple) else (p,)), ()
+        ident = "-".join([kind, *(f"{v:g}" if isinstance(v, float) else str(v) for v in values)])
+        out.append(pytest.param(kind, values, marks=marks, id=ident))
+    return out
+
+
+def _break_kind_frame(kind, args):
+    """(frame, BinFactors, Report) of one 09 Phase Break frame kind (plan 5.2, AC 3 negative)."""
+    if kind == "region":
+        s, report = break_region_case(*args)
+        return s.frame, ONE_BY_ONE, report
+    if kind == "full":
+        (seed,) = args
+        s, report, bins = _full_frame_break(seed)
+    elif kind == "pair":
+        (seed,) = args
+        s, report, bins = break_pair(seed)
+    elif kind == "two-break":
+        (seed,) = args
+        s, report = two_break_case(seed)
+        return s.frame, ONE_BY_ONE, report
+    elif kind == "compatible-pair":
+        (seed,) = args
+        frame = compatible_pair_frame(seed).frame
+        return frame, ONE_BY_ONE, analyse(frame)
+    else:
+        bins_hv, seed = args
+        s, report, bins = break_full_frame_case(seed, ((0.0, 0.0, PI),), bins=bins_hv)
+    frame = s.frame if bins == ONE_BY_ONE else bin_sensor_frame(s.frame, *bins_hv)
+    return frame, bins, report
+
+
+BREAK_KIND_FRAMES = [
+    *_with_kind("region", BREAK_REGION_FRAMES),
+    *_with_kind("full", FULL_FRAME_BREAK_PARAMS),
+    *_with_kind("pair", inner(PAIR_SEEDS)),
+    *_with_kind("two-break", inner(PHASE_BREAK_TEST_SEEDS)),
+    *_with_kind("compatible-pair", inner(PHASE_BREAK_TEST_SEEDS)),
+    *_with_kind("binned", diagonal(BINNING_TEST_SEEDS[2:], [((2, 1),), ((1, 2),)])),
+]
+
+
+@pytest.mark.parametrize(("kind", "args"), BREAK_KIND_FRAMES)
+def test_phase_break_frames_have_no_fork(monkeypatch, kind, args):
+    """AC 3, negative (review P3): on every 09 frame kind no fork is reported, and the report
+    equals the one with ``find_forks`` finding nothing (the gate is silent: plan section 0)."""
+    frame, bins, report = _break_kind_frame(kind, args)
+    assert report.forks == ()
+    monkeypatch.setattr(analysis, "find_forks", lambda *_, **__: [])
+    _same_except_forks(report, analyse(frame, bin_factors=bins))
+
+
+def _nearest_frame_pixel(point, bins):
+    """The frame pixel whose sensor centre (v r + (v - 1) / 2) is nearest ``point``."""
+    v, h = bins.vertical, bins.horizontal
+    return round((point[0] - (v - 1) / 2) / v), round((point[1] - (h - 1) / 2) / h)
+
+
+def _fork_frame(kind, seed):
+    """(Synthetic, Report, BinFactors) of the AC 2, AC 2 full and AC 3 frames."""
+    if kind == "full":
+        return _full_frame_fork(seed)
+    s, report = ac2_case(seed) if kind == "region" else fork_near_break_case(seed)
+    return s, report, ONE_BY_ONE
+
+
+FORK_FRAMES = [
+    *_with_kind("region", inner(FORK_TEST_SEEDS)),
+    *_with_kind("full", FORK_FULL_FRAME_PARAMS),
+    *_with_kind("near-break", inner(FORK_TEST_SEEDS)),
+]
+
+
+@pytest.mark.parametrize(("kind", "args"), FORK_FRAMES)
+def test_frame_with_forks_is_striped(kind, args):
+    """AC 4 (closed-domain reading, plan 5.2): the frame is Striped, and for each matched fork
+    the fork domain of its region (``fork_domain``: the region closed, holes filled, other
+    regions left out) holds the true point's nearest frame pixel. The region growth carves a
+    notch at a fork, so the fork pixel itself is not asked to be in the region."""
+    s, report, bins = _fork_frame(kind, *args)
+    assert report.striped is True
+    tol = FORK_POSITION_TOL_PERIODS * _fork_period(s)
+    for truth in s.truth.forks:
+        for fork in report.forks:
+            y = bins.vertical * fork.point[0] + (bins.vertical - 1) / 2
+            x = bins.horizontal * fork.point[1] + (bins.horizontal - 1) / 2
+            if fork.direction != truth.direction or (
+                math.hypot(y - truth.point[0], x - truth.point[1]) > tol
+            ):
+                continue
+            (region,) = [r for r in report.regions if r.label == fork.region]
+            own = report.labels == fork.region
+            domain = fork_domain(own, (report.labels > 0) & ~own, region.period_px, bins)
+            assert domain[_nearest_frame_pixel(truth.point, bins)], (truth, fork)
+
+
+def test_report_lists_forks():
+    """AC 5: the JSON lists each found fork as {region, point, direction}; a fork-free frame
+    lists none."""
+    seed = FORK_TEST_SEEDS[0]
+    _, report = ac2_case(seed)
+    data = json.loads(report.to_json())
+    assert data == report.to_dict()
+    assert data["forks"]
+    labels = {r["label"] for r in data["regions"]}
+    for entry in data["forks"]:
+        assert set(entry) == {"region", "point", "direction"}
+        assert entry["region"] in labels
+        assert len(entry["point"]) == 2
+        assert type(entry["direction"]) is int
+        assert entry["direction"] in (1, -1)
+    _, free = fork_region_case(seed, direction=None, offset=(0, 0))
+    assert free.regions
+    assert json.loads(free.to_json())["forks"] == []
+
+
+def _fork_free_frame(kind, seed):
+    if kind == "spiked":
+        return _case_frame(seed, spikes=SPIKE_TEST_COUNT, **SPIKE_FRAMES["typical-m0.5"]).frame, (
+            ONE_BY_ONE
+        )
+    return _break_free_frame(kind, seed)
+
+
+FORK_FREE_FRAMES = [
+    *inner([("region", seed) for seed in REGION_TEST_SEEDS], key=lambda v: v[1], multi=True),
+    *inner(
+        [("two-region", seed) for seed in TWO_REGION_TEST_SEEDS], key=lambda v: v[1], multi=True
+    ),
+    ("binned", BINNING_TEST_SEEDS[2]),
+    ("stripe-free", FORK_TEST_SEEDS[0]),
+    *inner([("spiked", seed) for seed in SPIKE_TEST_SEEDS[:2]], key=lambda v: v[1], multi=True),
+]
+
+
+@pytest.mark.parametrize(("kind", "seed"), FORK_FREE_FRAMES)
+def test_frames_without_forks_report_none(monkeypatch, kind, seed):
+    """Zero fake forks on fork-free frames (spec.md:141: Spikes cause none), and the report
+    equals the one with ``find_forks`` finding nothing."""
+    frame, bins = _fork_free_frame(kind, seed)
+    report = analyse(frame, bin_factors=bins)
+    assert report.forks == ()
+    monkeypatch.setattr(analysis, "find_forks", lambda *_, **__: [])
+    _same_except_forks(report, analyse(frame, bin_factors=bins))
+
+
+@pytest.mark.parametrize("seed", inner(FORK_TEST_SEEDS))
+def test_two_forks_are_both_found(seed):
+    """Two forks FORK_PAIR_SEPARATION_PERIODS apart in a ``big_region``, opposite directions on
+    even seeds and equal on odd: both matched, no extras (plan 5.1)."""
+    s, report = fork_pair_case(seed)
+    assert_forks_match(report.forks, s.truth.forks, _fork_period(s), ONE_BY_ONE)
+
+
+def test_fork_outside_the_regions_is_not_reported():
+    """A fork more than _FORK_LOOP_PERIODS Periods outside the region's 0.5 contour is not
+    reported; at an infinite Threshold no region is reported, and no fork."""
+    seed = FORK_TEST_SEEDS[0]
+    period = CASES[seed % 10].period
+    outside = semi_axes(period)[1] + (_FORK_LOOP_PERIODS + 1) * period
+    s, report = fork_region_case(seed, direction=1, offset=(0, math.ceil(outside)))
+    assert report.regions
+    assert report.forks == ()
+    s, _ = ac2_case(seed)
+    none = analyse(s.frame, threshold=math.inf)
+    assert none.regions == ()
+    assert none.forks == ()
+
+
+def test_forks_are_not_searched_under_the_frame_period_limit():
+    """09's refusal frame plus a fork at the centre: no fork, and each region's refusal
+    sentence names both searches."""
+    _, report, _ = fork_full_frame_case(
+        BINNING_TEST_SEEDS[0],
+        1,
+        bins=(2, 1),
+        period=BREAK_REFUSAL_TEST_PERIOD,
+        angle_deg=0.0,
+    )
+    assert report.regions
+    assert report.forks == ()
+    assert list(report.warnings[1:-1]) == [
+        f"region {r.label} (Period {r.period_px:.3g} px): phase breaks and forks were not searched "
+        f"at 2x1 binning: its stripes fall under 2.5 frame pixels along their normal (2.35)"
+        for r in report.regions
+    ]
+
+
+@pytest.mark.parametrize(
+    ("bins", "seed"),
+    diagonal(BINNING_TEST_SEEDS[2:], [((2, 1),), ((1, 2),)]),
+)
+def test_binned_fork_is_found(bins, seed):
+    """Binned full frames (2x1 and 1x2): the fork is matched in sensor geometry."""
+    s, report, factors = fork_full_frame_case(seed, (1, -1)[seed % 2], bins=bins)
+    assert_forks_match(report.forks, s.truth.forks, s.truth.period, factors)
