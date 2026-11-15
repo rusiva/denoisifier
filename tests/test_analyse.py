@@ -1974,8 +1974,8 @@ def test_phase_breaks_are_not_searched_under_the_frame_period_limit(jump):
     if jump is None:
         assert len(report.regions) == 1
     refusals = [
-        f"region {r.label} (Period {r.period_px:.3g} px): phase breaks were not searched at 2x1 "
-        f"binning: its stripes fall under 2.5 frame pixels along their normal (2.35)"
+        f"region {r.label} (Period {r.period_px:.3g} px): phase breaks and forks were not searched "
+        f"at 2x1 binning: its stripes fall under 2.5 frame pixels along their normal (2.35)"
         for r in report.regions
     ]
     assert report.warnings[0].startswith("Periods below 4 px")
@@ -2001,8 +2001,8 @@ def test_a_refused_region_keeps_its_warning_when_the_pass_joins_it_to_another(mo
     assert len(report.regions) == 1
     assert report.regions[0].period_px > refused.period_px
     assert list(report.warnings[1:-1]) == [
-        f"region 1 (Period {refused.period_px:.3g} px): phase breaks were not searched at 2x1 "
-        f"binning: its stripes fall under 2.5 frame pixels along their normal (2.35)"
+        f"region 1 (Period {refused.period_px:.3g} px): phase breaks and forks were not searched "
+        f"at 2x1 binning: its stripes fall under 2.5 frame pixels along their normal (2.35)"
     ]
 
 
@@ -2050,3 +2050,99 @@ def test_small_region_reports_no_phase_break(monkeypatch):
     free = analyse(s.frame)
     assert report.to_dict() == free.to_dict()
     assert np.array_equal(report.labels, free.labels)
+
+
+# Ticket 10: the fork searches' wiring (plan 2.3, step 5).
+
+
+def _same_except_forks(report, other):
+    """``report`` and ``other`` agree on everything but ``forks``."""
+    a, b = report.to_dict(), other.to_dict()
+    a.pop("forks")
+    b.pop("forks")
+    assert a == b
+    assert np.array_equal(report.labels, other.labels)
+
+
+def _break_frame():
+    """The AC 2 Phase Break frame of PHASE_BREAK_TEST_SEED (a found break)."""
+    s, report = break_region_case(PHASE_BREAK_TEST_SEED, *ac2_line(PHASE_BREAK_TEST_SEED)[::-1])
+    return s, report
+
+
+class _PassSpy:
+    """Records the response source the Phase Break pass is handed, then runs the real pass."""
+
+    def __init__(self, monkeypatch):
+        self.real = analysis._with_phase_breaks
+        self.responses = []
+        monkeypatch.setattr(analysis, "_with_phase_breaks", self)
+
+    def __call__(self, reported, filters, clipped, responses):
+        self.responses.append(responses)
+        return self.real(reported, filters, clipped, responses)
+
+
+def _centre_fork(report, evidence, direction=1):
+    """A FoundFork at the centre of ``report``'s first region's box, scaled sensor px."""
+    box = report.regions[0].bbox
+    point = ((box.row_start + box.row_stop) / 2, (box.col_start + box.col_stop) / 2)
+    return analysis.FoundFork(point=point, direction=direction, evidence=evidence)
+
+
+def test_a_silent_gate_runs_the_break_pass_as_base(monkeypatch):
+    """Only candidates under _FORK_GATE_EVIDENCE: the break pass is handed the raw responses,
+    and the report equals the one with no fork candidates at all."""
+    s, _ = _break_frame()
+    monkeypatch.setattr(analysis, "find_forks", lambda *_, **__: [])
+    plain = analyse(s.frame)
+    assert plain.phase_breaks
+    weak = _centre_fork(plain, analysis._FORK_GATE_EVIDENCE / 2)
+    monkeypatch.setattr(analysis, "find_forks", lambda *_, **__: [weak])
+    spy = _PassSpy(monkeypatch)
+    report = analyse(s.frame)
+    (handed,) = spy.responses
+    assert type(handed) is analysis._Responses
+    assert report.forks == ()
+    _same_except_forks(report, plain)
+
+
+def test_a_gated_fork_corrects_the_break_pass_field(monkeypatch):
+    """One candidate at or over _FORK_GATE_EVIDENCE: the pass reads
+    ``z exp(-i d atan2(Y - Yf, X - Xf))`` at every (Period, Angle), the raw responses stay
+    untouched, and the post-break search reads the raw response."""
+    s, plain = _break_frame()
+    fork = _centre_fork(plain, analysis._FORK_GATE_EVIDENCE, direction=-1)
+    seen = []
+
+    def fake(z, _domain, period, angle_deg, _bins, breaks=()):
+        seen.append((z.copy(), period, angle_deg, breaks))
+        return [fork]
+
+    monkeypatch.setattr(analysis, "find_forks", fake)
+    spy = _PassSpy(monkeypatch)
+    analyse(s.frame)
+    (handed,) = spy.responses
+    pre, *post = seen
+    raw, p, a, breaks = pre
+    assert breaks == ()
+    y, x = np.mgrid[0 : raw.shape[0], 0 : raw.shape[1]]
+    turned = raw * np.exp(1j * np.arctan2(y - fork.point[0], x - fork.point[1]))
+    np.testing.assert_allclose(handed.response(p, a), turned, rtol=0, atol=1e-12)
+    np.testing.assert_array_equal(handed.raw.response(p, a), raw)
+    assert post
+    for z, period, angle_deg, _ in post:
+        np.testing.assert_array_equal(z, handed.raw.response(period, angle_deg))
+        assert not np.array_equal(z, handed.response(period, angle_deg))
+
+
+def test_refused_regions_are_not_searched_for_forks(monkeypatch):
+    """Review N3: a region with a refusal entry (frame Period under 2.5 px) is handed to
+    neither fork search."""
+    s, _, bins = _refusal_frame(())
+    calls = []
+    monkeypatch.setattr(analysis, "find_forks", lambda *a, **_: calls.append(a) or [])
+    frame = bin_sensor_frame(s.frame, bins.horizontal, bins.vertical)
+    report = analyse(frame, bin_factors=bins)
+    assert report.regions
+    assert calls == []

@@ -14,17 +14,19 @@ import numpy as np
 import pytest
 from scipy.special import ndtr
 
-from denoisifier import BinFactors
+from denoisifier import BinFactors, analyse
 from denoisifier._local_phase import (
     _BREAK_FIT_HALF_WINDOW_PERIODS,
     _BREAK_MIN_FRAME_PERIOD_PX,
     _FORK_DOMAIN_CLOSE_PERIODS,
+    _FORK_GATE_EVIDENCE,
     _FORK_MIN_EVIDENCE,
     _finder_sigma_n,
     break_response,
     find_forks,
     find_phase_breaks,
     fork_domain,
+    forks_explained,
     frame_period,
     line_side,
     wrap_jump,
@@ -36,12 +38,16 @@ from protected import (
     BREAK_EXACT_POSITION_TOL_PERIODS,
     BREAK_PHASOR_FIELD_ATOL,
     BREAK_PHASOR_FIELD_RADIUS_PX,
+    FORK_CORRECTION_MIN_RESULTANT,
     FORK_EXACT_POSITION_TOL_PERIODS,
     FORK_NEAR_BREAK_PERIODS,
     FORK_PAIR_SEPARATION_PERIODS,
+    FORK_SIGN_TEST_SEED,
     FORK_TEST_SEEDS,
     PHASE_BREAK_TEST_SEEDS,
+    REGION_FRAME_SHAPE,
 )
+from regions import single_region
 
 ONE = BinFactors()
 SHAPE = (200, 200)
@@ -349,3 +355,43 @@ def test_fork_domain_leaves_out_other_regions():
     other = (np.abs(y - CENTER[0]) <= 5) & (x >= CENTER[1] + 40.0)
     domain = fork_domain(region & ~other, other, PERIOD, ONE)
     assert not (domain & other).any()
+
+
+@pytest.mark.parametrize("direction", [1, -1])
+@pytest.mark.parametrize(("period", "angle"), [(8.0, 6.0), (14.0, -6.0), (3.0, 10.0)])
+def test_the_correction_undoes_the_generator_term(period, angle, direction):
+    """The pre-break fork search's correction (as prototype p2_sign.py): on a noise-free
+    single-region frame, the response with the found forks explained away has the phase of the
+    fork-free twin's, up to a constant, over the region pixels more than 1.5 Periods from the
+    fork: the resultant length of their phase difference is at least
+    FORK_CORRECTION_MIN_RESULTANT (P2 measured 1.000; the wrong sign 0.09-0.14)."""
+    region = single_region(period, angle)
+    point = (region.center[0] + 1.0, region.center[1] - 1.0)  # half-integer
+
+    def frame(forks):
+        return generate(
+            seed=FORK_SIGN_TEST_SEED,
+            shape=REGION_FRAME_SHAPE,
+            mottle="none",
+            regions=[region],
+            noise=0.0,
+            forks=forks,
+        ).frame
+
+    fork_frame, twin = frame([ForkPoint(point, direction)]), frame([])
+    report = analyse(twin)
+    (measured,) = report.regions
+    pixels = report.labels == measured.label
+    p, a = measured.period_px, measured.angle_deg
+    z = break_response(_Spectrum(fork_frame, ONE), p, a)
+    z0 = break_response(_Spectrum(twin, ONE), p, a)
+    found = [
+        f
+        for f in find_forks(z, fork_domain(pixels, np.zeros_like(pixels), p, ONE), p, a, ONE)
+        if f.evidence >= _FORK_GATE_EVIDENCE
+    ]
+    assert [f.direction for f in found] == [direction], found
+    y, x = np.mgrid[0 : pixels.shape[0], 0 : pixels.shape[1]]
+    far = pixels & (np.hypot(y - point[0], x - point[1]) > 1.5 * period)
+    turned = np.angle(forks_explained(z, found, ONE) * np.conj(z0))[far]
+    assert abs(np.exp(1j * turned).mean()) >= FORK_CORRECTION_MIN_RESULTANT

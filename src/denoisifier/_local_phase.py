@@ -679,6 +679,22 @@ def find_forks(
     return out
 
 
+def forks_explained(z: np.ndarray, forks: Sequence[FoundFork], bins: BinFactors) -> np.ndarray:
+    """``z`` (a finder response, frame shape) with each fork's winding taken
+    out: ``z * exp(-i sum d atan2(Y - Yf, X - Xf))`` over the whole grid, in
+    scaled sensor coordinates. The minus sign undoes the generator's
+    ``+d atan2`` term (``synthetic.ForkPoint``). A new array; ``z`` is not
+    changed."""
+    if not forks:
+        return z.copy()
+    rows, cols = np.mgrid[0 : z.shape[0], 0 : z.shape[1]]
+    y, x = sensor_coordinates(rows, cols, bins)
+    winding = np.zeros(z.shape)
+    for f in forks:
+        winding += f.direction * np.arctan2(y - f.point[0], x - f.point[1])
+    return np.asarray(z * np.exp(-1j * winding))
+
+
 def _stepped_across(
     w: np.ndarray,
     valid: np.ndarray,

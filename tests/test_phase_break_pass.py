@@ -30,6 +30,13 @@ def _filters():
     return analysis._Filters(_Spectrum(frame, ONE), np.ones(SHAPE, dtype=bool))
 
 
+def _pass(reported):
+    """The Phase Break pass on ``reported``, on the raw responses of ``_filters()``."""
+    filters = _filters()
+    responses = analysis._Responses(filters.spec)
+    return analysis._with_phase_breaks(reported, filters, np.zeros(SHAPE, dtype=bool), responses)
+
+
 def _survivor(pixels, angle_deg, peak_ratio, period=PERIOD):
     flat = np.flatnonzero(pixels)
     return analysis._Survivor(
@@ -56,8 +63,8 @@ def test_the_pass_returns_its_inputs_when_no_break_is_found(monkeypatch):
     seen = {}
     original = analysis._with_phase_breaks
 
-    def spy(reported, filters, clipped):
-        out = original(reported, filters, clipped)
+    def spy(reported, filters, clipped, responses):
+        out = original(reported, filters, clipped, responses)
         seen["in"], seen["out"] = reported, out
         return out
 
@@ -80,7 +87,7 @@ def test_fills_of_two_regions_never_overlap(monkeypatch):
     monkeypatch.setattr(analysis, "find_phase_breaks", lambda *_: [BREAK])
     left = _survivor(_box((40, 160), (20, 102), slit=2), 0.0, 10.0)
     right = _survivor(_box((40, 160), (102, 180), slit=2), 5.0, 9.0)
-    out = analysis._with_phase_breaks([left, right], _filters(), np.zeros(SHAPE, dtype=bool))
+    out = _pass([left, right])
     assert len(out) == 2
     a, b = (g.pixels for g, _ in out)
     assert a.sum() > left.area_px  # both filled
@@ -100,7 +107,7 @@ def test_absorb_never_takes_a_region_with_its_own_break(monkeypatch, own_break):
     monkeypatch.setattr(analysis, "find_phase_breaks", find)
     big = _survivor(big_pixels, 0.0, 10.0)
     small = _survivor(small_pixels, 5.0, 9.0)  # not _compatible: no bridge
-    out = analysis._with_phase_breaks([big, small], _filters(), np.zeros(SHAPE, dtype=bool))
+    out = _pass([big, small])
     assert len(out) == (2 if own_break else 1)
 
 

@@ -61,9 +61,15 @@ from scipy.ndimage import gaussian_filter
 from denoisifier._data_quality import find_clipped, reject_spikes
 from denoisifier._local_phase import (
     _BREAK_MIN_FRAME_PERIOD_PX,
+    _FORK_GATE_EVIDENCE,
+    _FORK_MIN_EVIDENCE,
     FoundBreak,
+    FoundFork,
     break_response,
+    find_forks,
     find_phase_breaks,
+    fork_domain,
+    forks_explained,
     frame_period,
     sensor_coordinates,
     sigma_n,
@@ -86,7 +92,7 @@ from denoisifier._local_stripes import (
     unresolved_periods,
 )
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
-from denoisifier.report import BinFactors, BoundingBox, PhaseBreak, Region, Report
+from denoisifier.report import BinFactors, BoundingBox, Fork, PhaseBreak, Region, Report
 
 _log = logging.getLogger(__name__)
 
@@ -316,12 +322,15 @@ def analyse(
     survivors, filters = _qualifying_regions(work, light, local, clipped, bins)
     score = max((g.peak_ratio for g in survivors), default=0.0)
     reported = [g for g in survivors if g.peak_ratio > threshold]
-    # Phase Breaks: after the score and the threshold, never read back by them.
-    settled = (
-        _with_phase_breaks(reported, filters, clipped)
-        if filters is not None and reported
-        else [(g, []) for g in reported]
-    )
+    # Forks and Phase Breaks: after the score and the threshold, never read back by them.
+    refused = [g for g in reported if _refused(g, bins)]
+    settled: list[tuple[_Survivor, list[FoundBreak]]] = [(g, []) for g in reported]
+    responses = None
+    if filters is not None and reported:
+        responses = _Responses(filters.spec)
+        gated = _pre_break_forks(reported, refused, responses, bins)
+        field = responses if not gated else _ForksExplained(responses, gated, bins)
+        settled = _with_phase_breaks(reported, filters, clipped, field)
     settled.sort(key=lambda r: (-r[0].area_px, -r[0].peak_ratio, r[0].first_pixel))
 
     labels = np.zeros(frame.shape, dtype=np.int32)
@@ -341,13 +350,11 @@ def analyse(
             )
         )
     phase_breaks.sort(key=lambda b: (b.region, -abs(b.jump_rad), b.line[0]))
+    forks: list[Fork] = []
+    if responses is not None:
+        forks = _post_break_forks(settled, refused, responses, bins)
     unresolved = unresolved_periods(bins)
     warnings = [] if unresolved is None else [_unresolved_warning(unresolved, bins)]
-    refused = [
-        g
-        for g in reported
-        if frame_period(g.period, g.angle_deg, bins) < _BREAK_MIN_FRAME_PERIOD_PX
-    ]
     # Every region above the threshold lies inside one reported region (the
     # pass only adds pixels), so its first pixel names the region it joined.
     refused.sort(key=lambda g: (int(labels.flat[g.first_pixel]), g.first_pixel))
@@ -363,6 +370,7 @@ def analyse(
         clipped_pixels=int(clipped.sum()),
         labels=labels,
         phase_breaks=tuple(phase_breaks),
+        forks=tuple(forks),
         bin_factors=bins,
         unresolved_period_px=(
             None if unresolved is None else (unresolved.shortest, unresolved.limit)
@@ -392,12 +400,111 @@ def _unresolved_warning(unresolved: UnresolvedPeriods, bins: BinFactors) -> str:
 
 
 def _refusal_warning(label: int, region: _Survivor, bins: BinFactors) -> str:
-    """The Report warning for a region whose Phase Breaks were not searched."""
+    """The Report warning for a region whose Phase Breaks and Forks were not searched."""
     return (
-        f"region {label} (Period {region.period:.3g} px): phase breaks were not searched at "
+        f"region {label} (Period {region.period:.3g} px): phase breaks and forks were not "
+        f"searched at "
         f"{bins} binning: its stripes fall under {_BREAK_MIN_FRAME_PERIOD_PX:g} frame pixels "
         f"along their normal ({frame_period(region.period, region.angle_deg, bins):.3g})"
     )
+
+
+def _refused(region: _Survivor, bins: BinFactors) -> bool:
+    """Whether ``region``'s stripes fall under the finders' frame-period
+    limit: it gets a refusal warning and neither a Phase Break nor a Fork
+    search."""
+    return frame_period(region.period, region.angle_deg, bins) < _BREAK_MIN_FRAME_PERIOD_PX
+
+
+class _Responses:
+    """The finder's response (``break_response``) per (Period, Angle),
+    computed once per frame and shared by the Phase Break pass and both Fork
+    searches."""
+
+    def __init__(self, spec: _Spectrum):
+        self.spec = spec
+        self._cache: dict[tuple[float, float], np.ndarray] = {}
+
+    def response(self, period: float, angle_deg: float) -> np.ndarray:
+        key = (period, angle_deg)
+        if key not in self._cache:
+            self._cache[key] = break_response(self.spec, period, angle_deg)
+        return self._cache[key]
+
+
+class _ForksExplained:
+    """A view of ``raw`` with the winding of ``forks`` taken out of every
+    response (``forks_explained``); ``raw`` is not changed."""
+
+    def __init__(self, raw: _Responses, forks: list[FoundFork], bins: BinFactors):
+        self.raw = raw
+        self.forks = forks
+        self.bins = bins
+        self._cache: dict[tuple[float, float], np.ndarray] = {}
+
+    def response(self, period: float, angle_deg: float) -> np.ndarray:
+        key = (period, angle_deg)
+        if key not in self._cache:
+            z = self.raw.response(period, angle_deg)
+            self._cache[key] = forks_explained(z, self.forks, self.bins)
+        return self._cache[key]
+
+
+class _ResponseSource(Protocol):
+    def response(self, period: float, angle_deg: float) -> np.ndarray: ...
+
+
+def _pre_break_forks(
+    reported: list[_Survivor], refused: list[_Survivor], responses: _Responses, bins: BinFactors
+) -> list[FoundFork]:
+    """The pre-break Fork search: every candidate with evidence at least
+    _FORK_GATE_EVIDENCE in each reported region that is not ``refused``, no
+    Phase Break explained away."""
+    owned = np.logical_or.reduce([g.pixels for g in reported])
+    out = []
+    for g in reported:
+        if any(g is r for r in refused):
+            continue
+        domain = fork_domain(g.pixels, owned & ~g.pixels, g.period, bins)
+        z = responses.response(g.period, g.angle_deg)
+        found = find_forks(z, domain, g.period, g.angle_deg, bins)
+        out += [f for f in found if f.evidence >= _FORK_GATE_EVIDENCE]
+    return out
+
+
+def _post_break_forks(
+    settled: list[tuple[_Survivor, list[FoundBreak]]],
+    refused: list[_Survivor],
+    responses: _Responses,
+    bins: BinFactors,
+) -> list[Fork]:
+    """The reported Forks: the post-break search in each settled region
+    (label = position in ``settled`` + 1) holding no pixel of a ``refused``
+    region, on the raw response with the region's found breaks explained
+    away; candidates with evidence at least _FORK_MIN_EVIDENCE. Ordered by
+    region, then point (row-major)."""
+    if not settled:
+        return []
+    owned = np.logical_or.reduce([g.pixels for g, _ in settled])
+    out = []
+    for label, (g, found) in enumerate(settled, start=1):
+        if any((g.pixels & r.pixels).any() for r in refused):
+            continue
+        domain = fork_domain(g.pixels, owned & ~g.pixels, g.period, bins)
+        z = responses.response(g.period, g.angle_deg)
+        forks = find_forks(z, domain, g.period, g.angle_deg, bins, found)
+        out += _reported_forks(label, [f for f in forks if f.evidence >= _FORK_MIN_EVIDENCE], bins)
+    out.sort(key=lambda f: (f.region, f.point))
+    return out
+
+
+def _reported_forks(label: int, found: list[FoundFork], bins: BinFactors) -> list[Fork]:
+    """Each found Fork of region ``label``, its point in frame px."""
+    out = []
+    for f in found:
+        row, col = frame_px(bins, f.point[0], f.point[1])
+        out.append(Fork(region=label, point=(float(row), float(col)), direction=f.direction))
+    return out
 
 
 def _resolve_threshold(
@@ -1022,7 +1129,13 @@ class _PassRegion:
 class _BreakPass:
     """The shared state of one frame's Phase Break pass."""
 
-    def __init__(self, filters: _Filters, clipped: np.ndarray, owned: np.ndarray):
+    def __init__(
+        self,
+        filters: _Filters,
+        clipped: np.ndarray,
+        owned: np.ndarray,
+        responses: _ResponseSource,
+    ):
         self.filters = filters
         self.spec = filters.spec
         self.light = filters.light
@@ -1031,13 +1144,11 @@ class _BreakPass:
         self.owned = owned
         rows, cols = np.mgrid[0 : owned.shape[0], 0 : owned.shape[1]]
         self.y, self.x = sensor_coordinates(rows, cols, self.bins)
-        self._responses: dict[tuple[float, float], np.ndarray] = {}
+        self.responses = responses
 
     def find(self, domain: np.ndarray, period: float, angle_deg: float) -> list[FoundBreak]:
-        key = (period, angle_deg)
-        if key not in self._responses:
-            self._responses[key] = break_response(self.spec, period, angle_deg)
-        return find_phase_breaks(self._responses[key], domain, period, angle_deg, self.bins)
+        z = self.responses.response(period, angle_deg)
+        return find_phase_breaks(z, domain, period, angle_deg, self.bins)
 
     def exclusion(self, breaks: list[FoundBreak], period: float, angle_deg: float) -> np.ndarray:
         """Pixels within _REMEASURE_EXCLUDE_SIGMAS bank step widths of any break."""
@@ -1166,10 +1277,15 @@ def _bank_sigma_n(period: float, angle_deg: float, line_angle_deg: float) -> flo
 
 
 def _with_phase_breaks(
-    reported: list[_Survivor], filters: _Filters, clipped: np.ndarray
+    reported: list[_Survivor],
+    filters: _Filters,
+    clipped: np.ndarray,
+    responses: _ResponseSource,
 ) -> list[tuple[_Survivor, list[FoundBreak]]]:
     """The reported regions after the Phase Break pass, each with its found
     breaks. Runs after the score and the threshold, which never read it.
+    ``responses`` gives the finder's response at each (Period, Angle): the
+    raw one, or with the pre-break search's Forks explained away.
 
     1. Bridge: two _compatible regions within _BRIDGE_GAP_PERIODS are merged
        when a break found on both plus the gap between them has the regions
@@ -1186,7 +1302,7 @@ def _with_phase_breaks(
     in order). A region that only gained breaks keeps its depth; a merged one
     is re-measured away from its breaks."""
     owned = np.logical_or.reduce([g.pixels for g in reported])
-    state = _BreakPass(filters, clipped, owned)
+    state = _BreakPass(filters, clipped, owned, responses)
 
     parent = list(range(len(reported)))
 
