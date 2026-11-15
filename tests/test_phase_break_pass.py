@@ -9,7 +9,7 @@ import pytest
 import denoisifier.analysis as analysis
 from cases import CASES
 from denoisifier import BinFactors, analyse
-from denoisifier._local_phase import FoundBreak
+from denoisifier._local_phase import _BREAK_MIN_EVIDENCE, FoundBreak
 from denoisifier._local_stripes import _Spectrum
 from denoisifier.synthetic import generate
 from protected import PHASE_BREAK_TEST_SEEDS, REGION_TEST_SEEDS
@@ -34,7 +34,13 @@ def _pass(reported):
     """The Phase Break pass on ``reported``, on the raw responses of ``_filters()``."""
     filters = _filters()
     responses = analysis._Responses(filters.spec)
-    return analysis._with_phase_breaks(reported, filters, np.zeros(SHAPE, dtype=bool), responses)
+    return analysis._with_phase_breaks(
+        reported,
+        filters,
+        np.zeros(SHAPE, dtype=bool),
+        responses,
+        break_threshold=_BREAK_MIN_EVIDENCE,
+    )
 
 
 def _survivor(pixels, angle_deg, peak_ratio, period=PERIOD):
@@ -63,8 +69,8 @@ def test_the_pass_returns_its_inputs_when_no_break_is_found(monkeypatch):
     seen = {}
     original = analysis._with_phase_breaks
 
-    def spy(reported, filters, clipped, responses):
-        out = original(reported, filters, clipped, responses)
+    def spy(reported, filters, clipped, responses, **kwargs):
+        out = original(reported, filters, clipped, responses, **kwargs)
         seen["in"], seen["out"] = reported, out
         return out
 

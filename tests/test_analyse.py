@@ -38,7 +38,12 @@ from denoisifier import (
 )
 from denoisifier._local_phase import _FORK_LOOP_PERIODS, fork_domain
 from denoisifier.analysis import _ENVELOPE_SIGMA
-from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
+from denoisifier.calibration import (
+    DEFAULT_FALSE_ALARM_RATE,
+    Calibration,
+    _BreakForkCalibration,
+    stored_calibration,
+)
 from denoisifier.synthetic import (
     _SPIKE_BRIGHTNESS,
     _SPIKE_MAX_LENGTH,
@@ -1901,7 +1906,7 @@ def _pass_free(monkeypatch):
     monkeypatch.setattr(
         analysis,
         "_with_phase_breaks",
-        lambda reported, *_: [(g, []) for g in reported],
+        lambda reported, *_, **__: [(g, []) for g in reported],
     )
 
 
@@ -2008,7 +2013,7 @@ def test_a_refused_region_keeps_its_warning_when_the_pass_joins_it_to_another(mo
     s, free, bins = _refusal_frame(())
     (refused,) = free.regions
 
-    def joined(reported, *_):
+    def joined(reported, *_, **__):
         (g,) = reported
         return [(dataclasses.replace(g, period=g.period * analysis._MERGE_PERIOD_RATIO), [])]
 
@@ -2095,9 +2100,9 @@ class _PassSpy:
         self.responses = []
         monkeypatch.setattr(analysis, "_with_phase_breaks", self)
 
-    def __call__(self, reported, filters, clipped, responses):
+    def __call__(self, reported, filters, clipped, responses, **kwargs):
         self.responses.append(responses)
-        return self.real(reported, filters, clipped, responses)
+        return self.real(reported, filters, clipped, responses, **kwargs)
 
 
 def _centre_fork(report, evidence, direction=1):
@@ -2164,7 +2169,7 @@ def test_refused_regions_are_not_searched_for_forks(monkeypatch, joined):
     s, free, bins = _refusal_frame(())
     if joined:
 
-        def join(reported, *_):
+        def join(reported, *_, **__):
             (g,) = reported
             return [(dataclasses.replace(g, period=g.period * analysis._MERGE_PERIOD_RATIO), [])]
 
@@ -2442,3 +2447,85 @@ def test_binned_fork_is_found(bins, seed):
     """Binned full frames (2x1 and 1x2): the fork is matched in sensor geometry."""
     s, report, factors = fork_full_frame_case(seed, ac2_direction(seed), bins=bins)
     assert_forks_match(report.forks, s.truth.forks, s.truth.period, factors)
+
+
+# Ticket 11: the break and Fork thresholds come from a calibration (private seam
+# ``analysis._stored_break_fork_calibration``; hand-made ones here, plan B3).
+
+BREAK_FORK_N = 300
+
+
+def _hand_break_fork_calibration(break_high, fork_high, high_frames=10):
+    """A 300-frame break and Fork calibration: ``high_frames`` frames at ``break_high`` /
+    ``fork_high``, the rest at 0.0. At rate 0.05 (k = 7) the thresholds are the high values; at
+    0.2 (k = 30) the floors."""
+    low = [0.0] * (BREAK_FORK_N - high_frames)
+    return _BreakForkCalibration.from_evidence(
+        [f"seed:{i}" for i in range(BREAK_FORK_N)],
+        [break_high] * high_frames + low,
+        [fork_high] * high_frames + low,
+        (400, 1600),
+    )
+
+
+class _ThresholdSpy:
+    """Wraps the real break finder and post-break Fork search; records the thresholds used."""
+
+    def __init__(self, monkeypatch):
+        self.breaks, self.forks, self.found = [], [], []
+        finder, forks = analysis.find_phase_breaks, analysis._post_break_forks
+
+        def find(*args, **kwargs):
+            self.breaks.append(kwargs["min_evidence"])
+            out = finder(*args, **kwargs)
+            self.found += out
+            return out
+
+        def post(*args, **kwargs):
+            self.forks.append(kwargs["fork_threshold"])
+            return forks(*args, **kwargs)
+
+        monkeypatch.setattr(analysis, "find_phase_breaks", find)
+        monkeypatch.setattr(analysis, "_post_break_forks", post)
+
+
+def test_break_fork_false_alarm_rate_option_sets_the_finder_thresholds(monkeypatch):
+    """AC 4: the rate picks the calibration's thresholds, and the real finders get them."""
+    cal = _hand_break_fork_calibration(0.45, 0.65)
+    monkeypatch.setattr(analysis, "_stored_break_fork_calibration", lambda: cal)
+    assert cal.thresholds(0.05) != cal.thresholds(0.2)
+    s, _ = _ac2_frame(PHASE_BREAK_TEST_SEEDS[0])
+    for rate in (0.05, 0.2):
+        spy = _ThresholdSpy(monkeypatch)
+        analyse(s.frame, break_fork_false_alarm_rate=rate)
+        want = cal.thresholds(rate)
+        assert spy.breaks
+        assert set(spy.breaks) == {want.breaks}
+        assert spy.forks == [want.forks]
+
+
+@pytest.mark.parametrize("rate", [0.0, 1.0, -0.5, 2 / (BREAK_FORK_N + 1) * 0.99])
+def test_break_fork_false_alarm_rate_out_of_range_is_an_error(monkeypatch, rate):
+    cal = _hand_break_fork_calibration(0.45, 0.65)
+    monkeypatch.setattr(analysis, "_stored_break_fork_calibration", lambda: cal)
+    s, _ = _ac2_frame(PHASE_BREAK_TEST_SEEDS[0])
+    smallest = (
+        "between 0 and 1" if not 0 < rate < 1 else "the smallest is 2 / \\(n \\+ 1\\) = 0.00664"
+    )
+    with pytest.raises(ValueError, match=smallest):
+        analyse(s.frame, break_fork_false_alarm_rate=rate)
+
+
+def test_break_fork_false_alarm_rate_changes_the_report(monkeypatch):
+    """AC 4: under a calibration whose 5 % break threshold lies above a 09 frame's break
+    evidence and whose 20 % one is the floor, 20 % keeps the break and 5 % removes it."""
+    s, _ = _ac2_frame(PHASE_BREAK_TEST_SEEDS[0])
+    spy = _ThresholdSpy(monkeypatch)
+    analyse(s.frame, break_fork_false_alarm_rate=None)
+    top = max(b.evidence for b in spy.found)
+    cal = _hand_break_fork_calibration(top + 0.05, 0.0)
+    monkeypatch.setattr(analysis, "_stored_break_fork_calibration", lambda: cal)
+    kept = analyse(s.frame, break_fork_false_alarm_rate=0.2)
+    removed = analyse(s.frame, break_fork_false_alarm_rate=0.05)
+    assert kept.phase_breaks
+    assert removed.phase_breaks == ()

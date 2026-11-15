@@ -61,6 +61,7 @@ from scipy.ndimage import gaussian_filter
 
 from denoisifier._data_quality import find_clipped, reject_spikes
 from denoisifier._local_phase import (
+    _BREAK_MAX_PER_REGION,
     _BREAK_MIN_EVIDENCE,
     _BREAK_MIN_FRAME_PERIOD_PX,
     _FORK_GATE_EVIDENCE,
@@ -93,7 +94,13 @@ from denoisifier._local_stripes import (
     sensor_frequency,
     unresolved_periods,
 )
-from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
+from denoisifier.calibration import (
+    DEFAULT_FALSE_ALARM_RATE,
+    Calibration,
+    _BreakForkThresholds,
+    _stored_break_fork_calibration,
+    stored_calibration,
+)
 from denoisifier.report import BinFactors, BoundingBox, Fork, PhaseBreak, Region, Report
 
 _log = logging.getLogger(__name__)
@@ -205,6 +212,7 @@ def analyse(
     threshold: float | None = None,
     clip_level: float | None = None,
     bin_factors: BinFactors | None = None,
+    break_fork_false_alarm_rate: float | None = None,
 ) -> Report:
     """Find the Striped Regions of ``frame`` and measure each one's Period, Angle and depth.
 
@@ -316,6 +324,107 @@ def analyse(
     pass re-measures under 2.5 frame pixels gets neither Forks nor a warning
     (rare; not measured).
     """
+    limits = _resolve_break_fork_thresholds(break_fork_false_alarm_rate)
+    front = _front_half(
+        frame,
+        false_alarm_rate=false_alarm_rate,
+        calibration=calibration,
+        threshold=threshold,
+        clip_level=clip_level,
+        bin_factors=bin_factors,
+    )
+    bins, reported, refused = front.bins, front.reported, front.refused
+    threshold, score, clipped = front.threshold, front.score, front.clipped
+    settled: list[tuple[_Survivor, list[FoundBreak]]] = [(g, []) for g in reported]
+    if front.field is not None:
+        assert front.filters is not None
+        settled = _with_phase_breaks(
+            reported, front.filters, clipped, front.field, break_threshold=limits.breaks
+        )
+    settled.sort(key=lambda r: (-r[0].area_px, -r[0].peak_ratio, r[0].first_pixel))
+
+    labels = np.zeros(front.shape, dtype=np.int32)
+    regions = []
+    phase_breaks: list[PhaseBreak] = []
+    for k, (g, found) in enumerate(settled, start=1):
+        labels[g.pixels] = k
+        phase_breaks += _reported_breaks(k, g.pixels, found, bins)
+        regions.append(
+            Region(
+                label=k,
+                period_px=g.period,
+                angle_deg=g.angle_deg,
+                modulation_depth=g.depth,
+                bbox=g.bbox,
+                area_px=g.area_px,
+            )
+        )
+    phase_breaks.sort(key=lambda b: (b.region, -abs(b.jump_rad), b.line[0]))
+    forks: list[Fork] = []
+    if front.responses is not None:
+        forks = _post_break_forks(
+            settled, refused, front.responses, bins, fork_threshold=limits.forks
+        )
+    unresolved = unresolved_periods(bins)
+    warnings = [] if unresolved is None else [_unresolved_warning(unresolved, bins)]
+    # Every region above the threshold lies inside one reported region (the
+    # pass only adds pixels), so its first pixel names the region it joined.
+    refused.sort(key=lambda g: (int(labels.flat[g.first_pixel]), g.first_pixel))
+    warnings += [_refusal_warning(int(labels.flat[g.first_pixel]), g, bins) for g in refused]
+    if front.used is not None:
+        warnings += _coverage_note(front.used, front.shape, bins)
+    return Report(
+        striped=bool(score > threshold),
+        score=float(score),
+        threshold=threshold,
+        regions=tuple(regions),
+        spike_pixels=front.spike_pixels,
+        clipped_pixels=int(clipped.sum()),
+        labels=labels,
+        phase_breaks=tuple(phase_breaks),
+        forks=tuple(forks),
+        bin_factors=bins,
+        unresolved_period_px=(
+            None if unresolved is None else (unresolved.shortest, unresolved.limit)
+        ),
+        warnings=tuple(warnings),
+    )
+
+
+@dataclass(frozen=True)
+class _FrontHalf:
+    """What ``analyse`` and the break and Fork evidence pass share: the frame
+    checked, spikes rejected, the regions found and scored, the ones above the
+    Threshold (``reported``) and those of them the finders refuse, and the
+    finder's response, raw (``responses``) and as the break pass reads it
+    (``field``: with the pre-break search's Forks, at
+    ``_FORK_GATE_EVIDENCE``, taken out). ``responses`` and ``field`` are None
+    when no region is reported (or no filters were built)."""
+
+    shape: tuple[int, int]
+    bins: BinFactors
+    threshold: float
+    used: Calibration | None
+    score: float
+    reported: list[_Survivor]
+    refused: list[_Survivor]
+    filters: _Filters | None
+    clipped: np.ndarray
+    spike_pixels: int
+    responses: _Responses | None
+    field: _ResponseSource | None
+
+
+def _front_half(
+    frame: np.ndarray,
+    *,
+    false_alarm_rate: float | None,
+    calibration: Calibration | None,
+    threshold: float | None,
+    clip_level: float | None,
+    bin_factors: BinFactors | None,
+) -> _FrontHalf:
+    """``analyse`` up to the Phase Break pass (its arguments as there)."""
     frame = np.asarray(frame, dtype=float)
     if frame.ndim != 2:
         raise ValueError(f"frame must be 2D, got {frame.ndim}D")
@@ -349,59 +458,103 @@ def analyse(
     reported = [g for g in survivors if g.peak_ratio > threshold]
     # Forks and Phase Breaks: after the score and the threshold, never read back by them.
     refused = [g for g in reported if _refused(g, bins)]
-    settled: list[tuple[_Survivor, list[FoundBreak]]] = [(g, []) for g in reported]
     responses = None
+    field: _ResponseSource | None = None
     if filters is not None and reported:
         responses = _Responses(filters.spec)
         gated = _pre_break_forks(reported, refused, responses, bins)
         field = responses if not gated else _ForksExplained(responses, gated, bins)
-        settled = _with_phase_breaks(reported, filters, clipped, field)
-    settled.sort(key=lambda r: (-r[0].area_px, -r[0].peak_ratio, r[0].first_pixel))
-
-    labels = np.zeros(frame.shape, dtype=np.int32)
-    regions = []
-    phase_breaks: list[PhaseBreak] = []
-    for k, (g, found) in enumerate(settled, start=1):
-        labels[g.pixels] = k
-        phase_breaks += _reported_breaks(k, g.pixels, found, bins)
-        regions.append(
-            Region(
-                label=k,
-                period_px=g.period,
-                angle_deg=g.angle_deg,
-                modulation_depth=g.depth,
-                bbox=g.bbox,
-                area_px=g.area_px,
-            )
-        )
-    phase_breaks.sort(key=lambda b: (b.region, -abs(b.jump_rad), b.line[0]))
-    forks: list[Fork] = []
-    if responses is not None:
-        forks = _post_break_forks(settled, refused, responses, bins)
-    unresolved = unresolved_periods(bins)
-    warnings = [] if unresolved is None else [_unresolved_warning(unresolved, bins)]
-    # Every region above the threshold lies inside one reported region (the
-    # pass only adds pixels), so its first pixel names the region it joined.
-    refused.sort(key=lambda g: (int(labels.flat[g.first_pixel]), g.first_pixel))
-    warnings += [_refusal_warning(int(labels.flat[g.first_pixel]), g, bins) for g in refused]
-    if used is not None:
-        warnings += _coverage_note(used, frame.shape, bins)
-    return Report(
-        striped=bool(score > threshold),
-        score=float(score),
+    return _FrontHalf(
+        shape=(int(frame.shape[0]), int(frame.shape[1])),
+        bins=bins,
         threshold=threshold,
-        regions=tuple(regions),
+        used=used,
+        score=float(score),
+        reported=reported,
+        refused=refused,
+        filters=filters,
+        clipped=clipped,
         spike_pixels=int(spikes.sum()),
-        clipped_pixels=int(clipped.sum()),
-        labels=labels,
-        phase_breaks=tuple(phase_breaks),
-        forks=tuple(forks),
-        bin_factors=bins,
-        unresolved_period_px=(
-            None if unresolved is None else (unresolved.shortest, unresolved.limit)
-        ),
-        warnings=tuple(warnings),
+        responses=responses,
+        field=field,
     )
+
+
+def _resolve_break_fork_thresholds(rate: float | None) -> _BreakForkThresholds:
+    """The break and Fork evidence thresholds at ``rate``: the stored break
+    and Fork calibration's (``_stored_break_fork_calibration``)."""
+    if rate is None:
+        # Until the stored file exists (ticket 11 step 6): the floors, as before.
+        return _BreakForkThresholds(breaks=_BREAK_MIN_EVIDENCE, forks=_FORK_MIN_EVIDENCE)
+    return _stored_break_fork_calibration().thresholds(rate)
+
+
+class _BreakForkEvidence(NamedTuple):
+    """A frame's break and Fork evidence (``_break_fork_evidence``), and
+    whether it is Striped at the stored stripe Threshold."""
+
+    breaks: float
+    forks: float
+    striped: bool
+
+
+def _break_fork_evidence(
+    frame: np.ndarray, *, clip_level: float | None = None, bin_factors: BinFactors | None = None
+) -> _BreakForkEvidence:
+    """The two scalars ticket 11 calibrates (ADR 0003), on the regions
+    reported at the stored stripe Threshold (the front half ``analyse``
+    runs, ``_front_half``):
+
+    - ``breaks`` (S_b): the smallest break threshold at which the break pass
+      finds no break. Per reported region (its pixels): the first best line's
+      E when it passes the jump and spread rules, else 0; per bridge domain:
+      the largest min(E_1..E_j) over the lines j of the greedy sequence (at
+      no evidence limit) that meet the side shares; the largest of these.
+    - ``forks`` (S_f): the largest E of any Fork candidate of the post-break
+      search with no break explained away, in the reported regions holding
+      no refused one.
+
+    0.0 when there is no candidate. With no break found the pass is the
+    identity and its second bridge round and the post-break Fork search see
+    the same domains, so at thresholds T_b, T_f: S_b <= T_b means no break is
+    found, and then S_f <= T_f means no Fork is found. Found includes
+    reported, so these bound the reported breaks and Forks (one-sided)."""
+    front = _front_half(
+        frame,
+        false_alarm_rate=None,
+        calibration=None,
+        threshold=None,
+        clip_level=clip_level,
+        bin_factors=bin_factors,
+    )
+    striped = bool(front.reported)
+    if front.field is None or front.responses is None:
+        return _BreakForkEvidence(0.0, 0.0, striped)
+    assert front.filters is not None
+    reported = front.reported
+    owned = np.logical_or.reduce([g.pixels for g in reported])
+    state = _BreakPass(front.filters, front.clipped, owned, front.field, -math.inf)
+    breaks = 0.0
+    for g in reported:
+        first = state.find(g.pixels, g.period, g.angle_deg, max_lines=1)
+        if first:
+            breaks = max(breaks, first[0].evidence)
+    for i, a in enumerate(reported):
+        for b in reported[i + 1 :]:
+            domain = state.bridge_domain(a, b)
+            if domain is None:
+                continue
+            running = math.inf
+            for brk in state.find(domain.pixels, domain.period, domain.angle_deg):
+                running = min(running, brk.evidence)
+                if domain.splits(brk, state.y, state.x):
+                    breaks = max(breaks, running)
+    forks = 0.0
+    for g in reported:
+        if not _holds_refused(g, front.refused):
+            for f in _region_forks(g, owned, front.responses, front.bins):
+                forks = max(forks, f.evidence)
+    return _BreakForkEvidence(float(breaks), float(forks), striped)
 
 
 def _unresolved_warning(unresolved: UnresolvedPeriods, bins: BinFactors) -> str:
@@ -520,11 +673,13 @@ def _post_break_forks(
     refused: list[_Survivor],
     responses: _Responses,
     bins: BinFactors,
+    *,
+    fork_threshold: float,
 ) -> list[Fork]:
     """The reported Forks: the post-break search in each settled region
     (label = position in ``settled`` + 1) holding no pixel of a ``refused``
     region, on the raw response with the region's found breaks explained
-    away; candidates with evidence above _FORK_MIN_EVIDENCE (strict; the
+    away; candidates with evidence above ``fork_threshold`` (strict; the
     pre-break gate is ``>=``). Ordered by region, then point (row-major)."""
     if not settled:
         return []
@@ -533,7 +688,7 @@ def _post_break_forks(
     for label, (g, found) in enumerate(settled, start=1):
         if not _holds_refused(g, refused):
             forks = _region_forks(g, owned, responses, bins, found)
-            strong = [f for f in forks if f.evidence > _FORK_MIN_EVIDENCE]
+            strong = [f for f in forks if f.evidence > fork_threshold]
             out += _reported_forks(label, strong, bins)
     out.sort(key=lambda f: (f.region, f.point))
     return out
@@ -1167,6 +1322,35 @@ class _PassRegion:
         return int(self.pixels.sum())
 
 
+@dataclass(frozen=True)
+class _BridgeDomain:
+    """Where the bridge search runs for regions ``a`` and ``b`` (pixels
+    ``pa``, ``pb``) and the side shares (_BRIDGE_*_SIDE_SHARE) a found line
+    must meet: ``need_a`` of one region on one side and ``need_b`` of the
+    other on the other."""
+
+    pa: np.ndarray
+    pb: np.ndarray
+    gap: np.ndarray
+    period: float
+    angle_deg: float
+    need_a: float
+    need_b: float
+
+    @property
+    def pixels(self) -> np.ndarray:
+        return np.asarray(self.pa | self.pb | self.gap)
+
+    def splits(self, brk: FoundBreak, y: np.ndarray, x: np.ndarray) -> bool:
+        """Whether ``brk`` has the two regions on opposite sides (sensor
+        coordinates ``y``, ``x`` of every pixel)."""
+        share_a = float((brk.side(y[self.pa], x[self.pa]) > 0).mean())
+        share_b = float((brk.side(y[self.pb], x[self.pb]) > 0).mean())
+        return (share_a >= self.need_a and 1 - share_b >= self.need_b) or (
+            1 - share_a >= self.need_a and share_b >= self.need_b
+        )
+
+
 class _BreakPass:
     """The shared state of one frame's Phase Break pass."""
 
@@ -1176,7 +1360,9 @@ class _BreakPass:
         clipped: np.ndarray,
         owned: np.ndarray,
         responses: _ResponseSource,
+        break_threshold: float,
     ):
+        self.break_threshold = break_threshold
         self.filters = filters
         self.spec = filters.spec
         self.light = filters.light
@@ -1187,10 +1373,22 @@ class _BreakPass:
         self.y, self.x = sensor_coordinates(rows, cols, self.bins)
         self.responses = responses
 
-    def find(self, domain: np.ndarray, period: float, angle_deg: float) -> list[FoundBreak]:
+    def find(
+        self,
+        domain: np.ndarray,
+        period: float,
+        angle_deg: float,
+        max_lines: int = _BREAK_MAX_PER_REGION,
+    ) -> list[FoundBreak]:
         z = self.responses.response(period, angle_deg)
         return find_phase_breaks(
-            z, domain, period, angle_deg, self.bins, min_evidence=_BREAK_MIN_EVIDENCE
+            z,
+            domain,
+            period,
+            angle_deg,
+            self.bins,
+            min_evidence=self.break_threshold,
+            max_lines=max_lines,
         )
 
     def exclusion(self, breaks: list[FoundBreak], period: float, angle_deg: float) -> np.ndarray:
@@ -1207,6 +1405,18 @@ class _BreakPass:
         opposite sides, and the gap it spans; None when there is none. The
         finder runs at the Period and Angle of the region with the higher
         peak ratio (``a`` on a tie)."""
+        domain = self.bridge_domain(a, b)
+        if domain is None:
+            return None
+        for brk in self.find(domain.pixels, domain.period, domain.angle_deg):
+            if domain.splits(brk, self.y, self.x):
+                return _Bridge(domain.gap, brk)
+        return None
+
+    def bridge_domain(self, a: _BridgeSide, b: _BridgeSide) -> _BridgeDomain | None:
+        """Where ``bridge`` searches two regions (both plus the gap between
+        them) and the side shares a found line must meet; None when they are
+        not _compatible or not within _BRIDGE_GAP_PERIODS."""
         if not _compatible(a, b):
             return None
         pa, pb = a.pixels, b.pixels
@@ -1227,14 +1437,7 @@ class _BreakPass:
             need_a, need_b = _BRIDGE_SMALL_SIDE_SHARE, _BRIDGE_LARGE_SIDE_SHARE
         else:
             need_a, need_b = _BRIDGE_LARGE_SIDE_SHARE, _BRIDGE_SMALL_SIDE_SHARE
-        for brk in self.find(pa | pb | between, top.period, top.angle_deg):
-            share_a = float((brk.side(self.y[pa], self.x[pa]) > 0).mean())
-            share_b = float((brk.side(self.y[pb], self.x[pb]) > 0).mean())
-            if (share_a >= need_a and 1 - share_b >= need_b) or (
-                1 - share_a >= need_a and share_b >= need_b
-            ):
-                return _Bridge(between, brk)
-        return None
+        return _BridgeDomain(pa, pb, between, top.period, top.angle_deg, need_a, need_b)
 
     def process(
         self,
@@ -1324,11 +1527,14 @@ def _with_phase_breaks(
     filters: _Filters,
     clipped: np.ndarray,
     responses: _ResponseSource,
+    *,
+    break_threshold: float,
 ) -> list[tuple[_Survivor, list[FoundBreak]]]:
     """The reported regions after the Phase Break pass, each with its found
     breaks. Runs after the score and the threshold, which never read it.
     ``responses`` gives the finder's response at each (Period, Angle): the
-    raw one, or with the pre-break search's Forks explained away.
+    raw one, or with the pre-break search's Forks explained away. A line is
+    a break only with evidence above ``break_threshold`` (``find_phase_breaks``).
 
     1. Bridge: two _compatible regions within _BRIDGE_GAP_PERIODS are merged
        when a break found on both plus the gap between them has the regions
@@ -1345,7 +1551,7 @@ def _with_phase_breaks(
     in order). A region that only gained breaks keeps its depth; a merged one
     is re-measured away from its breaks."""
     owned = np.logical_or.reduce([g.pixels for g in reported])
-    state = _BreakPass(filters, clipped, owned, responses)
+    state = _BreakPass(filters, clipped, owned, responses, break_threshold)
 
     parent = list(range(len(reported)))
 

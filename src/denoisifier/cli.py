@@ -12,7 +12,10 @@ each Phase Break found (its region, its line and its Phase Jump), ``forks``
 each Fork found (its region, its point and its direction). ``threshold`` is the
 one used: by default the stored calibration's at a 1% false-alarm rate;
 ``--false-alarm-rate`` picks another rate and ``--calibration FILE`` another
-calibration (``python -m denoisifier.recalibrate``). With
+calibration (``python -m denoisifier.recalibrate``).
+``--break-fork-false-alarm-rate`` sets the share of striped frames without
+phase breaks or forks that may show a fake one (default 0.05; calibrated on
+the stored break and fork calibration only). With
 ``--mask PATH`` the Mask is written as a CSV laid out like the input grid:
 0 outside every region, k inside the region whose ``label`` is k. Under
 ``--transpose`` the Mask and the bboxes follow the file's layout
@@ -95,6 +98,14 @@ def main(argv: list[str] | None = None) -> int:
         help="a calibration JSON (written by python -m denoisifier.recalibrate) to set the "
         "threshold on instead of the stored one",
     )
+    parser.add_argument(
+        "--break-fork-false-alarm-rate",
+        type=float,
+        metavar="RATE",
+        help="at most this share of striped frames without phase breaks or forks show a fake "
+        "phase break or fork, between 0 and 1 (default: 0.05); calibrated at the stored "
+        "stripe threshold, unbinned, 400x1600 full-frame stripes",
+    )
     add_bin_option(
         parser,
         "bin factors of the frame as HORIZONTALxVERTICAL (default 1x1). Period, Angle and the "
@@ -119,6 +130,7 @@ def main(argv: list[str] | None = None) -> int:
             calibration=calibration,
             clip_level=args.clip_level,
             bin_factors=args.bin_factors,
+            break_fork_false_alarm_rate=args.break_fork_false_alarm_rate,
         )
         report = dataclasses.replace(analysed, reader_notes=frame_file.notes)
         if args.transpose:
