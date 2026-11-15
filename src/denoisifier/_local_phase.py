@@ -25,7 +25,9 @@ the phase on the positive side minus the phase on the other side, wrapped to
 ``(-pi, pi]`` (``wrap_jump``), the Phase Jump's range in the GLOSSARY. The
 stripe phase grows with ``X cos A + Y sin A``.
 
-Nothing here is fork-specific; ticket 10 adds to this module.
+Forks (ticket 10) are found from the winding of the same response
+(``find_forks``); ``forks_explained`` takes found Forks out of it before the
+Phase Break pass.
 """
 
 from __future__ import annotations

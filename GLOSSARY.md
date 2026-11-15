@@ -81,7 +81,7 @@ The stripe phase difference across a Phase Break, in radians, in (-π, π]: the 
 _Avoid_: phase step, shift size
 
 **Fork**:
-A point where one stripe splits into two, or where a stripe ends.
+A point where one stripe splits into two, or where a stripe ends; around it the stripe phase winds by 2π. A reported Fork has a direction: +1 when, going toward row 0 of the analysed frame past the Fork, one stripe becomes two; -1 the same going away from row 0. In file layout when transposed, read "column 0" for "row 0"; the value is the same in both layouts.
 _Avoid_: dislocation, defect, branch
 
 ### The verdict

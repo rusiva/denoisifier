@@ -1,12 +1,15 @@
 """Command line: read a CSV frame, write the JSON report and, on request, the Mask.
 
 The JSON report holds ``striped``, ``score``, ``threshold``, ``transposed``,
-``regions``, ``spike_pixels`` and ``clipped_pixels``. ``regions`` has one entry
+``regions``, ``phase_breaks``, ``forks``, ``spike_pixels`` and
+``clipped_pixels``. ``regions`` has one entry
 per Striped Region with its ``label``, ``period_px``, ``angle_deg``,
 ``modulation_depth``, ``bbox`` and ``area_px`` (ticket 05 moved the Period,
 Angle and depth from the top level into the regions). ``spike_pixels`` counts
 the pixels rejected as Spikes, ``clipped_pixels`` the Clipped Pixels that were
-not (``--clip-level`` overrides the clip detection). ``threshold`` is the
+not (``--clip-level`` overrides the clip detection). ``phase_breaks`` lists
+each Phase Break found (its region, its line and its Phase Jump), ``forks``
+each Fork found (its region, its point and its direction). ``threshold`` is the
 one used: by default the stored calibration's at a 1% false-alarm rate;
 ``--false-alarm-rate`` picks another rate and ``--calibration FILE`` another
 calibration (``python -m denoisifier.recalibrate``). With
@@ -40,7 +43,9 @@ def main(argv: list[str] | None = None) -> int:
         description="Decide whether a frame is striped and report each Striped Region's "
         "period, angle, modulation depth and bounding box as JSON (per-region values under "
         '"regions"; "transposed" records --transpose; "spike_pixels" and "clipped_pixels" '
-        "count the pixels rejected as spikes and the clipped pixels; --bin gives the frame's bin "
+        "count the pixels rejected as spikes and the clipped pixels; "
+        '"phase_breaks" and "forks" list the phase breaks and forks found; '
+        "--bin gives the frame's bin "
         'factors, and "units" names the unit of each field).',
     )
     parser.add_argument(

@@ -282,14 +282,37 @@ def analyse(
     as without the search. Only straight lines are searched; a region shorter than about
     8 Periods across a line gets no break on it. The evidence threshold is
     conservative on purpose until it is calibrated (ticket 11); no
-    false-break rate is claimed. Breaks are not searched in a region whose
-    stripes fall under 2.5 frame pixels along their normal (under binning);
+    false-break rate is claimed.
+
+    Forks (``Report.forks``) are searched after the score and the Threshold
+    too, in the reported regions only (a Fork outside every reported region
+    is not reported), Fork first: a search before the break pass, with no
+    break explained away; when it finds a Fork with evidence at least
+    ``_FORK_GATE_EVIDENCE``, the break pass reads the finder's response with
+    those Forks' winding taken out, and otherwise runs as without Forks. The
+    reported Forks come from a second search, after the pass, in the settled
+    regions, on the uncorrected response with each region's found breaks
+    explained away (evidence at least ``_FORK_MIN_EVIDENCE``). On a frame
+    where the first search finds no such Fork, the regions, labels,
+    measurements, breaks and warnings are those of the break pass alone;
+    where it does, the pass can fill, bridge, re-measure and find breaks
+    differently. Limits, as measured (``find_forks``): a Fork within about 4
+    Periods of its region's edge is not found; two Forks, or a Fork and a
+    Phase Break, are resolved 4 Periods apart in a large region and are
+    undefined closer. The evidence thresholds are conservative until they
+    are calibrated (ticket 11); no false-fork rate is claimed.
+
+    Phase Breaks and Forks are not searched in a region whose stripes fall
+    under 2.5 frame pixels along their normal (under binning);
     ``Report.warnings`` then holds, for each such region, "region {label}
-    (Period {P} px): phase breaks were not searched at {bins} binning: its
-    stripes fall under 2.5 frame pixels along their normal ({frame Period})".
-    There a break is not found, and a region it splits stays split. A
-    refused region the search joins to another keeps its warning, under the
-    label of the region it joined and with its own Period.
+    (Period {P} px): phase breaks and forks were not searched at {bins}
+    binning: its stripes fall under 2.5 frame pixels along their normal
+    ({frame Period})". There a break is not found, and a region it splits
+    stays split. A refused region the search joins to another keeps its
+    warning, under the label of the region it joined and with its own
+    Period, and the region it joined gets no Fork search. A region the break
+    pass re-measures under 2.5 frame pixels gets neither Forks nor a warning
+    (rare; not measured).
     """
     frame = np.asarray(frame, dtype=float)
     if frame.ndim != 2:

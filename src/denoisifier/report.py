@@ -247,8 +247,8 @@ class Report:
     because a filter there falls under ``MIN_FRAME_PERIOD_PX`` frame pixels
     (``denoisifier._local_stripes``), or ``None``.
     ``warnings`` are frame-level analysis warnings (that range, a frame
-    the calibration does not cover, and regions whose Phase Breaks were not
-    searched), separate from ``reader_notes``.
+    the calibration does not cover, and regions whose Phase Breaks and Forks
+    were not searched), separate from ``reader_notes``.
 
     ``phase_breaks`` (``PhaseBreak``) are the Phase Breaks found in the
     reported regions, ordered by region label, then by descending
