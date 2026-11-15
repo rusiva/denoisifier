@@ -61,6 +61,7 @@ from scipy.ndimage import gaussian_filter
 
 from denoisifier._data_quality import find_clipped, reject_spikes
 from denoisifier._local_phase import (
+    _BREAK_MIN_EVIDENCE,
     _BREAK_MIN_FRAME_PERIOD_PX,
     _FORK_GATE_EVIDENCE,
     _FORK_MIN_EVIDENCE,
@@ -489,16 +490,14 @@ def _region_forks(
     owned: np.ndarray,
     responses: _ResponseSource,
     bins: BinFactors,
-    min_evidence: float,
     breaks: Sequence[FoundBreak] = (),
 ) -> list[FoundFork]:
-    """The Fork candidates of ``region`` with evidence at least
-    ``min_evidence``: ``find_forks`` on its ``fork_domain`` (``owned`` = all
-    regions' pixels) of its response, ``breaks`` explained away."""
+    """Every Fork candidate of ``region``: ``find_forks`` on its
+    ``fork_domain`` (``owned`` = all regions' pixels) of its response,
+    ``breaks`` explained away. The caller applies its evidence limit."""
     domain = fork_domain(region.pixels, owned & ~region.pixels, region.period, bins)
     z = responses.response(region.period, region.angle_deg)
-    found = find_forks(z, domain, region.period, region.angle_deg, bins, breaks)
-    return [f for f in found if f.evidence >= min_evidence]
+    return find_forks(z, domain, region.period, region.angle_deg, bins, breaks)
 
 
 def _pre_break_forks(
@@ -511,7 +510,8 @@ def _pre_break_forks(
     out = []
     for g in reported:
         if not _holds_refused(g, refused):
-            out += _region_forks(g, owned, responses, bins, _FORK_GATE_EVIDENCE)
+            found = _region_forks(g, owned, responses, bins)
+            out += [f for f in found if f.evidence >= _FORK_GATE_EVIDENCE]
     return out
 
 
@@ -524,16 +524,17 @@ def _post_break_forks(
     """The reported Forks: the post-break search in each settled region
     (label = position in ``settled`` + 1) holding no pixel of a ``refused``
     region, on the raw response with the region's found breaks explained
-    away; candidates with evidence at least _FORK_MIN_EVIDENCE. Ordered by
-    region, then point (row-major)."""
+    away; candidates with evidence above _FORK_MIN_EVIDENCE (strict; the
+    pre-break gate is ``>=``). Ordered by region, then point (row-major)."""
     if not settled:
         return []
     owned = np.logical_or.reduce([g.pixels for g, _ in settled])
     out = []
     for label, (g, found) in enumerate(settled, start=1):
         if not _holds_refused(g, refused):
-            forks = _region_forks(g, owned, responses, bins, _FORK_MIN_EVIDENCE, found)
-            out += _reported_forks(label, forks, bins)
+            forks = _region_forks(g, owned, responses, bins, found)
+            strong = [f for f in forks if f.evidence > _FORK_MIN_EVIDENCE]
+            out += _reported_forks(label, strong, bins)
     out.sort(key=lambda f: (f.region, f.point))
     return out
 
@@ -1188,7 +1189,9 @@ class _BreakPass:
 
     def find(self, domain: np.ndarray, period: float, angle_deg: float) -> list[FoundBreak]:
         z = self.responses.response(period, angle_deg)
-        return find_phase_breaks(z, domain, period, angle_deg, self.bins)
+        return find_phase_breaks(
+            z, domain, period, angle_deg, self.bins, min_evidence=_BREAK_MIN_EVIDENCE
+        )
 
     def exclusion(self, breaks: list[FoundBreak], period: float, angle_deg: float) -> np.ndarray:
         """Pixels within _REMEASURE_EXCLUDE_SIGMAS bank step widths of any break."""

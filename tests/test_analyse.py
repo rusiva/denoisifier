@@ -1939,9 +1939,9 @@ def test_frames_without_a_found_break_match_the_pass_free_analysis(monkeypatch, 
     domains = []
     finder = analysis.find_phase_breaks
 
-    def spy(z, domain, *args):
+    def spy(z, domain, *args, **kwargs):
         domains.append(domain.copy())
-        return finder(z, domain, *args)
+        return finder(z, domain, *args, **kwargs)
 
     monkeypatch.setattr(analysis, "find_phase_breaks", spy)
     built = analyse(frame, bin_factors=bins)

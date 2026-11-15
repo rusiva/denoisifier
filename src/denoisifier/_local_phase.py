@@ -351,11 +351,22 @@ class _Samples:
 
 
 def find_phase_breaks(
-    z: np.ndarray, domain: np.ndarray, period: float, angle_deg: float, bins: BinFactors
+    z: np.ndarray,
+    domain: np.ndarray,
+    period: float,
+    angle_deg: float,
+    bins: BinFactors,
+    *,
+    min_evidence: float,
+    max_lines: int = _BREAK_MAX_PER_REGION,
 ) -> list[FoundBreak]:
     """The Phase Breaks in ``domain`` (bool, frame shape) of the finder's
     response ``z`` (``break_response`` at ``period`` and ``angle_deg``, sensor
-    px), greedy, at most _BREAK_MAX_PER_REGION, in the order found.
+    px), greedy, at most ``max_lines``, in the order found. A line is accepted
+    when its E is above ``min_evidence`` (strict) and its jump and spread pass
+    their fixed rules; the search stops at the first line that is not. The
+    best line never depends on ``min_evidence``, so the result at a higher
+    limit is a prefix of the result at a lower one.
 
     ``[]`` when ``frame_period(period, angle_deg, bins)`` is under
     _BREAK_MIN_FRAME_PERIOD_PX (the caller reports the refusal), when the
@@ -375,7 +386,7 @@ def find_phase_breaks(
         return []
     found: list[FoundBreak] = []
     coarse = np.arange(-90 + _BREAK_COARSE_STEP_DEG, 90 + 1e-9, _BREAK_COARSE_STEP_DEG)
-    for _ in range(_BREAK_MAX_PER_REGION):
+    for _ in range(max_lines):
         best = _best_line(samples, coarse)
         if best is None:
             break
@@ -392,7 +403,7 @@ def find_phase_breaks(
             jump_rad=float(jump),
             evidence=evidence,
         )
-        if not _accepted(samples, brk):
+        if not _accepted(samples, brk, min_evidence):
             break
         found.append(brk)
         s = brk.side(samples.y, samples.x)
@@ -495,9 +506,10 @@ def _golden(samples: _Samples, best: _LineFit, tol: float) -> _LineFit:
     return best
 
 
-def _accepted(samples: _Samples, brk: FoundBreak) -> bool:
-    """E, the jump and the jump's spread along the line pass their limits."""
-    if brk.evidence < _BREAK_MIN_EVIDENCE or abs(brk.jump_rad) < _BREAK_MIN_JUMP_RAD:
+def _accepted(samples: _Samples, brk: FoundBreak, min_evidence: float) -> bool:
+    """E is above ``min_evidence`` (strict) and the jump and the jump's
+    spread along the line pass their limits."""
+    if not brk.evidence > min_evidence or abs(brk.jump_rad) < _BREAK_MIN_JUMP_RAD:
         return False
     period = samples.period
     gap = _BREAK_EXPLAIN_SIGMAS * _finder_sigma_n(period, samples.angle_deg, brk.line_angle_deg)

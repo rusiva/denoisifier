@@ -84,7 +84,7 @@ def test_the_pass_returns_its_inputs_when_no_break_is_found(monkeypatch):
 def test_fills_of_two_regions_never_overlap(monkeypatch):
     """Two regions side by side, both across the break with a slit along it: their along-line
     bins share columns 100-103, so both would fill there; the first fill owns them."""
-    monkeypatch.setattr(analysis, "find_phase_breaks", lambda *_: [BREAK])
+    monkeypatch.setattr(analysis, "find_phase_breaks", lambda *_, **__: [BREAK])
     left = _survivor(_box((40, 160), (20, 102), slit=2), 0.0, 10.0)
     right = _survivor(_box((40, 160), (102, 180), slit=2), 5.0, 9.0)
     out = _pass([left, right])
@@ -101,7 +101,7 @@ def test_absorb_never_takes_a_region_with_its_own_break(monkeypatch, own_break):
     big_pixels = _box((40, 160), (20, 180), slit=4)
     small_pixels = _box((96, 104), (60, 140)) & ~big_pixels
 
-    def find(_z, domain, *_):
+    def find(_z, domain, *_, **__):
         return [BREAK] if own_break or (domain & big_pixels).any() else []
 
     monkeypatch.setattr(analysis, "find_phase_breaks", find)

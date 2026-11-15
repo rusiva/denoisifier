@@ -17,6 +17,7 @@ from scipy.special import ndtr
 from denoisifier import BinFactors, analyse
 from denoisifier._local_phase import (
     _BREAK_FIT_HALF_WINDOW_PERIODS,
+    _BREAK_MIN_EVIDENCE,
     _BREAK_MIN_FRAME_PERIOD_PX,
     _FORK_DOMAIN_CLOSE_PERIODS,
     _FORK_GATE_EVIDENCE,
@@ -118,7 +119,9 @@ def test_a_break_is_found_on_its_line_with_its_jump(line_angle, jump):
     point = (CENTER[0] + 3.3, CENTER[1] - 1.7)
     domain = _disc()
     z = _field([(point, line_angle, jump)])
-    (found,) = find_phase_breaks(z, domain, PERIOD, STRIPE_ANGLE, ONE)
+    (found,) = find_phase_breaks(
+        z, domain, PERIOD, STRIPE_ANGLE, ONE, min_evidence=_BREAK_MIN_EVIDENCE
+    )
     want_angle, want_jump = _canonical(line_angle, jump)
     assert -90 < found.line_angle_deg <= 90
     _assert_on_line(found, point, want_angle, domain)
@@ -130,17 +133,65 @@ def test_a_positive_jump_is_found_positive():
     """C1 at the finder: +pi/2 on the positive side of a 10-deg line is reported as +pi/2."""
     point = CENTER
     z = _field([(point, 10.0, math.pi / 2)])
-    (found,) = find_phase_breaks(z, _disc(), PERIOD, STRIPE_ANGLE, ONE)
+    (found,) = find_phase_breaks(
+        z, _disc(), PERIOD, STRIPE_ANGLE, ONE, min_evidence=_BREAK_MIN_EVIDENCE
+    )
     assert abs(found.jump_rad - math.pi / 2) <= BREAK_EXACT_JUMP_TOL_RAD
 
 
+def test_a_line_is_accepted_only_above_min_evidence():
+    """Acceptance is strict: a line whose E equals ``min_evidence`` is not a break (ADR 0002's
+    ``score > threshold``), one just below it is."""
+    z = _field([(CENTER, 10.0, math.pi / 2)])
+    (found,) = find_phase_breaks(z, _disc(), PERIOD, STRIPE_ANGLE, ONE, min_evidence=0.0)
+    e = found.evidence
+    assert find_phase_breaks(z, _disc(), PERIOD, STRIPE_ANGLE, ONE, min_evidence=e) == []
+    below = find_phase_breaks(
+        z, _disc(), PERIOD, STRIPE_ANGLE, ONE, min_evidence=math.nextafter(e, 0)
+    )
+    assert below == [found]
+
+
+def test_max_lines_caps_the_greedy_sequence():
+    """``max_lines`` stops the greedy search after that many lines, in the order found."""
+    z = _field(
+        [
+            ((CENTER[0] - 30, CENTER[1]), 0.0, math.pi),
+            ((CENTER[0] + 30, CENTER[1]), 0.0, math.pi / 2),
+        ]
+    )
+    both = find_phase_breaks(
+        z, _disc(), PERIOD, STRIPE_ANGLE, ONE, min_evidence=_BREAK_MIN_EVIDENCE
+    )
+    assert len(both) == 2
+    first = find_phase_breaks(
+        z, _disc(), PERIOD, STRIPE_ANGLE, ONE, min_evidence=_BREAK_MIN_EVIDENCE, max_lines=1
+    )
+    assert first == both[:1]
+
+
 def test_a_break_free_field_has_no_break():
-    assert find_phase_breaks(_field(), _disc(), PERIOD, STRIPE_ANGLE, ONE) == []
+    assert (
+        find_phase_breaks(
+            _field(), _disc(), PERIOD, STRIPE_ANGLE, ONE, min_evidence=_BREAK_MIN_EVIDENCE
+        )
+        == []
+    )
 
 
 @pytest.mark.parametrize("winding", [1, -1])
 def test_a_winding_is_not_a_break(winding):
-    assert find_phase_breaks(_field(winding=winding), _disc(), PERIOD, STRIPE_ANGLE, ONE) == []
+    assert (
+        find_phase_breaks(
+            _field(winding=winding),
+            _disc(),
+            PERIOD,
+            STRIPE_ANGLE,
+            ONE,
+            min_evidence=_BREAK_MIN_EVIDENCE,
+        )
+        == []
+    )
 
 
 def test_a_break_through_a_dim_gap_between_two_parts_is_found():
@@ -151,7 +202,9 @@ def test_a_break_through_a_dim_gap_between_two_parts_is_found():
     magnitude = np.where(gap, 0.05, 1.0)
     z = _field([(CENTER, 0.0, math.pi)], magnitude=magnitude)
     domain = _disc()
-    (found,) = find_phase_breaks(z, domain, PERIOD, STRIPE_ANGLE, ONE)
+    (found,) = find_phase_breaks(
+        z, domain, PERIOD, STRIPE_ANGLE, ONE, min_evidence=_BREAK_MIN_EVIDENCE
+    )
     _assert_on_line(found, CENTER, 0.0, domain)
     assert abs(wrap_jump(found.jump_rad - math.pi)) <= BREAK_EXACT_JUMP_TOL_RAD
 
@@ -163,7 +216,10 @@ def test_a_region_too_short_across_the_line_has_no_break():
     diameter = 2 * _BREAK_FIT_HALF_WINDOW_PERIODS * PERIOD - PERIOD
     domain = _disc(diameter / 2)
     z = _field([(CENTER, 0.0, math.pi)])
-    assert find_phase_breaks(z, domain, PERIOD, STRIPE_ANGLE, ONE) == []
+    assert (
+        find_phase_breaks(z, domain, PERIOD, STRIPE_ANGLE, ONE, min_evidence=_BREAK_MIN_EVIDENCE)
+        == []
+    )
 
 
 def test_breaks_are_not_searched_under_the_frame_period_limit():
@@ -171,7 +227,7 @@ def test_breaks_are_not_searched_under_the_frame_period_limit():
     period = 2 * _BREAK_MIN_FRAME_PERIOD_PX - 0.3  # frame Period 2.35 at Angle 0 under 2x1
     assert frame_period(period, 0.0, bins) < _BREAK_MIN_FRAME_PERIOD_PX
     z = _field([(CENTER, 0.0, math.pi)], period=period / 2)
-    assert find_phase_breaks(z, _disc(), period, 0.0, bins) == []
+    assert find_phase_breaks(z, _disc(), period, 0.0, bins, min_evidence=_BREAK_MIN_EVIDENCE) == []
 
 
 def test_frame_period_is_along_the_stripe_normal_in_frame_px():
@@ -195,7 +251,9 @@ def test_break_response_finds_a_break_in_a_generated_frame():
     assert z.shape == s.frame.shape
     y, x = np.mgrid[0:256, 0:256]
     domain = np.hypot(y - point[0], x - point[1]) <= 100
-    (found,) = find_phase_breaks(z, domain, PERIOD, STRIPE_ANGLE, ONE)
+    (found,) = find_phase_breaks(
+        z, domain, PERIOD, STRIPE_ANGLE, ONE, min_evidence=_BREAK_MIN_EVIDENCE
+    )
     t = math.radians(10.0)
     for u in (-90.0, 90.0):
         d = line_side(
@@ -306,7 +364,9 @@ def test_a_fork_near_an_explained_break_is_found_alone():
     passed in: the fork only."""
     point = (CENTER[0] + FORK_NEAR_BREAK_PERIODS * PERIOD, CENTER[1] + 0.5)
     z = _field([(CENTER, 0.0, math.pi)], forks=[(point, 1)])
-    breaks = find_phase_breaks(z, _disc(), PERIOD, STRIPE_ANGLE, ONE)
+    breaks = find_phase_breaks(
+        z, _disc(), PERIOD, STRIPE_ANGLE, ONE, min_evidence=_BREAK_MIN_EVIDENCE
+    )
     assert len(breaks) == 1
     (found,) = find_forks(z, _disc(), PERIOD, STRIPE_ANGLE, ONE, breaks)
     assert _near(found, point, PERIOD), found
