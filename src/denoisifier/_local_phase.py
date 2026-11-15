@@ -31,10 +31,12 @@ Nothing here is fork-specific; ticket 10 adds to this module.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
 import numpy as np
+from scipy import ndimage
 from scipy.special import ndtr
 
 from denoisifier._local_stripes import _Spectrum, pixel_size
@@ -101,6 +103,24 @@ _BREAK_MAX_PER_REGION = 4
 # faked one on a break-free frame; at 2.1-2.25 its lines were 1.3-1.8
 # Periods off.
 _BREAK_MIN_FRAME_PERIOD_PX = 2.5
+
+# Forks (ticket 10; prototype P2 frozen at worktree commit 3922e33). The
+# winding is counted around a square loop of half-size _FORK_LOOP_PERIODS
+# Periods about every pixel. Interior: domain pixels whose response magnitude
+# is at least _FORK_MIN_MAGNITUDE_FRACTION of its median over the domain.
+# Around each found Phase Break, a band of _FORK_BREAK_BAND_SIGMAS finder step
+# widths (_finder_sigma_n) is stepped across. The domain is the region closed
+# by a disc of _FORK_DOMAIN_CLOSE_PERIODS Periods. A candidate's evidence E
+# is its winding component's area over the loop's area: the pre-break search
+# keeps E >= _FORK_GATE_EVIDENCE, the reported forks E >= _FORK_MIN_EVIDENCE
+# (largest on fork-free and break-only frames 0.000; true forks at least 0.31,
+# P2 explore). E is the scalar ticket 11 calibrates.
+_FORK_LOOP_PERIODS = 2.0
+_FORK_MIN_MAGNITUDE_FRACTION = 0.5
+_FORK_BREAK_BAND_SIGMAS = 2.0
+_FORK_DOMAIN_CLOSE_PERIODS = 3.0
+_FORK_GATE_EVIDENCE = 0.2
+_FORK_MIN_EVIDENCE = 0.3
 
 
 @dataclass(frozen=True)
@@ -493,3 +513,213 @@ def _accepted(samples: _Samples, brk: FoundBreak) -> bool:
         return False
     spread = float(np.max(np.abs(wrap_jump(np.array(pieces) - brk.jump_rad))))
     return spread <= _BREAK_JUMP_SPREAD_RAD
+
+
+@dataclass(frozen=True)
+class FoundFork:
+    """One Fork candidate, in scaled sensor coordinates.
+
+    ``point`` (Y, X) is the centroid of its winding component; ``direction``
+    is +1 or -1, the generator's convention (``synthetic.ForkPoint``);
+    ``evidence`` is E, the component's area over the loop's area (for ticket
+    11; not reported)."""
+
+    point: tuple[float, float]
+    direction: int
+    evidence: float
+
+
+def fork_domain(
+    pixels: np.ndarray, others: np.ndarray, period: float, bins: BinFactors
+) -> np.ndarray:
+    """The Fork search domain of a region (bool, frame shape): its
+    ``pixels`` closed by a disc of _FORK_DOMAIN_CLOSE_PERIODS x ``period``
+    sensor px (sensor geometry) inside their bounding box, holes filled,
+    ``others`` (other regions' pixels) left out. The closing gives back the
+    notch the region growth carves at a fork."""
+    out = np.zeros(pixels.shape, dtype=bool)
+    if not pixels.any():
+        return out
+    rows = np.flatnonzero(pixels.any(axis=1))
+    cols = np.flatnonzero(pixels.any(axis=0))
+    box = np.s_[int(rows[0]) : int(rows[-1]) + 1, int(cols[0]) : int(cols[-1]) + 1]
+    pix = pixels[box]
+    v, h = pixel_size(bins)
+    rho = _FORK_DOMAIN_CLOSE_PERIODS * period
+    pr, pc = math.ceil(rho / v) + 1, math.ceil(rho / h) + 1
+    padded = np.pad(pix, ((pr, pr), (pc, pc)))
+    dilated = ndimage.distance_transform_edt(~padded, sampling=(v, h)) <= rho
+    closed = ~(ndimage.distance_transform_edt(dilated, sampling=(v, h)) <= rho)
+    closed = closed[pr:-pr, pc:-pc] | pix
+    out[box] = ndimage.binary_fill_holes(closed) & ~others[box]
+    return out
+
+
+def _box_sum(a: np.ndarray, rr: int, rc: int) -> np.ndarray:
+    """Sum of ``a`` over the box [r - rr, r + rr] x [c - rc, c + rc] about
+    each pixel, zero-padded."""
+    p = np.pad(a, ((rr + 1, rr), (rc + 1, rc)))
+    s = p.cumsum(0).cumsum(1)
+    k1, k2 = 2 * rr + 1, 2 * rc + 1
+    return np.asarray(s[k1:, k2:] - s[:-k1, k2:] - s[k1:, :-k2] + s[:-k1, :-k2])
+
+
+def find_forks(
+    z: np.ndarray,
+    domain: np.ndarray,
+    period: float,
+    angle_deg: float,
+    bins: BinFactors,
+    breaks: Sequence[FoundBreak] = (),
+) -> list[FoundFork]:
+    """Every Fork candidate in ``domain`` (bool, frame shape, see
+    ``fork_domain``) of the finder's response ``z`` (``break_response`` at
+    ``period`` and ``angle_deg``), sorted by evidence, descending; the caller
+    applies _FORK_GATE_EVIDENCE or _FORK_MIN_EVIDENCE. ``breaks`` (found in
+    the same region) are explained away first.
+
+    Method (lattice residues and square-loop winding): the domain's interior
+    (magnitude at least _FORK_MIN_MAGNITUDE_FRACTION of its median) is
+    demodulated by its median neighbour carrier. Each break's positive side
+    is turned back by its jump, and every pixel within
+    _FORK_BREAK_BAND_SIGMAS step widths of its line takes the value of the
+    point at the band's edge on its own side, so a loop steps across the
+    band. The phase residue of each 2x2 plaquette (+1 = the generator's +1)
+    summed over the square of half-size _FORK_LOOP_PERIODS Periods about a
+    pixel is the winding there; it counts only where every loop pixel is
+    valid and the square lies inside the domain's box. Each connected set of
+    pixels with winding +1 (or -1) is one candidate at its centroid.
+
+    ``[]`` when ``frame_period(period, angle_deg, bins)`` is under
+    _BREAK_MIN_FRAME_PERIOD_PX (the same response and limit as the break
+    finder) and when the domain is too small.
+
+    Limits, as measured (prototype P2, validation seeds unless said; Periods
+    P of the region): forks within about 4 P of a region's edge are not
+    found (at 1, 2 and 3 P from the 0.5 contour: 0/20, 0/20, 6/20). Two
+    forks 4 P apart are both found (a large region 26/27, a 09-size region
+    24/27); 3 P apart only partly (both found 5/27 in a large region, 11/27
+    in a 09-size one). A fork and a Phase Break 4 P apart are both found in a
+    large region (39/40); at 3 P, 38/40 (explore 50/60); closer than 3 P both
+    are usually lost (1.5 P 7/40, 2 P 8/40): undefined closer than 4 P. In a
+    09-size region (semi-axes 5 by 6.6 P) only a core about 1 by 2.6 P lies
+    4 P from the edge, so forks are found only near its centre. The loop
+    size was tuned once (1.5 P was tried and rejected)."""
+    if frame_period(period, angle_deg, bins) < _BREAK_MIN_FRAME_PERIOD_PX:
+        return []
+    if not domain.any():
+        return []
+    v, h = pixel_size(bins)
+    rows = np.flatnonzero(domain.any(axis=1))
+    cols = np.flatnonzero(domain.any(axis=0))
+    r0, c0 = int(rows[0]), int(cols[0])
+    crop = np.s_[r0 : int(rows[-1]) + 1, c0 : int(cols[-1]) + 1]
+    zc, dom = z[crop], domain[crop]
+    magnitude = np.abs(zc)
+    median = float(np.median(magnitude[dom]))
+    interior = dom & (magnitude >= _FORK_MIN_MAGNITUDE_FRACTION * median)
+    height, width = zc.shape
+    if height < 3 or width < 3:
+        return []
+    h_pairs = interior[:, :-1] & interior[:, 1:]
+    v_pairs = interior[:-1, :] & interior[1:, :]
+    if h_pairs.sum() < 8 or v_pairs.sum() < 8:
+        return []
+    kx = float(np.median(np.angle(zc[:, 1:] * np.conj(zc[:, :-1]))[h_pairs]))
+    ky = float(np.median(np.angle(zc[1:, :] * np.conj(zc[:-1, :]))[v_pairs]))
+    rr, cc = np.mgrid[0:height, 0:width]
+    w = zc * np.exp(-1j * (kx * cc + ky * rr))
+    valid = interior.copy()
+    if breaks:
+        w, valid = _stepped_across(w, valid, dom, breaks, (r0, c0), period, angle_deg, bins)
+    dx = np.angle(w[:, 1:] * np.conj(w[:, :-1]))
+    dy = np.angle(w[1:, :] * np.conj(w[:-1, :]))
+    circulation = dx[:-1, :] + dy[:, 1:] - dx[1:, :] - dy[:, :-1]
+    # Plaquette (r, c) lies between pixels r..r+1 and c..c+1.
+    residues = np.rint(circulation / (2 * np.pi)).astype(np.int64)
+    loop = _FORK_LOOP_PERIODS * period
+    lr = max(1, round(loop / v))
+    lc = max(1, round(loop / h))
+    # The winding about pixel (r, c): plaquettes r-lr..r+lr-1, c-lc..c+lc-1.
+    p = np.pad(residues, ((lr, lr + 1), (lc, lc + 1)))
+    s = np.zeros((p.shape[0] + 1, p.shape[1] + 1), dtype=np.int64)
+    s[1:, 1:] = p.cumsum(0).cumsum(1)
+    br, bc = 2 * lr, 2 * lc
+    winding = (
+        s[br : br + height, bc : bc + width]
+        - s[0:height, bc : bc + width]
+        - s[br : br + height, 0:width]
+        + s[0:height, 0:width]
+    )
+    bad = (~valid).astype(np.int64)
+    ring_bad = _box_sum(bad, lr, lc) - _box_sum(bad, lr - 1, lc - 1)
+    # The whole square must lie inside the crop.
+    ok = ring_bad == 0
+    ok[:lr, :] = ok[-lr:, :] = False
+    ok[:, :lc] = ok[:, -lc:] = False
+    out = []
+    for d in (1, -1):
+        labelled, n = ndimage.label(ok & (winding == d))
+        if not n:
+            continue
+        index = np.arange(1, n + 1)
+        count = ndimage.sum_labels(np.ones_like(labelled), labelled, index)
+        cy = ndimage.mean(rr, labelled, index)
+        cx = ndimage.mean(cc, labelled, index)
+        for k in range(n):
+            area = float(count[k]) * v * h
+            out.append(
+                FoundFork(
+                    point=(float((cy[k] + r0) * v), float((cx[k] + c0) * h)),
+                    direction=d,
+                    evidence=area / (2 * loop) ** 2,
+                )
+            )
+    out.sort(key=lambda f: -f.evidence)
+    return out
+
+
+def _stepped_across(
+    w: np.ndarray,
+    valid: np.ndarray,
+    dom: np.ndarray,
+    breaks: Sequence[FoundBreak],
+    origin: tuple[int, int],
+    period: float,
+    angle_deg: float,
+    bins: BinFactors,
+) -> tuple[np.ndarray, np.ndarray]:
+    """``w`` (demodulated, cropped at ``origin``) with each break's positive
+    side turned back by its jump, and each pixel within
+    _FORK_BREAK_BAND_SIGMAS step widths of a line given the value and
+    validity of the point at the band's edge on its own side."""
+    v, h = pixel_size(bins)
+    r0, c0 = origin
+    height, width = w.shape
+    rr, cc = np.mgrid[0:height, 0:width]
+    y, x = sensor_coordinates(rr + r0, cc + c0, bins)
+    for b in breaks:
+        w = np.where(b.side(y, x) > 0, w * np.exp(-1j * b.jump_rad), w)
+    for b in breaks:
+        side = b.side(y, x)
+        g = _FORK_BREAK_BAND_SIGMAS * _finder_sigma_n(period, angle_deg, b.line_angle_deg)
+        band = np.abs(side) < g
+        if not band.any():
+            continue
+        t = math.radians(b.line_angle_deg)
+        ny, nx = math.cos(t), -math.sin(t)  # the gradient of side in (Y, X)
+        sb = side[band]
+        shift = np.where(sb >= 0, g - sb, -g - sb) + np.where(sb >= 0, 0.5, -0.5) * max(v, h)
+        ty = np.rint((y[band] + shift * ny) / v).astype(int) - r0
+        tx = np.rint((x[band] + shift * nx) / h).astype(int) - c0
+        inside = (ty >= 0) & (ty < height) & (tx >= 0) & (tx < width)
+        source_ok = np.zeros(sb.shape, dtype=bool)
+        values = np.zeros(sb.shape, dtype=complex)
+        source_ok[inside] = valid[ty[inside], tx[inside]]
+        values[inside] = w[ty[inside], tx[inside]]
+        at = np.nonzero(band)
+        w = w.copy()
+        w[at] = values
+        valid = valid.copy()
+        valid[at] = source_ok & dom[at]
+    return w, valid

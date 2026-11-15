@@ -1,5 +1,5 @@
-"""The Phase Break finder (``denoisifier._local_phase``, ticket 09 plan 2.2) on noise-free
-phasor fields and on noise-free generated frames.
+"""The Phase Break finder (``denoisifier._local_phase``, ticket 09 plan 2.2) and the Fork finder
+(ticket 10 plan 2.2) on noise-free phasor fields and on noise-free generated frames.
 
 The phasor field is what the finder is given on the real path: ``break_response`` of stripes with
 a sharp Phase Break, i.e. ``exp(i k . r)`` times the Phase Jump blurred by the finder's own window,
@@ -18,20 +18,28 @@ from denoisifier import BinFactors
 from denoisifier._local_phase import (
     _BREAK_FIT_HALF_WINDOW_PERIODS,
     _BREAK_MIN_FRAME_PERIOD_PX,
+    _FORK_DOMAIN_CLOSE_PERIODS,
+    _FORK_MIN_EVIDENCE,
     _finder_sigma_n,
     break_response,
+    find_forks,
     find_phase_breaks,
+    fork_domain,
     frame_period,
     line_side,
     wrap_jump,
 )
 from denoisifier._local_stripes import _Spectrum
-from denoisifier.synthetic import PhaseBreakLine, generate
+from denoisifier.synthetic import ForkPoint, PhaseBreakLine, generate
 from protected import (
     BREAK_EXACT_JUMP_TOL_RAD,
     BREAK_EXACT_POSITION_TOL_PERIODS,
     BREAK_PHASOR_FIELD_ATOL,
     BREAK_PHASOR_FIELD_RADIUS_PX,
+    FORK_EXACT_POSITION_TOL_PERIODS,
+    FORK_NEAR_BREAK_PERIODS,
+    FORK_PAIR_SEPARATION_PERIODS,
+    FORK_TEST_SEEDS,
     PHASE_BREAK_TEST_SEEDS,
 )
 
@@ -46,8 +54,9 @@ def _grid():
     return np.mgrid[0 : SHAPE[0], 0 : SHAPE[1]].astype(float)
 
 
-def _field(breaks=(), period=PERIOD, angle_deg=STRIPE_ANGLE, magnitude=None, winding=0):
-    """exp(i (2 pi / P (x cos A + y sin A) + sum jump [side > 0] + winding * azimuth))."""
+def _field(breaks=(), period=PERIOD, angle_deg=STRIPE_ANGLE, magnitude=None, winding=0, forks=()):
+    """exp(i (2 pi / P (x cos A + y sin A) + sum jump [side > 0] + winding * azimuth)), times
+    exp(i d atan2(y - y0, x - x0)) for each fork ((y0, x0), d) of ``forks``."""
     y, x = _grid()
     t = math.radians(angle_deg)
     phase = 2 * math.pi / period * (x * math.cos(t) + y * math.sin(t))
@@ -59,6 +68,8 @@ def _field(breaks=(), period=PERIOD, angle_deg=STRIPE_ANGLE, magnitude=None, win
         z = z * (1 - step + step * np.exp(1j * jump))
     if winding:
         z = z * np.exp(1j * winding * np.arctan2(y - CENTER[0], x - CENTER[1]))
+    for (y0, x0), d in forks:
+        z = z * np.exp(1j * d * np.arctan2(y - y0, x - x0))
     return z if magnitude is None else magnitude * z
 
 
@@ -216,3 +227,125 @@ def test_jumps_wrap_to_the_glossary_range():
     assert wrap_jump(3 * math.pi) == pytest.approx(math.pi)
     assert wrap_jump(1.5 * math.pi) == pytest.approx(-0.5 * math.pi)
     assert wrap_jump(-1.5 * math.pi) == pytest.approx(0.5 * math.pi)
+
+
+# --- Forks (ticket 10) ---------------------------------------------------------------------
+
+FORK_SHAPE = (256, 256)
+FORK_POINT = (127.5, 127.5)  # half-integer: no pixel centre on the fork
+
+
+def _fork_frame_response(period, angle_deg, forks):
+    """The finder's real input (09 critic-4 1a): ``break_response`` of a noise-free generated
+    full frame with ``forks`` ((point, direction)), over the depth."""
+    depth = 0.5
+    s = generate(
+        seed=FORK_TEST_SEEDS[0],
+        shape=FORK_SHAPE,
+        noise=0.0,
+        period=period,
+        angle_deg=angle_deg,
+        modulation_depth=depth,
+        forks=[ForkPoint(p, d) for p, d in forks],
+    )
+    return break_response(_Spectrum(s.frame, ONE), period, angle_deg) / depth
+
+
+def _fork_disc(radius=110.0):
+    y, x = np.mgrid[0 : FORK_SHAPE[0], 0 : FORK_SHAPE[1]]
+    return np.hypot(y - FORK_POINT[0], x - FORK_POINT[1]) <= radius
+
+
+def _near(found, point, period):
+    return math.hypot(found.point[0] - point[0], found.point[1] - point[1]) <= (
+        FORK_EXACT_POSITION_TOL_PERIODS * period
+    )
+
+
+@pytest.mark.parametrize("direction", [1, -1])
+@pytest.mark.parametrize("angle", [0.0, 10.0, -10.0])
+@pytest.mark.parametrize("period", [3.0, 5.0, 8.0, 20.0])
+def test_a_fork_is_found_at_its_point_with_its_direction(period, angle, direction):
+    z = _fork_frame_response(period, angle, [(FORK_POINT, direction)])
+    (found,) = find_forks(z, _fork_disc(), period, angle, ONE)
+    assert _near(found, FORK_POINT, period), found
+    assert found.direction == direction
+    assert found.evidence >= _FORK_MIN_EVIDENCE
+
+
+def test_a_plane_wave_has_no_fork():
+    assert find_forks(_field(), _disc(), PERIOD, STRIPE_ANGLE, ONE) == []
+
+
+def test_a_plane_wave_off_the_searched_carrier_has_no_fork():
+    """The finder demodulates by the field's own median carrier: stripes 10 % off in Period
+    and 3 deg off in Angle from the searched ones give no fork."""
+    z = _field(period=1.1 * PERIOD, angle_deg=STRIPE_ANGLE + 3.0)
+    assert find_forks(z, _disc(), PERIOD, STRIPE_ANGLE, ONE) == []
+
+
+def test_a_plane_wave_on_a_disc_cut_by_a_straight_edge_has_no_fork():
+    y, _ = _grid()
+    domain = _disc() & (y <= CENTER[0] + 30.0)
+    assert find_forks(_field(), domain, PERIOD, STRIPE_ANGLE, ONE) == []
+
+
+def test_a_sharp_phase_break_is_not_a_fork():
+    z = _field([(CENTER, 0.0, math.pi)])
+    assert find_forks(z, _disc(), PERIOD, STRIPE_ANGLE, ONE) == []
+
+
+def test_a_fork_near_an_explained_break_is_found_alone():
+    """A fork FORK_NEAR_BREAK_PERIODS Periods from a pi break's line, with the found break
+    passed in: the fork only."""
+    point = (CENTER[0] + FORK_NEAR_BREAK_PERIODS * PERIOD, CENTER[1] + 0.5)
+    z = _field([(CENTER, 0.0, math.pi)], forks=[(point, 1)])
+    breaks = find_phase_breaks(z, _disc(), PERIOD, STRIPE_ANGLE, ONE)
+    assert len(breaks) == 1
+    (found,) = find_forks(z, _disc(), PERIOD, STRIPE_ANGLE, ONE, breaks)
+    assert _near(found, point, PERIOD), found
+    assert found.direction == 1
+
+
+def test_an_opposite_pair_is_found_as_two_forks():
+    half = FORK_PAIR_SEPARATION_PERIODS * PERIOD / 2
+    points = [(CENTER[0], CENTER[1] - half), (CENTER[0], CENTER[1] + half)]
+    z = _field(forks=[(points[0], 1), (points[1], -1)])
+    found = find_forks(z, _disc(), PERIOD, STRIPE_ANGLE, ONE)
+    strong = [f for f in found if f.evidence >= _FORK_MIN_EVIDENCE]
+    assert len(strong) == 2, found
+    for point, d in zip(points, (1, -1), strict=True):
+        (match,) = [f for f in strong if _near(f, point, PERIOD)]
+        assert match.direction == d
+
+
+def test_forks_are_not_searched_under_the_frame_period_limit():
+    bins = BinFactors(2, 1)
+    period = 2 * _BREAK_MIN_FRAME_PERIOD_PX - 0.3  # frame Period 2.35 at Angle 0 under 2x1
+    z = _field(period=period / 2, forks=[(CENTER, 1)])
+    assert find_forks(z, _disc(), period, 0.0, bins) == []
+
+
+def test_fork_domain_keeps_a_convex_region():
+    domain = _disc(60.0)
+    none = np.zeros_like(domain)
+    assert np.array_equal(fork_domain(domain, none, PERIOD, ONE), domain)
+
+
+def test_fork_domain_fills_a_notch_narrower_than_the_closing_disc():
+    y, x = _grid()
+    notch = (np.abs(x - CENTER[1]) <= _FORK_DOMAIN_CLOSE_PERIODS * PERIOD / 2) & (
+        y >= CENTER[0] + 30.0
+    )
+    region = _disc(60.0) & ~notch
+    filled = fork_domain(region, np.zeros_like(region), PERIOD, ONE)
+    assert filled[_disc(60.0) & notch & (y <= CENTER[0] + 50.0)].all()
+    assert not (filled & ~_disc(61.0)).any()
+
+
+def test_fork_domain_leaves_out_other_regions():
+    y, x = _grid()
+    region = _disc(60.0)
+    other = (np.abs(y - CENTER[0]) <= 5) & (x >= CENTER[1] + 40.0)
+    domain = fork_domain(region & ~other, other, PERIOD, ONE)
+    assert not (domain & other).any()

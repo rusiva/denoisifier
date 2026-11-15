@@ -290,3 +290,9 @@ denoisifier._local_phase :: _BREAK_JUMP_SPREAD_RAD :: 0.7853981633974483
 denoisifier._local_phase :: _BREAK_EXPLAIN_SIGMAS :: 2.0
 denoisifier._local_phase :: _BREAK_MAX_PER_REGION :: 4
 denoisifier._local_phase :: _BREAK_MIN_FRAME_PERIOD_PX :: 2.5
+denoisifier._local_phase :: _FORK_LOOP_PERIODS :: 2.0
+denoisifier._local_phase :: _FORK_MIN_MAGNITUDE_FRACTION :: 0.5
+denoisifier._local_phase :: _FORK_BREAK_BAND_SIGMAS :: 2.0
+denoisifier._local_phase :: _FORK_DOMAIN_CLOSE_PERIODS :: 3.0
+denoisifier._local_phase :: _FORK_GATE_EVIDENCE :: 0.2
+denoisifier._local_phase :: _FORK_MIN_EVIDENCE :: 0.3
