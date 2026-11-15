@@ -2152,15 +2152,27 @@ def test_a_gated_fork_corrects_the_break_pass_field(monkeypatch):
         assert not np.array_equal(z, handed.response(period, angle_deg))
 
 
-def test_refused_regions_are_not_searched_for_forks(monkeypatch):
+@pytest.mark.parametrize("joined", [False, True], ids=["own", "joined"])
+def test_refused_regions_are_not_searched_for_forks(monkeypatch, joined):
     """Review N3: a region with a refusal entry (frame Period under 2.5 px) is handed to
-    neither fork search."""
-    s, _, bins = _refusal_frame(())
+    neither fork search. Joined (review P1): a region the pass hands back holding a refused
+    region's pixels, at a Period _MERGE_PERIOD_RATIO longer (above the limit), gets no
+    post-break search either."""
+    s, free, bins = _refusal_frame(())
+    if joined:
+
+        def join(reported, *_):
+            (g,) = reported
+            return [(dataclasses.replace(g, period=g.period * analysis._MERGE_PERIOD_RATIO), [])]
+
+        monkeypatch.setattr(analysis, "_with_phase_breaks", join)
     calls = []
     monkeypatch.setattr(analysis, "find_forks", lambda *a, **_: calls.append(a) or [])
     frame = bin_sensor_frame(s.frame, bins.horizontal, bins.vertical)
     report = analyse(frame, bin_factors=bins)
     assert report.regions
+    if joined:
+        assert report.regions[0].period_px > free.regions[0].period_px
     assert calls == []
 
 
