@@ -32,6 +32,16 @@ stripe phase of every Striped Region (spec forward model):
 
 ``GroundTruth.phase_breaks`` records each line in canonical form
 (``BreakTruth``).
+
+Forks (``ForkPoint``, ticket 10) add a winding term to the stripe phase of
+every Striped Region and of full-frame stripes (spec forward model):
+
+    phase_i += sum_f direction_f * atan2(y - y0_f, x - x0_f)
+
+so the phase winds by 2 pi around each fork. The term is global: it bends
+the stripes near the fork and, weakly, everywhere else (the local frequency
+changes by about P / (2 pi r) relative at distance r). ``GroundTruth.forks``
+records each fork (``ForkTruth``).
 """
 
 from __future__ import annotations
@@ -148,6 +158,29 @@ class BreakTruth:
 
 
 @dataclass(frozen=True)
+class ForkPoint:
+    """A Fork in the stripes. ``point`` (row, col), px. ``direction`` +1 or
+    -1: the stripe phase gains ``direction * atan2(y - y0, x - x0)`` (x the
+    column, y the row, increasing downward; the spec's charge). Direction
+    +1: going toward row 0 past the fork, one stripe becomes two (a row on
+    the row-0 side crosses one more stripe); -1 the same going away from
+    row 0. The Report's ``Fork.direction`` of a found fork equals this
+    value."""
+
+    point: tuple[float, float]
+    direction: int
+
+
+@dataclass(frozen=True)
+class ForkTruth:
+    """One Fork as the generator drew it: ``point`` (row, col) px and
+    ``direction`` (+1 or -1), as ``ForkPoint`` defines them."""
+
+    point: tuple[float, float]
+    direction: int
+
+
+@dataclass(frozen=True)
 class GroundTruth:
     """What the generator put into a frame: one ``RegionTruth`` per region.
 
@@ -167,13 +200,15 @@ class GroundTruth:
     ``clipped_pixels`` are their counts.
 
     ``phase_breaks`` holds one ``BreakTruth`` per Phase Break, in the order
-    given (empty without breaks).
+    given (empty without breaks); ``forks`` one ``ForkTruth`` per Fork, in
+    the order given (empty without forks).
     """
 
     regions: tuple[RegionTruth, ...]
     spike_mask: np.ndarray
     clipped_mask: np.ndarray
     phase_breaks: tuple[BreakTruth, ...] = ()
+    forks: tuple[ForkTruth, ...] = ()
 
     @property
     def spike_pixels(self) -> int:
@@ -231,6 +266,7 @@ def generate(
     spikes: int = 0,
     clip_level: float | None = None,
     phase_breaks: Sequence[PhaseBreakLine] = (),
+    forks: Sequence[ForkPoint] = (),
 ) -> Synthetic:
     """Generate one frame: profile times full-frame stripes, plus noise.
 
@@ -282,6 +318,24 @@ def generate(
     3. with breaks and EMCCD noise no pixel is claimed equal: the chain
        rescales by ``clean.max()`` and its draws depend on the values.
 
+    ``forks`` (``ForkPoint``s) add ``direction * atan2(y - y0, x - x0)`` to
+    the stripe phase of every Striped Region (and of full-frame stripes),
+    with the Phase Breaks' term. The term is global: it bends the stripes
+    near each fork and, weakly, in every region (relative change in the
+    local frequency about ``P / (2 pi r)`` at distance ``r``). Its 2 pi jump
+    along the ray to the left of the fork is invisible in the cosine. Each
+    fork is returned in ``GroundTruth.forks``; ``point`` must be a finite
+    pair and ``direction`` an int (not a bool) equal to +1 or -1
+    (``ValueError``). Forks draw nothing from the RNG. So:
+
+    1. ``forks=()`` is bit-identical to a call without it, for every noise
+       model;
+    2. with forks, Gaussian ``noise``, ``spikes=0`` and no ``clip_level``,
+       the added noise ``frame - clean`` is the fork-free call's, within
+       float rounding; no pixel off the fork is claimed equal (the term is
+       global);
+    3. with forks and EMCCD noise no pixel is claimed.
+
     Once the arguments are valid, the seed is raised as the audit event
     ``denoisifier.synthetic.generate`` (``sys.audit``) just before it seeds the
     RNG; the tests' seed guard listens for it (tests/seed_guard.py).
@@ -324,14 +378,19 @@ def generate(
     if clip_level is not None and not np.isfinite(clip_level):
         raise ValueError(f"clip_level must be finite (None for no clipping), got {clip_level!r}")
     lines = tuple(_canonical_break(b) for b in phase_breaks)
+    fork_truths = tuple(_checked_fork(f) for f in forks)
 
     sys.audit("denoisifier.synthetic.generate", seed)
     rng = np.random.default_rng(seed)
     rows, cols = shape
     y, x = np.mgrid[0:rows, 0:cols].astype(float)
     break_truths = tuple(_break_truth(b, x, y) for b in lines)
-    # Branch so that the break-free path does no arithmetic at all (claim 1).
-    break_phase = _break_phase(break_truths) if break_truths else None
+    # Breaks and forks add to every phase. Branch so that the break- and fork-free
+    # path does no arithmetic at all (claims 1).
+    added_phase = _break_phase(break_truths) if break_truths else None
+    if fork_truths:
+        winding = _fork_phase(fork_truths, x, y)
+        added_phase = winding if added_phase is None else added_phase + winding
 
     # RNG draw order is fixed: profile, stripe phase offset, mottle, noise,
     # then spikes (only when spikes > 0).
@@ -352,8 +411,8 @@ def generate(
     if regions is None:
         # Only full's Period, Angle and depth are used: the stripes cover the frame.
         phase = _phase(x, y, full.period, full.angle_deg, phase0)
-        if break_phase is not None:
-            phase = phase + break_phase
+        if added_phase is not None:
+            phase = phase + added_phase
         clean = envelope * (1 + full.modulation_depth * np.cos(phase))
         truths: tuple[RegionTruth, ...] = (
             RegionTruth(
@@ -370,8 +429,8 @@ def generate(
         for r, mask in zip(regions, masks, strict=True):
             depth_sum += r.modulation_depth * mask
             region_phase = _phase(x, y, r.period, r.angle_deg, phase0)
-            if break_phase is not None:
-                region_phase = region_phase + break_phase
+            if added_phase is not None:
+                region_phase = region_phase + added_phase
             modulation += r.modulation_depth * mask * np.cos(region_phase)
         if (depth_sum > 1).any():
             raise ValueError(
@@ -403,6 +462,7 @@ def generate(
             spike_mask=spike_mask,
             clipped_mask=clipped_mask,
             phase_breaks=break_truths,
+            forks=fork_truths,
         ),
         clean=clean,
     )
@@ -515,6 +575,25 @@ def _break_phase(breaks: tuple[BreakTruth, ...]) -> _F64:
     total = np.zeros(breaks[0].shifted.shape)
     for b in breaks:
         total[b.shifted] += b.jump_rad
+    return total
+
+
+def _checked_fork(f: ForkPoint) -> ForkTruth:
+    """``f`` validated, as a ``ForkTruth``."""
+    point = tuple(f.point)
+    if len(point) != 2 or not all(math.isfinite(float(v)) for v in point):
+        raise ValueError(f"fork point must be a finite (row, col) pair, got {f.point!r}")
+    d = f.direction
+    if isinstance(d, bool) or not isinstance(d, int | np.integer) or d not in (1, -1):
+        raise ValueError(f"fork direction must be the int +1 or -1, got {d!r}")
+    return ForkTruth((float(point[0]), float(point[1])), int(d))
+
+
+def _fork_phase(forks: tuple[ForkTruth, ...], x: _F64, y: _F64) -> _F64:
+    """Sum of each fork's winding term ``direction * atan2(y - y0, x - x0)``."""
+    total = np.zeros(x.shape)
+    for f in forks:
+        total = total + f.direction * np.arctan2(y - f.point[0], x - f.point[1])
     return total
 
 

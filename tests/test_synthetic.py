@@ -5,16 +5,28 @@ import re
 
 import numpy as np
 import pytest
-from scipy import ndimage
+from scipy import ndimage, signal
 
 from cases import case_frame, clipped_at
 from denoisifier import synthetic
 from denoisifier._local_phase import line_side, wrap_jump
-from denoisifier.synthetic import Emccd, PhaseBreakLine, StripedRegion, generate
+from denoisifier.synthetic import (
+    Emccd,
+    ForkPoint,
+    ForkTruth,
+    PhaseBreakLine,
+    StripedRegion,
+    generate,
+)
 from protected import (
     BREAK_PHASE_ATOL,
     CLIP_LEVEL_FRACTION,
     DIGEST_TEST_SEEDS,
+    FORK_PHASE_ATOL,
+    FORK_SIGN_FRAME_SHAPE,
+    FORK_SIGN_ROW_OFFSET_PERIODS,
+    FORK_SIGN_TEST_PERIOD,
+    FORK_TEST_SEEDS,
     MASK_AREA_REL_TOL,
     MASK_CONTOUR_TOL_PX,
     MASK_EDGE_WIDTH_TOL_PX,
@@ -609,3 +621,122 @@ def test_positive_jump_moves_stripes_toward_column_zero():
     # b(x) = f(x - lag) at the best lag.
     score = {lag: float(np.dot(b[inner], np.roll(f, lag)[inner])) for lag in lags}
     assert max(score, key=lambda lag: score[lag]) == -period // 4
+
+
+# --- Forks (ticket 10) ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("angle", [0, 10, -10])
+@pytest.mark.parametrize("direction", [1, -1])
+def test_a_fork_adds_one_stripe_on_its_split_side(direction, angle):
+    """AC 1, the sign: with +1, going toward row 0 one stripe becomes two (the row-0 side
+    crosses one more stripe); -1 the reverse. Noise-free full-frame stripes of
+    FORK_SIGN_FRAME_SHAPE (wide rows) with the fork at the centre. On the rows
+    FORK_SIGN_ROW_OFFSET_PERIODS Periods above and below it, the stripe phase change along the
+    row (analytic phase, unwrapped, trimmed 2 P at each end against the transform's end
+    effects) differs by about 2 pi x 0.96 x direction: the plane-wave part cancels. A count of
+    maxima is not used: it depends on phase0 (plan review B1)."""
+    period = FORK_SIGN_TEST_PERIOD
+    rows, cols = FORK_SIGN_FRAME_SHAPE
+    centre = ((rows - 1) / 2, (cols - 1) / 2)
+    common = dict(seed=FORK_TEST_SEEDS[0], shape=FORK_SIGN_FRAME_SHAPE, noise=0.0, period=period)
+    s = generate(**common, angle_deg=angle, forks=[ForkPoint(centre, direction)])
+    env = generate(**common, modulation_depth=0.0).clean
+    stripes = s.clean / env - 1
+    offset = FORK_SIGN_ROW_OFFSET_PERIODS * period
+    lo, hi = 2 * period, cols - 1 - 2 * period
+
+    def change(row):
+        phase = np.unwrap(np.angle(signal.hilbert(stripes[row])))
+        return phase[hi] - phase[lo]
+
+    top = change(math.floor(centre[0] - offset))
+    bottom = change(math.ceil(centre[0] + offset))
+    assert round((top - bottom) / (2 * math.pi)) == direction
+
+
+def _quarter_turned(**kwargs):
+    """The fork-free stripes turned by pi/2 everywhere (a break whose positive side is the
+    whole frame)."""
+    return generate(phase_breaks=[PhaseBreakLine((-0.5, 0.0), 0.0, math.pi / 2)], **kwargs)
+
+
+_FORKS = (ForkPoint((100.5, 60.5), 1), ForkPoint((150.5, 190.5), -1))
+
+
+def test_fork_phase_is_the_winding_term():
+    """AC 1, the phase: the stripe term is the fork-free one turned by
+    sum_f d_f atan2(y - y0, x - x0), inside regions and over the whole frame
+    (c_0 cos + c_{pi/2} sin, as the Phase Break test)."""
+    region = StripedRegion(
+        center=(127.5, 127.5),
+        semi_axes=(60.0, 80.0),
+        rotation_deg=0.0,
+        edge_px=6.0,
+        period=8.0,
+        angle_deg=6.0,
+        modulation_depth=0.5,
+    )
+    y, x = np.mgrid[0:256, 0:256].astype(float)
+    turn = sum(f.direction * np.arctan2(y - f.point[0], x - f.point[1]) for f in _FORKS)
+    for kwargs in (dict(regions=[region]), dict()):
+        common = dict(seed=FORK_TEST_SEEDS[0], noise=0.0, **kwargs)
+        forked = generate(forks=_FORKS, **common).clean
+        free = generate(**common).clean
+        quarter = _quarter_turned(**common).clean
+        env = generate(
+            seed=FORK_TEST_SEEDS[0],
+            noise=0.0,
+            **(dict(regions=()) if kwargs else dict(modulation_depth=0.0)),
+        ).clean
+        c_f, c_0, c_q = (c / env - 1 for c in (forked, free, quarter))
+        expected = c_0 * np.cos(turn) + c_q * np.sin(turn)
+        assert np.max(np.abs(c_f - expected)) <= FORK_PHASE_ATOL
+        assert np.max(np.abs(c_f - c_0)) > 0.1
+
+
+def test_fork_truth_is_returned():
+    s = generate(seed=FORK_TEST_SEEDS[0], forks=_FORKS)
+    assert s.truth.forks == (ForkTruth((100.5, 60.5), 1), ForkTruth((150.5, 190.5), -1))
+    assert generate(seed=FORK_TEST_SEEDS[0]).truth.forks == ()
+
+
+@pytest.mark.parametrize(
+    ("fork", "message"),
+    [
+        (ForkPoint((np.nan, 1.0), 1), "fork point must be"),
+        (ForkPoint((1.0, 2.0, 3.0), 1), "fork point must be"),
+        (ForkPoint((1.0, np.inf), -1), "fork point must be"),
+        (ForkPoint((1.0, 2.0), 0), "fork direction must be"),
+        (ForkPoint((1.0, 2.0), 2), "fork direction must be"),
+        (ForkPoint((1.0, 2.0), 1.0), "fork direction must be"),
+        (ForkPoint((1.0, 2.0), True), "fork direction must be"),
+    ],
+)
+def test_rejects_invalid_forks(fork, message):
+    with pytest.raises(ValueError, match="^" + re.escape(message)):
+        generate(seed=FORK_TEST_SEEDS[0], forks=[fork])
+
+
+@pytest.mark.parametrize("kind", ["default", "scorched", "scorched-emccd"])
+def test_no_forks_leaves_frames_unchanged(kind):
+    """AC 1, identity: forks=() is the BASE frame bit for bit (every noise kind); with a fork,
+    Gaussian noise, no spikes and no clip, the added noise (frame - clean) is the fork-free
+    call's within float rounding. No pixel claim with a fork (the term is global), nor for
+    EMCCD noise."""
+    for seed, digest in zip(DIGEST_TEST_SEEDS, _BASE_DIGESTS[kind], strict=True):
+        s = generate(seed=seed, forks=(), **_DIGEST_KWARGS[kind])
+        assert hashlib.sha256(s.frame.tobytes()).hexdigest() == digest
+        assert s.truth.forks == ()
+    if kind == "scorched-emccd":
+        return
+    for seed in DIGEST_TEST_SEEDS:
+        free = generate(seed=seed, **_DIGEST_KWARGS[kind])
+        forked = generate(seed=seed, forks=_FORKS[:1], **_DIGEST_KWARGS[kind])
+        assert np.allclose(
+            forked.frame - forked.clean,
+            free.frame - free.clean,
+            rtol=0,
+            atol=FORK_PHASE_ATOL * free.clean.max(),
+        )
+        assert not np.array_equal(forked.clean, free.clean)
