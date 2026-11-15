@@ -25,7 +25,16 @@ from breaks import (
     two_break_case,
 )
 from cases import CASES, case_frame, clipped_at
-from denoisifier import BinFactors, BoundingBox, PhaseBreak, Region, Report, analyse, analysis
+from denoisifier import (
+    BinFactors,
+    BoundingBox,
+    Fork,
+    PhaseBreak,
+    Region,
+    Report,
+    analyse,
+    analysis,
+)
 from denoisifier.analysis import _ENVELOPE_SIGMA
 from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
 from denoisifier.synthetic import (
@@ -354,12 +363,14 @@ def test_report_converts_to_json(modulation_depth):
         "units",
         "regions",
         "phase_breaks",
+        "forks",
         "spike_pixels",
         "clipped_pixels",
         "unresolved_period_px",
         "warnings",
     ]
     assert data["phase_breaks"] == []
+    assert data["forks"] == []
     assert data["bin_factors"] == {"horizontal": 1, "vertical": 1}
     assert data["unresolved_period_px"] is None
     assert data["warnings"] == []
@@ -1478,6 +1489,9 @@ REPORT_UNITS = {
     "reversed)",
     "jump_rad": "radians, phase on the positive side (cross-product rule) minus the other; same "
     "value in both layouts",
+    "point": "frame px, (row, col); file layout when transposed (swapped)",
+    "direction": "+1: one stripe becomes two going toward row 0 of the analysed frame (toward "
+    "column 0 in file layout when transposed); -1 the reverse; same value in both layouts",
 }
 
 
@@ -1541,6 +1555,37 @@ def test_phase_break_in_file_layout_swaps_and_reverses_its_points():
     assert _positive_side(file_brk.line, below[::-1])
     assert not _positive_side(file_brk.line, above[::-1])
     assert json.loads(flipped.to_json())["phase_breaks"][0]["line"] == [[8.0, 4.0], [1.0, 3.0]]
+
+
+def _report_with_forks():
+    forks = (Fork(region=1, point=(3.5, 2.5), direction=1), Fork(1, (5.0, 7.25), -1))
+    return dataclasses.replace(_report_with_a_break(), forks=forks)
+
+
+def test_report_lists_forks_as_plain_json():
+    data = json.loads(_report_with_forks().to_json())
+    assert list(data).index("forks") == list(data).index("phase_breaks") + 1
+    assert data["forks"] == [
+        {"region": 1, "point": [3.5, 2.5], "direction": 1},
+        {"region": 1, "point": [5.0, 7.25], "direction": -1},
+    ]
+    for entry in data["forks"]:
+        assert type(entry["region"]) is int
+        assert type(entry["direction"]) is int
+        assert all(type(v) is float for v in entry["point"])
+
+
+def test_fork_in_file_layout_swaps_its_point_and_keeps_its_direction():
+    """OQ1 option A: the file layout swaps the point; the direction is the same value (it then
+    reads "toward column 0")."""
+    report = _report_with_forks()
+    flipped = report.in_file_layout()
+    assert flipped.forks == (Fork(1, (2.5, 3.5), 1), Fork(1, (7.25, 5.0), -1))
+    assert json.loads(flipped.to_json())["forks"][0] == {
+        "region": 1,
+        "point": [2.5, 3.5],
+        "direction": 1,
+    }
 
 
 def test_report_states_units():

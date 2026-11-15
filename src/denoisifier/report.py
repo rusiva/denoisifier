@@ -183,6 +183,34 @@ class PhaseBreak:
 
 
 @dataclass(frozen=True)
+class Fork:
+    """One reported Fork.
+
+    ``point`` (row, col) in frame px. ``direction`` +1: going toward row 0
+    of the analysed frame past the fork, one stripe becomes two (a row on the
+    row-0 side crosses one more stripe); -1 the same going away from row 0.
+    In file layout when transposed, read "column 0" for "row 0"; the value is
+    the same in both layouts. ``region`` is the label of its Striped Region.
+    """
+
+    region: int
+    point: tuple[float, float]
+    direction: int
+
+    def transposed(self) -> Fork:
+        """The fork in the transposed layout: the point swapped, the
+        direction unchanged."""
+        return dataclasses.replace(self, point=(self.point[1], self.point[0]))
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "region": int(self.region),
+            "point": [float(self.point[0]), float(self.point[1])],
+            "direction": int(self.direction),
+        }
+
+
+@dataclass(frozen=True)
 class Report:
     """What ``analyse`` found in one frame.
 
@@ -226,6 +254,11 @@ class Report:
     reported regions, ordered by region label, then by descending
     ``|jump_rad|``, then by first point in row-major order; each ``line`` is
     in frame px (file layout when transposed).
+
+    ``forks`` (``Fork``) are the Forks found in the reported regions,
+    ordered by region label, then by point in row-major order; each
+    ``point`` is in frame px (file layout when transposed) and its
+    ``direction`` is the same value in both layouts.
     """
 
     UNITS: ClassVar[dict[str, str]] = {
@@ -246,6 +279,11 @@ class Report:
             "radians, phase on the positive side (cross-product rule) minus the other; "
             "same value in both layouts"
         ),
+        "point": "frame px, (row, col); file layout when transposed (swapped)",
+        "direction": (
+            "+1: one stripe becomes two going toward row 0 of the analysed frame (toward "
+            "column 0 in file layout when transposed); -1 the reverse; same value in both layouts"
+        ),
     }
 
     striped: bool
@@ -261,16 +299,19 @@ class Report:
     unresolved_period_px: tuple[float, float] | None = None
     warnings: tuple[str, ...] = ()
     phase_breaks: tuple[PhaseBreak, ...] = ()
+    forks: tuple[Fork, ...] = ()
 
     def mask(self) -> np.ndarray:
         """Boolean, frame shape: True inside any reported region."""
         return np.asarray(self.labels > 0)
 
     def in_file_layout(self) -> Report:
-        """This report with ``labels``, every bbox and every Phase Break line
-        transposed back to the file's layout (``PhaseBreak.transposed``).
+        """This report with ``labels``, every bbox, every Phase Break line and
+        every Fork point transposed back to the file's layout
+        (``PhaseBreak.transposed``, ``Fork.transposed``).
 
-        Period, Angle, Modulation Depth, score, label values, jumps,
+        Period, Angle, Modulation Depth, score, label values, jumps, Fork
+        directions,
         ``bin_factors``, ``unresolved_period_px`` and ``warnings`` are
         unchanged."""
         return dataclasses.replace(
@@ -278,6 +319,7 @@ class Report:
             labels=np.ascontiguousarray(self.labels.T),
             regions=tuple(dataclasses.replace(r, bbox=r.bbox.transposed()) for r in self.regions),
             phase_breaks=tuple(b.transposed() for b in self.phase_breaks),
+            forks=tuple(f.transposed() for f in self.forks),
             transposed=True,
         )
 
@@ -294,6 +336,7 @@ class Report:
             "units": dict(self.UNITS),
             "regions": [r.to_dict() for r in self.regions],
             "phase_breaks": [b.to_dict() for b in self.phase_breaks],
+            "forks": [f.to_dict() for f in self.forks],
             "spike_pixels": int(self.spike_pixels),
             "clipped_pixels": int(self.clipped_pixels),
             "unresolved_period_px": (
