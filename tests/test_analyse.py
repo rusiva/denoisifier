@@ -36,9 +36,15 @@ from denoisifier import (
     analyse,
     analysis,
 )
-from denoisifier._local_phase import _FORK_LOOP_PERIODS, fork_domain
+from denoisifier._local_phase import (
+    _BREAK_MIN_EVIDENCE,
+    _FORK_LOOP_PERIODS,
+    _FORK_MIN_EVIDENCE,
+    fork_domain,
+)
 from denoisifier.analysis import _ENVELOPE_SIGMA
 from denoisifier.calibration import (
+    DEFAULT_BREAK_FORK_FALSE_ALARM_RATE,
     DEFAULT_FALSE_ALARM_RATE,
     Calibration,
     _BreakForkCalibration,
@@ -2529,3 +2535,20 @@ def test_break_fork_false_alarm_rate_changes_the_report(monkeypatch):
     removed = analyse(s.frame, break_fork_false_alarm_rate=0.05)
     assert kept.phase_breaks
     assert removed.phase_breaks == ()
+
+
+def test_default_break_fork_thresholds_are_the_stored_ones(monkeypatch):
+    """AC 3(b): with no rate given, the finders get the stored calibration's thresholds at
+    the default rate (here a hand-made one above both floors, so a floor fallback would
+    show)."""
+    cal = _hand_break_fork_calibration(0.45, 0.65)
+    monkeypatch.setattr(analysis, "_stored_break_fork_calibration", lambda: cal)
+    want = cal.thresholds(DEFAULT_BREAK_FORK_FALSE_ALARM_RATE)
+    assert want.breaks > _BREAK_MIN_EVIDENCE
+    assert want.forks > _FORK_MIN_EVIDENCE
+    s, _ = _ac2_frame(PHASE_BREAK_TEST_SEEDS[0])
+    spy = _ThresholdSpy(monkeypatch)
+    analyse(s.frame)
+    assert spy.breaks
+    assert set(spy.breaks) == {want.breaks}
+    assert spy.forks == [want.forks]

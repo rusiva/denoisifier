@@ -1,0 +1,1552 @@
+{
+  "format": 1,
+  "evidence": "break-fork-v1",
+  "shape": [
+    400,
+    1600
+  ],
+  "settings": {
+    "source": "synthetic",
+    "shape": [
+      400,
+      1600
+    ],
+    "mottle": "scorched",
+    "emccd": {
+      "photons_peak": 100.0,
+      "em_gain": 300.0,
+      "read_noise_e": 50.0,
+      "cic": 0.005
+    },
+    "spikes": 30,
+    "modulation_depth": 0.5,
+    "clip_level": null,
+    "period_angle": "cases.CASES[seed % 10], full-frame stripes",
+    "phase_breaks": 0,
+    "forks": 0,
+    "evidence": "break-fork-v1",
+    "scalars": "analysis._break_fork_evidence(frame): stored 1 % stripe threshold, unbinned",
+    "floors": {
+      "breaks": 0.1,
+      "forks": 0.3
+    },
+    "stripe_calibration_digest": "4140b3db8edcb56dce3567cd42bc321e1df1512d616e37647e6dc0823d2e0f6a"
+  },
+  "run_info": {
+    "commit": "7d05e6c-dirty",
+    "cpu": "AMD Ryzen AI 7 PRO 360 w/ Radeon 880M",
+    "logical_cpus": 16,
+    "workers": 12,
+    "python": "3.11.15",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "loadavg": {
+      "start": "7.93 5.68 3.75 1/838 598129",
+      "end": "8.59 10.79 8.10 1/832 602743"
+    },
+    "wall_clock_s": 715.2393013399997,
+    "seconds_per_frame": 2.3841310044666657
+  },
+  "frames": [
+    {
+      "id": "seed:113000",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113001",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113002",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113003",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113004",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113005",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113006",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113007",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113008",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113009",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113010",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113011",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113012",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113013",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113014",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113015",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113016",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113017",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113018",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113019",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113020",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113021",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113022",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113023",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113024",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113025",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113026",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113027",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113028",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113029",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113030",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113031",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113032",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113033",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113034",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113035",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113036",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113037",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113038",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113039",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113040",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113041",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113042",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113043",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113044",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113045",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113046",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113047",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113048",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113049",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113050",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113051",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113052",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113053",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113054",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113055",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113056",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113057",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113058",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113059",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113060",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113061",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113062",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113063",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113064",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113065",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113066",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113067",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113068",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113069",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113070",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113071",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113072",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113073",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113074",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113075",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113076",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113077",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113078",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113079",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113080",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113081",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113082",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113083",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113084",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113085",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113086",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113087",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113088",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113089",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113090",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113091",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113092",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113093",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113094",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113095",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113096",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113097",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113098",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113099",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113100",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113101",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113102",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113103",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113104",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113105",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113106",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113107",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113108",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113109",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113110",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113111",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113112",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113113",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113114",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113115",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113116",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113117",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113118",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113119",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113120",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113121",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113122",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113123",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113124",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113125",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113126",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113127",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113128",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113129",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113130",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113131",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113132",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113133",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113134",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113135",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113136",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113137",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113138",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113139",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113140",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113141",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113142",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113143",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113144",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113145",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113146",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113147",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113148",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113149",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113150",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113151",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113152",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113153",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113154",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113155",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113156",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113157",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113158",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113159",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113160",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113161",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113162",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113163",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113164",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113165",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113166",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113167",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113168",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113169",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113170",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113171",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113172",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113173",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113174",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113175",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113176",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113177",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113178",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113179",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113180",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113181",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113182",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113183",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113184",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113185",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113186",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113187",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113188",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113189",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113190",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113191",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113192",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113193",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113194",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113195",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113196",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113197",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113198",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113199",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113200",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113201",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113202",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113203",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113204",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113205",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113206",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113207",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113208",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113209",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113210",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113211",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113212",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113213",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113214",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113215",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113216",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113217",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113218",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113219",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113220",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113221",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113222",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113223",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113224",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113225",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113226",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113227",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113228",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113229",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113230",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113231",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113232",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113233",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113234",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113235",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113236",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113237",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113238",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113239",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113240",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113241",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113242",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113243",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113244",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113245",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113246",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113247",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113248",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113249",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113250",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113251",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113252",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113253",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113254",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113255",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113256",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113257",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113258",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113259",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113260",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113261",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113262",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113263",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113264",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113265",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113266",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113267",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113268",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113269",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113270",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113271",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113272",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113273",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113274",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113275",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113276",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113277",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113278",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113279",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113280",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113281",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113282",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113283",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113284",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113285",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113286",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113287",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113288",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113289",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113290",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113291",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113292",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113293",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113294",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113295",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113296",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113297",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113298",
+      "breaks": 0.0,
+      "forks": 0.0
+    },
+    {
+      "id": "seed:113299",
+      "breaks": 0.0,
+      "forks": 0.0
+    }
+  ]
+}

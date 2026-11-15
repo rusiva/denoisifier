@@ -62,10 +62,8 @@ from scipy.ndimage import gaussian_filter
 from denoisifier._data_quality import find_clipped, reject_spikes
 from denoisifier._local_phase import (
     _BREAK_MAX_PER_REGION,
-    _BREAK_MIN_EVIDENCE,
     _BREAK_MIN_FRAME_PERIOD_PX,
     _FORK_GATE_EVIDENCE,
-    _FORK_MIN_EVIDENCE,
     FoundBreak,
     FoundFork,
     break_response,
@@ -95,6 +93,7 @@ from denoisifier._local_stripes import (
     unresolved_periods,
 )
 from denoisifier.calibration import (
+    DEFAULT_BREAK_FORK_FALSE_ALARM_RATE,
     DEFAULT_FALSE_ALARM_RATE,
     Calibration,
     _BreakForkThresholds,
@@ -481,11 +480,11 @@ def _front_half(
 
 
 def _resolve_break_fork_thresholds(rate: float | None) -> _BreakForkThresholds:
-    """The break and Fork evidence thresholds at ``rate``: the stored break
-    and Fork calibration's (``_stored_break_fork_calibration``)."""
+    """The break and Fork evidence thresholds at ``rate`` (default
+    ``DEFAULT_BREAK_FORK_FALSE_ALARM_RATE``): the stored break and Fork
+    calibration's (``_stored_break_fork_calibration``)."""
     if rate is None:
-        # Until the stored file exists (ticket 11 step 6): the floors, as before.
-        return _BreakForkThresholds(breaks=_BREAK_MIN_EVIDENCE, forks=_FORK_MIN_EVIDENCE)
+        rate = DEFAULT_BREAK_FORK_FALSE_ALARM_RATE
     return _stored_break_fork_calibration().thresholds(rate)
 
 

@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import os
 import shutil
@@ -12,8 +13,13 @@ from binning import bin_sensor_frame
 from borderline import BORDERLINE, borderline_frame
 from breaks import ac2_line, break_region_case
 from cases import case_frame, clipped_at
-from denoisifier import BinFactors, analyse, read_frame
-from denoisifier.calibration import DEFAULT_FALSE_ALARM_RATE, Calibration, stored_calibration
+from denoisifier import BinFactors, analyse, analysis, cli, read_frame
+from denoisifier.calibration import (
+    DEFAULT_FALSE_ALARM_RATE,
+    Calibration,
+    _BreakForkCalibration,
+    stored_calibration,
+)
 from denoisifier.frame_io import write_frame_csv
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from forks import ac2_case
@@ -583,3 +589,78 @@ def test_cli_reports_forks(tmp_path):
     assert file_fork["point"] == fork["point"][::-1]
     assert file_fork["direction"] == fork["direction"] == s.truth.forks[0].direction
     assert file_fork["region"] == fork["region"]
+
+
+# Ticket 11: --break-fork-false-alarm-rate (plan section 6, AC 4). The in-process tests
+# call cli.main so that a monkeypatched break and Fork calibration reaches analyse.
+
+
+def _break_case_path(tmp_path):
+    seed = PHASE_BREAK_TEST_SEEDS[0]
+    line_angle, jump = ac2_line(seed)
+    s, _ = break_region_case(seed, jump, line_angle)
+    path = tmp_path / "frame.csv"
+    write_frame_csv(s.frame, path)
+    return s, path
+
+
+def _top_break_evidence(monkeypatch, frame):
+    """The largest E among the breaks the finder accepts on ``frame`` (default path)."""
+    found = []
+    finder = analysis.find_phase_breaks
+
+    def find(*args, **kwargs):
+        out = finder(*args, **kwargs)
+        found.extend(out)
+        return out
+
+    with monkeypatch.context() as m:
+        m.setattr(analysis, "find_phase_breaks", find)
+        analyse(frame)
+    assert found
+    return max(b.evidence for b in found)
+
+
+def _cli_report(path, out, *args):
+    assert cli.main([str(path), "-o", str(out), *map(str, args)]) == 0
+    return json.loads(out.read_text())
+
+
+def test_cli_break_fork_false_alarm_rate_reaches_analyse(tmp_path, monkeypatch):
+    """Under a hand-made calibration whose 5 % break threshold lies above the frame's
+    break evidence and whose 20 % one is the floor, the CLI report at each rate equals the
+    library's at that rate, and the 20 % report differs from the default-rate one."""
+    s, path = _break_case_path(tmp_path)
+    top = _top_break_evidence(monkeypatch, s.frame)
+    n = 300
+    low = [0.0] * (n - 10)
+    cal = _BreakForkCalibration.from_evidence(
+        [f"seed:{i}" for i in range(n)], [top + 0.05] * 10 + low, [0.0] * n, (400, 1600)
+    )
+    monkeypatch.setattr(analysis, "_stored_break_fork_calibration", lambda: cal)
+    default = _cli_report(path, tmp_path / "default.json")
+    loose = _cli_report(path, tmp_path / "loose.json", "--break-fork-false-alarm-rate", 0.2)
+    read = read_frame(path)  # the CSV round trip and notes, as the CLI reads them
+    lib_report = analyse(read.frame, break_fork_false_alarm_rate=0.2)
+    lib = json.loads(dataclasses.replace(lib_report, reader_notes=read.notes).to_json())
+    assert loose == lib
+    assert loose["phase_breaks"]
+    assert default["phase_breaks"] == []
+    assert loose != default
+
+
+def test_cli_zero_break_fork_false_alarm_rate_is_an_error(tmp_path, capsys):
+    _, path = _break_case_path(tmp_path)
+    assert cli.main([str(path), "--break-fork-false-alarm-rate", "0"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("denoisifier: error: ")
+    assert "between 0 and 1" in err
+
+
+def test_cli_break_fork_false_alarm_rate_flag_is_accepted(tmp_path):
+    """Subprocess smoke test: the flag is accepted, and 0 exits with a clean error."""
+    _, path = _break_case_path(tmp_path)
+    result = _run(path, "--break-fork-false-alarm-rate", 0.2)
+    assert result.returncode == 0, result.stderr
+    assert "phase_breaks" in json.loads(result.stdout)
+    _assert_clean_failure(_run(path, "--break-fork-false-alarm-rate", 0), "between 0 and 1")

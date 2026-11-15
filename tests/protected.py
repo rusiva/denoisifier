@@ -351,6 +351,52 @@ FORK_EXPLAINED_RESPONSE_ATOL = 1e-12
 FORK_PROTOTYPE_SEEDS = range(111_000, 111_200)
 FORK_VALIDATION_SEEDS = range(111_600, 111_733)
 
+# Ticket 11 (calibrated fake Phase Breaks and Forks; plan
+# .scratch/stripe-detector/handoffs/11-plan.md, sections 5, 6 and 10). The Calibration Set
+# is generated only inside the one seed_guard.calibrating(...) block of
+# break_fork_calibration.calibrate_break_forks; the held-out ranges are looked at only by
+# make check-held-out, once; the _2 ranges are a reserved second look, unused unless ruled.
+BREAK_FORK_PROTOTYPE_SEEDS = range(112_000, 112_200)  # P1, every arm (11-prototype-p1.md)
+BREAK_FORK_FREE_CALIBRATION_SEEDS = range(113_000, 113_300)  # n = 300 -> k = 7 at 2.5 %
+BREAK_FORK_FREE_HELD_OUT_SEEDS = range(114_000, 114_300)  # AC 2, the calibration recipe
+BREAK_FORK_FREE_HELD_OUT_2_SEEDS = range(114_300, 114_600)
+BREAK_FORK_DETECTION_HELD_OUT_SEEDS = range(115_000, 115_200)  # AC 3(c): 100 break, 100 Fork
+BREAK_FORK_DETECTION_HELD_OUT_2_SEEDS = range(115_200, 115_400)
+# The check-slow reproduction re-runs this prefix of the Calibration Set (6 per case); the
+# full 300 are reproduced in make check-held-out (P1: OQ8 prefix branch).
+BREAK_FORK_REPRODUCTION_PREFIX = 60
+# The calibration recipe: full-frame stripes at this depth (the 09/10 frames' depth), the
+# ticket-07 typical settings (CALIBRATION_SPIKES Spike events, unclipped).
+BREAK_FORK_CALIBRATION_SHAPE = PROBE_SHAPE
+BREAK_FORK_CALIBRATION_DEPTH = 0.5
+BREAK_FORK_FALSE_ALARM_RATE = 0.05  # the default rate the held-out tests check
+# AC 2: the total count of reported breaks and Forks on the 300 held-out frames is at most
+# this: the one-sided point of the single-order-statistic count model at r = 0.05 (k = 15),
+# betabinom(300, 15, 286): P(X > 29) = 0.0090 <= CALIBRATION_MAX_FALSE_RED
+# (test_break_fork_plan_meets_its_false_red_budget).
+BREAK_FORK_MAX_FAKES = 29
+# Per-case alarm (recorded, not asserted): a case with this many frames with a fake of its
+# 30 (binomial tail 0.33 % at 0.05) is flagged in the measurement JSON.
+BREAK_FORK_CASE_ALARM_FRAMES = 6
+# AC 3(c): pooled detection on the held-out break and Fork frames.
+BREAK_FORK_MIN_DETECTION_RATE = 0.95
+BREAK_FORK_DETECTION_BREAK_FRAMES = 100
+BREAK_FORK_DETECTION_FORK_FRAMES = 100
+# Test seeds of the tiny plans (test_break_fork_calibration.py).
+BREAK_FORK_TINY_CALIBRATION_TEST_SEEDS = range(40, 44)
+BREAK_FORK_TINY_FREE_TEST_SEEDS = range(44, 48)
+BREAK_FORK_TINY_BREAK_TEST_SEEDS = range(10, 12)
+BREAK_FORK_TINY_FORK_TEST_SEEDS = range(12, 14)
+# The package's stored break and Fork calibration
+# (src/denoisifier/break_fork_free_calibration.json): its thresholds at
+# BREAK_FORK_FALSE_ALARM_RATE (the floors: S_b = S_f = 0 on all 300 frames) and
+# its digest. Re-stored only by the procedure in CLAUDE.md.
+PACKAGE_BREAK_FORK_BREAK_THRESHOLD = 0.1
+PACKAGE_BREAK_FORK_FORK_THRESHOLD = 0.3
+PACKAGE_BREAK_FORK_CALIBRATION_DIGEST = int(
+    "148ba19d40307b00cacb210fd0b21159a0a1651635020a72a49fe67471656862", 16
+)
+
 # test_seed_guard.py (ticket agent-gates/04). The held-out free and striped
 # seeds of test_measure_calibrates_inside_the_block_and_evaluates_outside's
 # small SeedPlan.
@@ -412,6 +458,10 @@ USED_SEEDS = [
     # 111_733-111_999 were never generated: not reserved, free for ticket 18.
     FORK_PROTOTYPE_SEEDS,
     FORK_VALIDATION_SEEDS,
+    # Ticket 11: prototype P1, and the reserved second looks (unused unless ruled).
+    BREAK_FORK_PROTOTYPE_SEEDS,
+    BREAK_FORK_FREE_HELD_OUT_2_SEEDS,
+    BREAK_FORK_DETECTION_HELD_OUT_2_SEEDS,
 ]
 
 # Calibration seed ranges, by name. tests/seed_guard.py refuses any of these
@@ -425,4 +475,6 @@ CALIBRATION_SEEDS = {
     "REGION_CALIBRATION_SEEDS": REGION_CALIBRATION_SEEDS,
     # Ticket 07 (W1). THRESHOLD_CALIBRATION_SEEDS stays registered: those seeds stay spent.
     "STRIPE_FREE_CALIBRATION_SEEDS": STRIPE_FREE_CALIBRATION_SEEDS,
+    # Ticket 11 (A2).
+    "BREAK_FORK_FREE_CALIBRATION_SEEDS": BREAK_FORK_FREE_CALIBRATION_SEEDS,
 }
