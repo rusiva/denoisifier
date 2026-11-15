@@ -6,11 +6,11 @@
 
 **Status:** ready-for-agent
 
-- [ ] A repeatable calibration routine sets the break and fork thresholds from calibration seeds.
-- [ ] On held-out striped frames with no breaks or forks (scorched mottle, about 100 photons at the peak, spikes present), the number of fake breaks and forks is about 1 per 20 frames or less.
-- [ ] After calibration, breaks with jumps of π/2 or more and forks are still found at the rates required by 09 and 10.
-- [ ] The rate can be set through the library option and a CLI flag.
-- [ ] The statistical tests are marked slow.
+- [x] A repeatable calibration routine sets the break and fork thresholds from calibration seeds.
+- [x] On held-out striped frames with no breaks or forks (scorched mottle, about 100 photons at the peak, spikes present), the number of fake breaks and forks is about 1 per 20 frames or less.
+- [x] After calibration, breaks with jumps of π/2 or more and forks are still found at the rates required by 09 and 10.
+- [x] The rate can be set through the library option and a CLI flag.
+- [x] The statistical tests are marked slow.
 
 ## Comments
 
@@ -31,3 +31,10 @@
   - F9: `tests/slow_stamp.py` stale-stamp message, its `make check-slow` duration text only, "about 20 min" to "about 23 min" (no logic change), and the same words in the exact-text expectation of `tests/test_slow_stamp.py::test_stamped_edit_makes_check_fail_naming_only_that_file`, which pins that message. Reason: the documented check-slow duration changed with the 60-frame reproduction prefix (step 7); the message must not quote the old one.
   - F6: Makefile `check-held-out` `##` help string names `.gate/held-out-break-fork.json` beside the calibration file (gate text only). Reason: the held-out run now writes both files.
   - F1 glossary gap, for `/domain-modeling` (`docs/agents/domain.md`): "fake Phase Break / Fork" (a break or Fork reported on a frame that has none) has no GLOSSARY entry, and **False Alarm** covers stripe Verdicts only. No GLOSSARY edit in this ticket.
+- 2026-11-15, fixer: **review fixes and close gates** (`handoffs/11-fix-list.md`). F1, F3-F9 at `98db7ff` (F5 and F7 test-first: `test_held_out_fake_records_carry_each_fakes_own_evidence_and_region`, `test_case_alarm_counts_fakes_not_frames`); F2 at `7a05d7a`. `BREAK_FORK_CASE_ALARM_FRAMES` keeps its name (a rename is a lockfile edit) although it now counts fakes; `FakesPlan.case_alarm` reads it. No driver re-run: the `make check-slow` prefix reproduction and the held-out full reproduction match every scalar. No `make measure`: `tests/feasibility.py` reads only `analyse(...).score` (lines 161, 174); `test_feasibility_gate.py` and `test_slow_regression.py` read no breaks, Forks, regions or masks.
+  - `make test-fast` at `98db7ff`-dirty (pre-commit tree): EXIT=0, `962 passed, 652 deselected in 815.15s (0:13:35)`.
+  - `make check-slow` at `98db7ff`: EXIT=0, `6 passed, 1608 deselected in 1260.31s (0:21:00)`, stamp written (log `handoffs/11-check-slow.log`).
+  - `make check-held-out` at `98db7ff` (the ticket's one held-out look): EXIT=0, `7 passed, 1607 deselected in 3560.53s (0:59:20)` (log `handoffs/11-check-held-out.log`). Held-out numbers (`.gate/held-out-break-fork.json`): 300 frames 114_000-114_299, all Striped, thresholds (0.1, 0.3); 0 fake breaks, 0 fake Forks (bound 29); 0 frames with a fake, exact 95 % upper limit 0.0122; no per-case alarm; 0 implication violations; S_b > T_b / S_f > T_f on 0 / 0 frames. AC 3(c): breaks 100/100 found (100 at the floors, min 95), Forks 100/100 (100 at the floors), lost by calibration 0 and 0. Full reproduction: 300/300 ids, 0 differing scalars, thresholds (0.1, 0.3).
+  - F2 edited stamped `analysis.py` (docstring), so `make check-slow` ran again at `7a05d7a`: EXIT=0, `6 passed, 1608 deselected in 1396.78s (0:23:16)` (log `handoffs/11-check-slow-f2.log`).
+  - `make check` at `7a05d7a`: EXIT=0, `1601 passed, 13 deselected in 1964.25s (0:32:44)`, slow-tier stamp check green (log `handoffs/11-check.log`).
+  - Acceptance criteria ticked from these quotes: AC 1 (reproductions), AC 2 (0 <= 29), AC 3 (100/100, 0 lost; 09/10 tests in `make check`), AC 4 and AC 5 (fast tests in `make check`).
