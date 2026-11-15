@@ -18,6 +18,7 @@ import functools
 import hashlib
 import importlib.resources
 import json
+import math
 import multiprocessing
 import os
 import platform
@@ -32,10 +33,15 @@ import scipy
 from numpy.typing import ArrayLike
 
 from denoisifier._calibration import threshold_rank
+from denoisifier._local_phase import _BREAK_MIN_EVIDENCE, _FORK_MIN_EVIDENCE
 from denoisifier.frame_io import read_frame
 from denoisifier.report import BinFactors
 
 DEFAULT_FALSE_ALARM_RATE = 0.01
+# The calibrated share of break- and Fork-free striped frames with at least
+# one fake Phase Break or Fork, at most (ticket 11, ADR 0003): about once per
+# 20 frames.
+DEFAULT_BREAK_FORK_FALSE_ALARM_RATE = 0.05
 
 
 def _json_normalised(value: Mapping[str, object]) -> dict[str, object]:
@@ -364,3 +370,181 @@ def _check_one_shape(shapes: set[tuple[int, int]]) -> None:
             f"frames of differing shapes {sorted(shapes)}: a Calibration holds one shape, "
             "since the false-alarm rate depends on it"
         )
+
+
+# The meaning of the stored break and Fork evidence (``_BreakForkCalibration``):
+# per frame, S_b = the smallest break threshold at which the break pass finds
+# no break, S_f = the largest evidence of any Fork candidate of the post-break
+# search with no break explained away (``analysis._break_fork_evidence``).
+# Bumped whenever either definition changes.
+_BREAK_FORK_EVIDENCE_VERSION = "break-fork-v1"
+
+
+@dataclass(frozen=True)
+class _BreakForkThresholds:
+    """The evidence thresholds of the reported Phase Breaks and Forks: a
+    break or Fork is reported only when its evidence is above its threshold."""
+
+    breaks: float
+    forks: float
+
+
+@dataclass(frozen=True)
+class _BreakForkCalibration:
+    """Break and Fork evidence of a set of break- and Fork-free striped
+    frames (ticket 11, ADR 0003), and the thresholds they give.
+
+    ``break_evidence`` and ``fork_evidence`` are each frame's S_b and S_f
+    (``_BREAK_FORK_EVIDENCE_VERSION``), in ``ids`` order, all finite and at
+    least 0 (0.0: no candidate). ``shape``, ``settings`` and ``run_info`` as
+    in ``Calibration`` (``run_info`` is never compared). Private: the package
+    stores one (``_stored_break_fork_calibration``); real-frame recalibration
+    is deferred."""
+
+    ids: tuple[str, ...]
+    break_evidence: tuple[float, ...]
+    fork_evidence: tuple[float, ...]
+    shape: tuple[int, int]
+    settings: Mapping[str, object] = field(default_factory=dict)
+    run_info: Mapping[str, object] = field(default_factory=dict, compare=False)
+
+    @classmethod
+    def from_evidence(
+        cls,
+        ids: Sequence[str],
+        break_evidence: ArrayLike,
+        fork_evidence: ArrayLike,
+        shape: tuple[int, int],
+        *,
+        settings: Mapping[str, object] | None = None,
+        run_info: Mapping[str, object] | None = None,
+    ) -> _BreakForkCalibration:
+        """A calibration of one (S_b, S_f) pair per id."""
+        ids = tuple(str(i) for i in ids)
+        columns = []
+        for name, values in (("break", break_evidence), ("fork", fork_evidence)):
+            a = np.asarray(values, dtype=float).ravel()
+            if a.size != len(ids):
+                raise ValueError(f"{len(ids)} ids for {a.size} {name} evidence values")
+            if not np.all(np.isfinite(a)) or np.any(a < 0):
+                raise ValueError(f"{name} evidence must all be finite and at least 0")
+            columns.append(tuple(float(v) for v in a))
+        if not ids:
+            raise ValueError("a break and Fork calibration needs at least one frame")
+        if len(set(ids)) != len(ids):
+            raise ValueError("ids must be unique")
+        if len(shape) != 2 or min(int(s) for s in shape) < 1:
+            raise ValueError(f"shape must be two positive sizes, got {shape!r}")
+        return cls(
+            ids=ids,
+            break_evidence=columns[0],
+            fork_evidence=columns[1],
+            shape=(int(shape[0]), int(shape[1])),
+            settings=_json_normalised(settings or {}),
+            run_info=_json_normalised(run_info or {}),
+        )
+
+    def thresholds(self, rate: float) -> _BreakForkThresholds:
+        """The thresholds at rate ``rate``: for each kind, the k-th largest
+        evidence with k = floor(rate / 2 * (n + 1)), raised to its floor
+        (``_BREAK_MIN_EVIDENCE``, ``_FORK_MIN_EVIDENCE``) when below it.
+
+        On a new break- and Fork-free striped frame exchangeable with the set,
+        each kind's evidence is above its threshold with probability at most
+        k / (n + 1) <= rate / 2, so a fake Phase Break or Fork is found with
+        probability at most ``rate`` (union bound). Raises ValueError on a
+        rate outside (0, 1) or under 2 / (n + 1), the smallest valid one."""
+        rate = float(rate)
+        if not 0.0 < rate < 1.0:
+            raise ValueError(
+                f"break and fork false-alarm rate must be between 0 and 1 (exclusive), got {rate!r}"
+            )
+        n = len(self.ids)
+        if math.floor(rate / 2 * (n + 1) + 1e-9) < 1:
+            raise ValueError(
+                f"a break and fork false-alarm rate of {rate} is too low for {n} frames: "
+                f"the smallest is 2 / (n + 1) = {2 / (n + 1):.6g}"
+            )
+        k = threshold_rank(n, rate / 2)
+
+        def kth(values: tuple[float, ...]) -> float:
+            return float(np.sort(np.asarray(values, dtype=float))[::-1][k - 1])
+
+        return _BreakForkThresholds(
+            breaks=max(kth(self.break_evidence), _BREAK_MIN_EVIDENCE),
+            forks=max(kth(self.fork_evidence), _FORK_MIN_EVIDENCE),
+        )
+
+    def digest(self) -> str:
+        """SHA-256 (hex) of the canonical JSON of the evidence version, ids,
+        both evidence columns, shape and settings; ``run_info`` is left out."""
+        payload = {
+            "evidence": _BREAK_FORK_EVIDENCE_VERSION,
+            "ids": list(self.ids),
+            "breaks": list(self.break_evidence),
+            "forks": list(self.fork_evidence),
+            "shape": list(self.shape),
+            "settings": self.settings,
+        }
+        text = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def to_json(self) -> str:
+        """The file: format, evidence version, shape, settings, run_info and
+        one ``{id, breaks, forks}`` per frame, in order."""
+        doc = {
+            "format": 1,
+            "evidence": _BREAK_FORK_EVIDENCE_VERSION,
+            "shape": list(self.shape),
+            "settings": self.settings,
+            "run_info": self.run_info,
+            "frames": [
+                {"id": i, "breaks": b, "forks": f}
+                for i, b, f in zip(self.ids, self.break_evidence, self.fork_evidence, strict=True)
+            ],
+        }
+        return json.dumps(doc, indent=2, allow_nan=False) + "\n"
+
+    @classmethod
+    def from_json(cls, text: str) -> _BreakForkCalibration:
+        """Read a file written by ``to_json``. Raises ValueError on an unknown
+        format or evidence version, a non-finite value or a malformed file."""
+
+        def refuse(constant: str) -> float:
+            raise ValueError(f"a break and Fork calibration file may not contain {constant}")
+
+        try:
+            doc = json.loads(text, parse_constant=refuse)
+            if doc.get("format") != 1:
+                raise ValueError(f"unknown break and Fork calibration format {doc.get('format')!r}")
+            if doc.get("evidence") != _BREAK_FORK_EVIDENCE_VERSION:
+                raise ValueError(
+                    f"unknown break and Fork evidence {doc.get('evidence')!r}: "
+                    f"this package reads {_BREAK_FORK_EVIDENCE_VERSION!r}"
+                )
+            frames = doc["frames"]
+            return cls.from_evidence(
+                [f["id"] for f in frames],
+                [f["breaks"] for f in frames],
+                [f["forks"] for f in frames],
+                (doc["shape"][0], doc["shape"][1]),
+                settings=doc.get("settings", {}),
+                run_info=doc.get("run_info", {}),
+            )
+        except (KeyError, TypeError, IndexError, AttributeError) as e:
+            raise ValueError(f"malformed break and Fork calibration file: {e!r}") from None
+
+
+_STORED_BREAK_FORK_CALIBRATION_FILE = "break_fork_free_calibration.json"
+
+
+@functools.cache
+def _stored_break_fork_calibration() -> _BreakForkCalibration:
+    """The break and Fork calibration shipped with the package
+    (``_STORED_BREAK_FORK_CALIBRATION_FILE``), loaded once."""
+    text = (
+        importlib.resources.files("denoisifier")
+        .joinpath(_STORED_BREAK_FORK_CALIBRATION_FILE)
+        .read_text(encoding="utf-8")
+    )
+    return _BreakForkCalibration.from_json(text)

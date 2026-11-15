@@ -55,6 +55,7 @@ denoisifier.analysis :: _REMEASURE_MIN_AREA_P2 :: 9.4
 denoisifier.analysis :: _ABSORB_SLIT_SHARE :: 0.6
 denoisifier.analysis :: _BREAK_SEGMENT_HALF_WIDTH_PIXELS :: 0.75
 denoisifier.calibration :: DEFAULT_FALSE_ALARM_RATE :: 0.01
+denoisifier.calibration :: DEFAULT_BREAK_FORK_FALSE_ALARM_RATE :: 0.05
 
 denoisifier.report :: BinFactors.horizontal :: 1
 denoisifier.report :: BinFactors.vertical :: 1
