@@ -318,7 +318,9 @@ def analyse(
     the conservative floors (``_BREAK_MIN_EVIDENCE``, ``_FORK_MIN_EVIDENCE``)
     at every valid rate. The rate holds for the declared recipe: 400x1600,
     full-frame stripes at Modulation Depth 0.5, typical settings with spikes,
-    unbinned, at the stored 1 % stripe Threshold. ``threshold``,
+    unbinned, at the stored 1 % stripe Threshold; measured on 300 held-out
+    frames of it: 0 fake breaks and Forks (0 frames with one; exact 95 %
+    upper limit 1.2 % of frames). ``threshold``,
     ``false_alarm_rate``, ``calibration``, ``bin_factors``, crops, partial
     regions and weaker stripes change the regions the finders see, and the
     claim does not cover them; measured on 200 frames each at the floors:
