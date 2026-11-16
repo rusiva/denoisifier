@@ -199,42 +199,83 @@ def gabor_at(
     return spec.gabor(period, angle_deg), spec.local_mean(period)
 
 
-def estimate_local_stripes(frame: np.ndarray, light: np.ndarray, bins: BinFactors) -> LocalStripes:
+@dataclass(frozen=True)
+class _BankBuffers:
+    """Work arrays for one bank Period, reused from Period to Period: the
+    five stripe responses (complex) and their energies (or the references')."""
+
+    stripe: np.ndarray
+    energy: np.ndarray
+
+    @classmethod
+    def of(cls, shape: tuple[int, ...]) -> _BankBuffers:
+        n = len(_STRIPE_ANGLES_DEG)
+        return cls(np.empty((n, *shape), dtype=complex), np.empty((n, *shape)))
+
+
+@dataclass(frozen=True)
+class _PeriodMatch:
+    """The bank at one Period: the ratio, the index of the best stripe Angle
+    (its response is left in the buffers' ``stripe``) and the local mean."""
+
+    ratio: np.ndarray
+    angle_index: np.ndarray
+    mean: np.ndarray
+
+
+def _match_period(
+    spec: _Spectrum, p: float, light: np.ndarray, buffers: _BankBuffers
+) -> _PeriodMatch:
+    stripe, energy = buffers.stripe, buffers.energy
+    for i, a in enumerate(_STRIPE_ANGLES_DEG):
+        stripe[i] = spec.gabor(p, a)
+    np.abs(stripe, out=energy)
+    energy **= 2
+    angle_index = np.argmax(energy, axis=0)
+    e_stripe = energy.max(axis=0)
+    for i, a in enumerate(_STRIPE_ANGLES_DEG):
+        np.abs(spec.gabor(p, a + 90.0), out=energy[i])
+    energy **= 2
+    e_reference = energy.max(axis=0)
+    mean = spec.local_mean(p)
+
+    # 2p tall, 3p wide (sensor px), in frame px.
+    height, width = frame_px(spec.bins, 2 * p, 3 * p)
+    box = (max(3, round(height)), max(3, round(width)))
+    floor = (_A0 * np.abs(uniform_filter(mean, box)) / 2) ** 2
+    denom = np.maximum(uniform_filter(e_reference, box), floor)
+    ratio = np.zeros(light.shape)
+    np.divide(uniform_filter(e_stripe, box), denom, out=ratio, where=light & (denom > 0))
+    return _PeriodMatch(ratio=ratio, angle_index=angle_index, mean=mean)
+
+
+def estimate_local_stripes(
+    frame: np.ndarray, light: np.ndarray, bins: BinFactors, spectrum: _Spectrum | None = None
+) -> LocalStripes:
     """Run the bank over ``frame``; ``light`` (bool, frame shape) masks the dark
     surround. Periods and Angles are in sensor px under ``bins``; only
-    ``searched_periods(bins)`` are run."""
-    spec = _Spectrum(frame, bins)
+    ``searched_periods(bins)`` are run. ``spectrum``, when given, is
+    ``_Spectrum(frame, bins)`` already computed (``analyse`` shares one)."""
+    spec = _Spectrum(frame, bins) if spectrum is None else spectrum
     shape = frame.shape
     best_ratio = np.zeros(shape)
     best_period = np.zeros(shape)
     best_angle = np.zeros(shape)
     best_response = np.zeros(shape, dtype=complex)
     best_mean = np.zeros(shape)
+    angles = np.asarray(_STRIPE_ANGLES_DEG)
+    buffers = _BankBuffers.of(shape)
 
     for p in searched_periods(bins):
-        stripe = np.stack([spec.gabor(p, a) for a in _STRIPE_ANGLES_DEG])
-        stripe_energy = np.abs(stripe) ** 2
-        angle_index = np.argmax(stripe_energy, axis=0)
-        e_stripe = np.take_along_axis(stripe_energy, angle_index[None], axis=0)[0]
-        e_reference = np.max(
-            [np.abs(spec.gabor(p, a + 90.0)) ** 2 for a in _STRIPE_ANGLES_DEG], axis=0
-        )
-        mean = spec.local_mean(p)
-
-        # 2p tall, 3p wide (sensor px), in frame px.
-        height, width = frame_px(bins, 2 * p, 3 * p)
-        box = (max(3, round(height)), max(3, round(width)))
-        floor = (_A0 * np.abs(uniform_filter(mean, box)) / 2) ** 2
-        denom = np.maximum(uniform_filter(e_reference, box), floor)
-        ratio = np.zeros(shape)
-        np.divide(uniform_filter(e_stripe, box), denom, out=ratio, where=light & (denom > 0))
-
-        better = ratio > best_ratio
-        best_ratio[better] = ratio[better]
+        match = _match_period(spec, p, light, buffers)
+        better = match.ratio > best_ratio
+        index = match.angle_index[better]
+        best_ratio[better] = match.ratio[better]
         best_period[better] = p
-        best_angle[better] = np.asarray(_STRIPE_ANGLES_DEG)[angle_index[better]]
-        best_response[better] = np.take_along_axis(stripe, angle_index[None], axis=0)[0][better]
-        best_mean[better] = mean[better]
+        best_angle[better] = angles[index]
+        rows, cols = np.nonzero(better)
+        best_response[better] = buffers.stripe[index, rows, cols]
+        best_mean[better] = match.mean[better]
 
     return LocalStripes(
         ratio=best_ratio,
