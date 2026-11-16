@@ -254,16 +254,19 @@ class _Spectrum:
 
     def gabor(self, period: float, angle_deg: float) -> np.ndarray:
         """Complex Gabor, peak gain 1, tuned to ``period`` and ``angle_deg``."""
-        return self.gaussian(period, angle_deg, *_bank_sigmas(period))
+        return self.gaussian(period, angle_deg, *_window_sigmas(period, _ACROSS, _ALONG))
 
     def local_mean(self, period: float) -> np.ndarray:
         """The Gabor window at f = 0 (gain 1 at DC)."""
-        return np.real(self.gaussian(None, 0.0, *_bank_sigmas(period)))
+        return np.real(self.gaussian(None, 0.0, *_window_sigmas(period, _ACROSS, _ALONG)))
 
 
-def _bank_sigmas(period: float) -> tuple[float, float]:
-    """The bank window's frequency sigmas (across, along the stripes) at ``period``."""
-    return 1.0 / (2 * np.pi * _ACROSS * period), 1.0 / (2 * np.pi * _ALONG * period)
+def _window_sigmas(period: float, across: float, along: float) -> tuple[float, float]:
+    """The frequency sigmas (across, along the stripes; cycles per sensor px) of a
+    Gaussian window whose spatial sigmas are ``across`` and ``along`` Periods at
+    ``period``: the bank's (``_ACROSS``, ``_ALONG``), the size rule's and the break
+    finder's windows."""
+    return 1.0 / (2 * np.pi * across * period), 1.0 / (2 * np.pi * along * period)
 
 
 def gabor_at(
@@ -276,8 +279,10 @@ def gabor_at(
 
 @dataclass(frozen=True)
 class _BankBuffers:
-    """Work arrays for one bank Period, reused from Period to Period: the
-    five stripe responses (complex) and their energies (or the references')."""
+    """Work arrays for one bank Period, reused from Period to Period: the five
+    stripe responses (complex), and ``energy``, used in two phases by
+    ``_match_period``: first the stripe filters' energies, then, once their
+    maximum and best Angle are taken, overwritten by the reference filters'."""
 
     stripe: np.ndarray
     energy: np.ndarray
@@ -301,17 +306,22 @@ class _PeriodMatch:
 def _match_period(
     spec: _Spectrum, p: float, light: np.ndarray, buffers: _BankBuffers
 ) -> _PeriodMatch:
-    stripe, energy = buffers.stripe, buffers.energy
+    stripe = buffers.stripe
+    # Phase 1: the buffer holds the stripe filters' energies.
+    stripe_energy = buffers.energy
     for i, a in enumerate(_STRIPE_ANGLES_DEG):
         stripe[i] = spec.gabor(p, a)
-    np.abs(stripe, out=energy)
-    energy **= 2
-    e_stripe = energy.max(axis=0)
-    angle_index = np.argmax(energy >= e_stripe * (1.0 - _BANK_TIE_REL), axis=0)
+    np.abs(stripe, out=stripe_energy)
+    stripe_energy **= 2
+    e_stripe = stripe_energy.max(axis=0)
+    angle_index = np.argmax(stripe_energy >= e_stripe * (1.0 - _BANK_TIE_REL), axis=0)
+    # Phase 2: the same buffer now takes the reference filters' energies (the stripe
+    # energies are no longer needed).
+    reference_energy = buffers.energy
     for i, a in enumerate(_STRIPE_ANGLES_DEG):
-        np.abs(spec.gabor(p, a + 90.0), out=energy[i])
-    energy **= 2
-    e_reference = energy.max(axis=0)
+        np.abs(spec.gabor(p, a + 90.0), out=reference_energy[i])
+    reference_energy **= 2
+    e_reference = reference_energy.max(axis=0)
     mean = spec.local_mean(p)
 
     # 2p tall, 3p wide (sensor px), in frame px.
@@ -361,21 +371,25 @@ def _matches(
     # Lazy import keeps the analyse / CLI start light (ticket 13).
     from concurrent.futures import ThreadPoolExecutor
 
-    n = min(threads, len(periods))
-    free = [_BankBuffers.of(shape) for _ in range(n)]
-    with ThreadPoolExecutor(n) as pool:
-        pending = []
-        for p in periods[:n]:
-            b = free.pop()
-            pending.append((float(p), b, pool.submit(_match_period, spec, float(p), light, b)))
-        nxt = n
-        while pending:
-            p, b, future = pending.pop(0)
-            yield p, future.result(), b
-            if nxt < len(periods):
-                q = float(periods[nxt])
-                pending.append((q, b, pool.submit(_match_period, spec, q, light, b)))
-                nxt += 1
+    workers = min(threads, len(periods))
+    queue = [float(p) for p in periods]
+    with ThreadPoolExecutor(workers) as pool:
+        # (Period, its buffers, its match in flight), oldest first: one buffer set each.
+        in_flight = []
+        for _ in range(workers):
+            period, buffers = queue.pop(0), _BankBuffers.of(shape)
+            in_flight.append(
+                (period, buffers, pool.submit(_match_period, spec, period, light, buffers))
+            )
+        while in_flight:
+            period, buffers, match = in_flight.pop(0)
+            yield period, match.result(), buffers
+            # The caller is done with these buffers: the next Period reuses them.
+            if queue:
+                period = queue.pop(0)
+                in_flight.append(
+                    (period, buffers, pool.submit(_match_period, spec, period, light, buffers))
+                )
 
 
 def estimate_local_stripes(

@@ -137,6 +137,10 @@ protected :: SPEED_CASE :: (3.0, 3.0)
 protected :: SPEED_BREAK_LINES :: (((130.0, 500.0), 4.0, 3.141592653589793), ((280.0, 1100.0), -3.0, -2.0))
 protected :: SPEED_FORK_POINT :: (200.5, 800.5)
 protected :: SPEED_SPIKES :: 30
+protected :: SPEED_TYPICAL_TEST_SEED :: 39
+protected :: SPEED_DEPTH :: 0.5
+protected :: SPEED_FORK_DIRECTION :: 1
+protected :: SPEED_SLOW_REPEATS :: 3
 protected :: INNER_LOOP_SEED_COUNT :: 2
 protected :: MOTTLED_TEST_SEEDS :: range(10, 30)
 protected :: FULL_FRAME_TEST_SEEDS :: range(20, 27)

@@ -218,7 +218,9 @@ def run_pool(fn: Callable[[J], R], jobs: Sequence[J], workers: int | None = None
 
 def _on_one_bank_thread(fn: Callable[[J], R], job: J) -> R:
     """``fn(job)`` with the bank on one thread (``DENOISIFIER_THREADS``, this process)."""
-    os.environ["DENOISIFIER_THREADS"] = "1"
+    from denoisifier._local_stripes import _THREADS_ENV
+
+    os.environ[_THREADS_ENV] = "1"
     return fn(job)
 
 
@@ -476,9 +478,11 @@ REGRESSION = RegressionPlan(
 def thread_settings() -> dict[str, object]:
     """The BLAS/OpenMP thread variables and ``DENOISIFIER_THREADS`` as this process
     sees them, and the bank's effective thread count here (``bank_threads``)."""
+    from denoisifier._local_stripes import _THREADS_ENV
+
     return {
         **{v: os.environ.get(v) for v in THREAD_VARS},
-        "DENOISIFIER_THREADS": os.environ.get("DENOISIFIER_THREADS"),
+        _THREADS_ENV: os.environ.get(_THREADS_ENV),
         "bank_threads": _bank_threads(),
     }
 

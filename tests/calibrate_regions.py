@@ -30,7 +30,7 @@ import numpy as np
 import seed_guard
 from cases import CASES
 from denoisifier import BinFactors, analyse, analysis
-from denoisifier._local_stripes import _Spectrum, estimate_local_stripes
+from denoisifier._local_stripes import _THREADS_ENV, _Spectrum, estimate_local_stripes
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
     DEPTH_TOL,
@@ -543,7 +543,7 @@ def main(argv=None):
     for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ.setdefault(var, "1")
     # The spawned workers run the bank on one thread each (ticket 13 slice 4).
-    os.environ["DENOISIFIER_THREADS"] = "1"
+    os.environ[_THREADS_ENV] = "1"
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=["tune", "info"])
     parser.add_argument("--set", action="append", default=[], metavar="NAME=VALUE")

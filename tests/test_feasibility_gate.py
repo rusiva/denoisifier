@@ -16,7 +16,7 @@ import pytest
 
 import feasibility
 import protected
-from denoisifier._local_stripes import bank_threads
+from denoisifier._local_stripes import _THREADS_ENV, bank_threads
 from protected import (
     FALSE_ALARM_TOLERANCE,
     MIN_DETECTION_RATE,
@@ -187,8 +187,8 @@ def test_pool_workers_run_the_bank_on_one_thread():
 
 
 def test_thread_settings_record_the_bank_threads(monkeypatch):
-    monkeypatch.setenv("DENOISIFIER_THREADS", "3")
+    monkeypatch.setenv(_THREADS_ENV, "3")
     settings = feasibility.thread_settings()
     assert settings["bank_threads"] == 3
-    assert settings["DENOISIFIER_THREADS"] == "3"
+    assert settings[_THREADS_ENV] == "3"
     assert feasibility.run_info(workers=2)["bank_threads"] == {"in_process": 3, "pool_workers": 1}

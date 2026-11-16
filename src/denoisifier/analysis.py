@@ -85,6 +85,7 @@ from denoisifier._local_stripes import (
     LocalStripes,
     UnresolvedPeriods,
     _Spectrum,
+    _window_sigmas,
     estimate_local_stripes,
     frame_px,
     pixel_size,
@@ -895,8 +896,7 @@ class _Filters:
 
     def size_depth(self, period: float, angle_deg: float) -> np.ndarray:
         """The same with the along window of SIZE_ALONG_PERIODS (size rule only)."""
-        sigma_across = 1.0 / (2 * np.pi * _ACROSS * period)
-        sigma_along = 1.0 / (2 * np.pi * SIZE_ALONG_PERIODS * period)
+        sigma_across, sigma_along = _window_sigmas(period, _ACROSS, SIZE_ALONG_PERIODS)
         response = self.spec.gaussian(period, angle_deg, sigma_across, sigma_along)
         mean = np.real(self.spec.gaussian(None, 0.0, sigma_across, sigma_along))
         return _depth(response, mean, self.light)

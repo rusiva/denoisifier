@@ -41,7 +41,7 @@ import numpy as np
 from scipy import ndimage
 from scipy.special import ndtr
 
-from denoisifier._local_stripes import _Spectrum, pixel_size
+from denoisifier._local_stripes import _Spectrum, _window_sigmas, pixel_size
 from denoisifier.report import BinFactors
 
 # The finder's window sigmas, in Periods, across and along the stripes. They
@@ -211,8 +211,9 @@ def break_response(spectrum: _Spectrum, period: float, angle_deg: float) -> np.n
     frame shape: the finder's narrow response at the sensor ``period`` and
     ``angle_deg`` on the shared spectrum; 0 where the local mean is not
     positive."""
-    sigma_across = 1.0 / (2 * np.pi * _BREAK_SIGMA_ACROSS_PERIODS * period)
-    sigma_along = 1.0 / (2 * np.pi * _BREAK_SIGMA_ALONG_PERIODS * period)
+    sigma_across, sigma_along = _window_sigmas(
+        period, _BREAK_SIGMA_ACROSS_PERIODS, _BREAK_SIGMA_ALONG_PERIODS
+    )
     response = spectrum.gaussian(period, angle_deg, sigma_across, sigma_along)
     mean = np.real(spectrum.gaussian(None, 0.0, sigma_across, sigma_along))
     z = np.zeros(response.shape, dtype=complex)

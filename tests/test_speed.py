@@ -8,11 +8,10 @@ import pytest
 
 import speed
 from denoisifier import analyse
-from protected import PROBE_SHAPE, SLOW_TIMING_LIMIT_S
+from protected import PROBE_SHAPE, SLOW_TIMING_LIMIT_S, SPEED_SLOW_REPEATS
 
 # A quarter of the full frame per side: the breaks and the Fork scale with it.
 _SMALL = (PROBE_SHAPE[0] // 4, PROBE_SHAPE[1] // 4)
-_SLOW_REPEATS = 3
 
 
 def test_speed_frame_exercises_every_stage():
@@ -24,7 +23,7 @@ def test_speed_frame_exercises_every_stage():
 
 @pytest.mark.slow
 def test_speed_pipeline_meets_the_slow_limit():
-    seconds, text = speed.time_speed_pipeline(_SLOW_REPEATS)
+    seconds, text = speed.time_speed_pipeline(SPEED_SLOW_REPEATS)
     report = json.loads(text)
     assert median(seconds) <= SLOW_TIMING_LIMIT_S, f"speed pipeline times {seconds} s"
     assert len(report["phase_breaks"]) >= 1

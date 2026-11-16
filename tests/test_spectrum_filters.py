@@ -15,7 +15,7 @@ from denoisifier._local_phase import (
     _BREAK_SIGMA_ALONG_PERIODS,
     break_response,
 )
-from denoisifier._local_stripes import _ACROSS, _ALONG, _PAD, _Spectrum
+from denoisifier._local_stripes import _ACROSS, _ALONG, _PAD, _Spectrum, _window_sigmas
 from protected import FULL_GRID_REL_TOL
 
 
@@ -26,7 +26,14 @@ def _broadband(shape=(150, 230)):
 
 
 def _bank_sigmas(period):
-    return 1.0 / (2 * np.pi * _ACROSS * period), 1.0 / (2 * np.pi * _ALONG * period)
+    return _window_sigmas(period, _ACROSS, _ALONG)
+
+
+def test_window_sigmas_are_the_spatial_window_in_frequency():
+    # A spatial Gaussian of sigma s px is a frequency Gaussian of sigma 1 / (2 pi s) cycles/px:
+    # at P 4 a window 1 x 1.5 Periods is 4 x 6 px, so 1 / (8 pi) and 1 / (12 pi).
+    expected = (0.039788735772973836, 0.0265258238486492)
+    assert _window_sigmas(4.0, 1.0, 1.5) == pytest.approx(expected)
 
 
 def _rel(got, ref):
@@ -34,10 +41,11 @@ def _rel(got, ref):
 
 
 FILTERS = [
-    # Cyclic wrap at P3: the box crosses the Nyquist edge at the bank's outer Angles, and the
-    # low-pass local-mean box sits around DC.
-    pytest.param((1, 1), 3.0, -10.0, False, id="P3-wrap-minus10"),
-    pytest.param((1, 1), 3.0, 10.0, False, id="P3-wrap-plus10"),
+    # Nyquist clip at P3: the box reaches past the Nyquist edge at the bank's outer Angles and is
+    # clipped there, as the full grid is (never wrapped); the low-pass local-mean box is the two
+    # index runs around DC.
+    pytest.param((1, 1), 3.0, -10.0, False, id="P3-nyquist-clip-minus10"),
+    pytest.param((1, 1), 3.0, 10.0, False, id="P3-nyquist-clip-plus10"),
     pytest.param((1, 1), 3.0, 0.0, True, id="P3-local-mean-DC"),
     # Binned grids: the box is chosen on non-unit frame frequency scales.
     pytest.param((2, 1), 3.0, 5.0, False, id="P3-2x1"),

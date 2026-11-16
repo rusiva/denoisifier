@@ -127,11 +127,17 @@ TEST_SEED_BLOCK = range(10, 100)
 # Ticket 13's speed frame (tests/speed.py; plan section 1, orchestrator approval
 # 2026-11-16): the profile's worst frame, P 3 at Angle 3 (Period, Angle), two Phase
 # Breaks ((row, col), tilt from the Angle in deg, jump in rad) and one Fork (row, col).
-SPEED_TEST_SEED = 38  # only tests/speed.py and stage_timings.py (its typical P 6 frame) use it
+SPEED_TEST_SEED = 38  # only tests/speed.py uses it
+# The stage timer's typical P 6 frame (tests/stage_timings.py; orchestrator approval
+# 2026-11-16, code review): its own seed, so SPEED_TEST_SEED stays the speed frame's only.
+SPEED_TYPICAL_TEST_SEED = 39
 SPEED_CASE = (3.0, 3.0)
 SPEED_BREAK_LINES = (((130.0, 500.0), 4.0, math.pi), ((280.0, 1100.0), -3.0, -2.0))
 SPEED_FORK_POINT = (200.5, 800.5)
 SPEED_SPIKES = 30
+SPEED_DEPTH = 0.5  # Modulation Depth of the speed frame (plan section 1)
+SPEED_FORK_DIRECTION = 1  # the Fork's direction (prototypes/p13/identity.py, ac1_worst)
+SPEED_SLOW_REPEATS = 3  # timed runs of the slow tier's speed test (median)
 # make test-fast (ticket agent-gates/07): the first this-many seeds of a seed range run in the
 # inner loop; the rest are pytest.mark.wide (tests/inner_loop.py) and run in make check only.
 INNER_LOOP_SEED_COUNT = 2

@@ -33,6 +33,7 @@ import seed_guard
 from calibrate_regions import SIZE_SHAPES
 from cases import CASES
 from denoisifier import analyse
+from denoisifier._local_stripes import _THREADS_ENV
 from denoisifier.synthetic import Emccd, StripedRegion, generate
 from protected import (
     ANGLE_TOL_DEG,
@@ -270,7 +271,7 @@ def main(argv=None):
     for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ.setdefault(var, "1")
     # The spawned workers run the bank on one thread each (ticket 13 slice 4).
-    os.environ["DENOISIFIER_THREADS"] = "1"
+    os.environ[_THREADS_ENV] = "1"
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--range", choices=sorted(RANGES), default="second")

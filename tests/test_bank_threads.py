@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from denoisifier import BinFactors
-from denoisifier._local_stripes import estimate_local_stripes
+from denoisifier._local_stripes import _THREADS_ENV, estimate_local_stripes
 
 
 def _broadband(shape=(120, 260)):
@@ -29,9 +29,9 @@ def test_threaded_bank_is_bit_identical_to_serial():
 
 @pytest.mark.parametrize("value", ["x", "0", "-1", "2.5"])
 def test_invalid_thread_env_raises(monkeypatch, value):
-    monkeypatch.setenv("DENOISIFIER_THREADS", value)
+    monkeypatch.setenv(_THREADS_ENV, value)
     frame = _broadband()
-    with pytest.raises(ValueError, match="DENOISIFIER_THREADS"):
+    with pytest.raises(ValueError, match=_THREADS_ENV):
         estimate_local_stripes(frame, np.ones(frame.shape, bool), BinFactors())
 
 
@@ -39,6 +39,6 @@ def test_thread_env_sets_the_bank_threads(monkeypatch):
     frame = _broadband()
     light = np.ones(frame.shape, bool)
     serial = estimate_local_stripes(frame, light, BinFactors(), threads=1)
-    monkeypatch.setenv("DENOISIFIER_THREADS", "3")
+    monkeypatch.setenv(_THREADS_ENV, "3")
     threaded = estimate_local_stripes(frame, light, BinFactors())
     assert np.array_equal(threaded.ratio, serial.ratio)

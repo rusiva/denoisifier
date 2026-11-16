@@ -1,7 +1,7 @@
 """Ticket 13's speed frame and timers (AC 1; plan section 4).
 
 The speed frame is the worst frame of the plan's profile (section 1): 400x1600
-(``PROBE_SHAPE``), Period 3 and Angle 3 (``SPEED_CASE``), m 0.5, scorched Mottle,
+(``PROBE_SHAPE``), Period 3 and Angle 3 (``SPEED_CASE``), m ``SPEED_DEPTH``, scorched Mottle,
 ``Emccd()``, ``SPEED_SPIKES`` spikes, the two Phase Breaks ``SPEED_BREAK_LINES`` and
 the Fork ``SPEED_FORK_POINT``. Found on it: 2 breaks, 1 Fork, 1 region.
 
@@ -33,13 +33,12 @@ from protected import (
     PROBE_SHAPE,
     SPEED_BREAK_LINES,
     SPEED_CASE,
+    SPEED_DEPTH,
+    SPEED_FORK_DIRECTION,
     SPEED_FORK_POINT,
     SPEED_SPIKES,
     SPEED_TEST_SEED,
 )
-
-_DEPTH = 0.5  # the profile's worst frame (plan section 1)
-_FORK_DIRECTION = 1  # the profile's Fork (prototypes/p13/identity.py, ac1_worst)
 
 
 def speed_frame(shape: tuple[int, int] = PROBE_SHAPE) -> np.ndarray:
@@ -58,12 +57,12 @@ def speed_frame(shape: tuple[int, int] = PROBE_SHAPE) -> np.ndarray:
         shape=shape,
         period=period,
         angle_deg=angle,
-        modulation_depth=_DEPTH,
+        modulation_depth=SPEED_DEPTH,
         mottle="scorched",
         noise=Emccd(),
         spikes=SPEED_SPIKES,
         phase_breaks=breaks,
-        forks=[ForkPoint((fr * sy, fc * sx), _FORK_DIRECTION)],
+        forks=[ForkPoint((fr * sy, fc * sx), SPEED_FORK_DIRECTION)],
     ).frame
 
 
