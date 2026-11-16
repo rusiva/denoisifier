@@ -30,10 +30,10 @@
       "breaks": 0.1,
       "forks": 0.3
     },
-    "stripe_calibration_digest": "4140b3db8edcb56dce3567cd42bc321e1df1512d616e37647e6dc0823d2e0f6a"
+    "stripe_calibration_digest": "648eb3f69651094fb46b37963a5fd65dea5b497ae9ce0d72144bd9f7949a45e0"
   },
   "run_info": {
-    "commit": "7d05e6c-dirty",
+    "commit": "4b6f3de",
     "cpu": "AMD Ryzen AI 7 PRO 360 w/ Radeon 880M",
     "logical_cpus": 16,
     "workers": 12,
@@ -41,11 +41,11 @@
     "numpy": "2.4.6",
     "scipy": "1.17.1",
     "loadavg": {
-      "start": "7.93 5.68 3.75 1/838 598129",
-      "end": "8.59 10.79 8.10 1/832 602743"
+      "start": "2.93 8.27 9.60 2/980 869907",
+      "end": "9.49 10.79 10.45 1/986 870508"
     },
-    "wall_clock_s": 715.2393013399997,
-    "seconds_per_frame": 2.3841310044666657
+    "wall_clock_s": 426.96877171102096,
+    "seconds_per_frame": 1.4232292390367365
   },
   "frames": [
     {
