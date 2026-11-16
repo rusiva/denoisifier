@@ -98,3 +98,18 @@ Pass:
 - S5 (private twins, threads=1 vs env var): by design (rulings B1, N9). Pools that call public functions can only be reached through the env var.
 - S8 (stage_timings uses feasibility._frame): a test-side measurement script.
 Owner: none.
+- fixer `a52fd8913fa2bf959` (opus): F1-F7, then end sequence (measure → re-stores → check-slow → check-held-out → bench + tracked bench.json → check → AC 3 table); handoff 13-fixer.md. Status: running.
+
+Next: on fixer report → close (report to user, archive, cleanup per handoff lists; keep p13-c1 cache + p13-c1-ref for ticket 22).
+- fixer reported: F1-F7 b928464, measure a91fa51 (thresholds ~1e-14 rel, op-rule green), stripe re-store 4b6f3de, break/Fork c723810 (thresholds unchanged), check-slow 7 passed 793.96s, held-out 7 passed 2083.24s, make bench EXIT=0 (warm 4.23, cold 4.59). Tracked record MISSED (cold 5.28, non-idle start, overlapped my commit 7a2c7bd). RULED: one idle rerun, result stands; miss → owner (Comments 0750b7c). Fixer resumed for rerun → bench.json → make check → stage table → spec pointer.
+- Filed agent-gates/08 (gate reuse across end sequence) at owner request, 7a2c7bd.
+- 13:48: fixer idle-wait loop self-matched its pgrep pattern and spun 38 min (load ~0.1); killed by orchestrator, fixer told to start the bench record directly.
+- Ruled rerun MISSED (cold 5.22 s idle, warm 4.03). Owner RULED: accept and close; no target change; make bench stays red on cold; follow-up 23 cold-start overhead (d4ea2f2). Fixer resumed: bench.json = miss-2 record → make check → stage table + spec pointer → handoff.
+
+## CLOSED 2026-11-16
+
+- Fixer done: bench.json c8095cb (the ruled idle rerun as measured); `make check` at c8095cb EXIT=0 `1633 passed, 14 deselected in 1321.61s (0:22:01)`, stamp check green; stage-timings table `.scratch/stripe-detector/stage-timings.md` plus spec story 39 pointer; handoff 253e67d.
+- Result: warm pipeline 8.68 → 4.03-4.73 s (4 threads), cold CLI 9.46 → 4.5-5.2 s; AC 1 cold half missed on the idle record (5.22 s), accepted by the owner.
+- Follow-ups: stripe-detector 19, 20, 21, 22, 23; agent-gates 08.
+- Cleanup done: all t13 worktrees, the fixer's ref worktree, the P1 prototype worktree, branches t13-step3/s4b/slice5-wip/s4, ~/.cache/denoisifier/p13-h. Kept: branches t13-s6, t13-s7 (record; 22 names s7), prototype/13-p1-threads; ~/.cache/denoisifier/p13-c1 and .scratch/stripe-detector/p13-c1-ref (ticket 22).
+- Watchers stopped.

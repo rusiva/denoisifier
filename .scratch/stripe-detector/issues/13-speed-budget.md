@@ -4,7 +4,7 @@
 
 **Blocked by:** 07, 11
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] A marked performance test analyses a generated 1600×400 frame (scorched mottle, stripes, breaks and forks, spikes) in about 5 s or less.
 - [ ] All calibration and accuracy tests still pass after optimisation; stored thresholds are re-calibrated if the detector's output changed.
