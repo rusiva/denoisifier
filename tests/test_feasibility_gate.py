@@ -16,6 +16,7 @@ import pytest
 
 import feasibility
 import protected
+from denoisifier._local_stripes import bank_threads
 from protected import (
     FALSE_ALARM_TOLERANCE,
     MIN_DETECTION_RATE,
@@ -178,3 +179,16 @@ def test_full_frame_probe_detects_at_least_95_percent(saved):
         f"{probe['detected']}/{probe['striped_n']} detected at full frame, exact 95% CI "
         f"{probe['detection_interval']}"
     )
+
+
+def test_pool_workers_run_the_bank_on_one_thread():
+    # Each worker is one process of a pool sized to the CPUs: its bank must not add threads.
+    assert feasibility.run_pool(bank_threads, [None, None, None], workers=2) == [1, 1, 1]
+
+
+def test_thread_settings_record_the_bank_threads(monkeypatch):
+    monkeypatch.setenv("DENOISIFIER_THREADS", "3")
+    settings = feasibility.thread_settings()
+    assert settings["bank_threads"] == 3
+    assert settings["DENOISIFIER_THREADS"] == "3"
+    assert feasibility.run_info(workers=2)["bank_threads"] == {"in_process": 3, "pool_workers": 1}

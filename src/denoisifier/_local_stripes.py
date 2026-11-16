@@ -24,6 +24,8 @@ a frequency, here and in analysis.py, goes through the helpers below
 from __future__ import annotations
 
 import math
+import os
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal, TypeVar, cast
 
@@ -46,6 +48,11 @@ _ALONG = 1.5
 # Every Gaussian filter is evaluated only where it exceeds exp(-K^2 / 2) of
 # its peak, K = _GAUSS_TRUNC_SIGMAS (1.3e-14 at 8; ticket 13 slice 5).
 _GAUSS_TRUNC_SIGMAS = 8.0
+
+# The bank runs its Periods on at most this many threads by default (ticket 13 slice 4);
+# DENOISIFIER_THREADS overrides it (private, undocumented).
+_MAX_BANK_THREADS = 4
+_THREADS_ENV = "DENOISIFIER_THREADS"
 
 # Reflect padding before the FFT. analysis.py asserts it is below MIN_SIDE,
 # so reflect padding is always valid.
@@ -317,13 +324,74 @@ def _match_period(
     return _PeriodMatch(ratio=ratio, angle_index=angle_index, mean=mean)
 
 
+def bank_threads(threads: int | None = None) -> int:
+    """The bank's thread count: ``threads`` when given, else the environment
+    variable ``DENOISIFIER_THREADS`` when set, else the usable CPUs up to
+    _MAX_BANK_THREADS. Read at each call, never at import."""
+    if threads is not None:
+        if threads < 1:
+            raise ValueError(f"threads must be at least 1, got {threads!r}")
+        return int(threads)
+    env = os.environ.get(_THREADS_ENV)
+    if env is not None:
+        try:
+            n = int(env)
+        except ValueError:
+            n = 0
+        if n < 1:
+            raise ValueError(f"{_THREADS_ENV} must be a positive integer, got {env!r}")
+        return n
+    affinity = getattr(os, "sched_getaffinity", None)
+    cpus = len(affinity(0)) if affinity is not None else (os.cpu_count() or 1)
+    return max(1, min(_MAX_BANK_THREADS, cpus))
+
+
+def _matches(
+    spec: _Spectrum, light: np.ndarray, periods: np.ndarray, threads: int
+) -> Iterator[tuple[float, _PeriodMatch, _BankBuffers]]:
+    """Each Period's match with the buffers holding its responses, in ascending
+    Period order; at most ``threads`` Periods in flight, each on its own buffers.
+    A Period's buffers are reused once the caller moves to the next one."""
+    shape = light.shape
+    if threads == 1 or len(periods) < 2:
+        buffers = _BankBuffers.of(shape)
+        for p in periods:
+            yield float(p), _match_period(spec, float(p), light, buffers), buffers
+        return
+    # Lazy import keeps the analyse / CLI start light (ticket 13).
+    from concurrent.futures import ThreadPoolExecutor
+
+    n = min(threads, len(periods))
+    free = [_BankBuffers.of(shape) for _ in range(n)]
+    with ThreadPoolExecutor(n) as pool:
+        pending = []
+        for p in periods[:n]:
+            b = free.pop()
+            pending.append((float(p), b, pool.submit(_match_period, spec, float(p), light, b)))
+        nxt = n
+        while pending:
+            p, b, future = pending.pop(0)
+            yield p, future.result(), b
+            if nxt < len(periods):
+                q = float(periods[nxt])
+                pending.append((q, b, pool.submit(_match_period, spec, q, light, b)))
+                nxt += 1
+
+
 def estimate_local_stripes(
-    frame: np.ndarray, light: np.ndarray, bins: BinFactors, spectrum: _Spectrum | None = None
+    frame: np.ndarray,
+    light: np.ndarray,
+    bins: BinFactors,
+    spectrum: _Spectrum | None = None,
+    threads: int | None = None,
 ) -> LocalStripes:
     """Run the bank over ``frame``; ``light`` (bool, frame shape) masks the dark
     surround. Periods and Angles are in sensor px under ``bins``; only
     ``searched_periods(bins)`` are run. ``spectrum``, when given, is
-    ``_Spectrum(frame, bins)`` already computed (``analyse`` shares one)."""
+    ``_Spectrum(frame, bins)`` already computed (``analyse`` shares one).
+    ``threads`` (``bank_threads``) runs Periods in parallel; the result is the
+    same at any count, since the Periods are merged in ascending order."""
+    n = bank_threads(threads)
     spec = _Spectrum(frame, bins) if spectrum is None else spectrum
     shape = frame.shape
     best_ratio = np.zeros(shape)
@@ -332,10 +400,8 @@ def estimate_local_stripes(
     best_response = np.zeros(shape, dtype=complex)
     best_mean = np.zeros(shape)
     angles = np.asarray(_STRIPE_ANGLES_DEG)
-    buffers = _BankBuffers.of(shape)
 
-    for p in searched_periods(bins):
-        match = _match_period(spec, p, light, buffers)
+    for p, match, buffers in _matches(spec, light, searched_periods(bins), n):
         better = match.ratio > best_ratio
         index = match.angle_index[better]
         best_ratio[better] = match.ratio[better]

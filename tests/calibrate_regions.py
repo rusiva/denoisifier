@@ -542,6 +542,8 @@ def main(argv=None):
     # NumPy fresh.
     for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ.setdefault(var, "1")
+    # The spawned workers run the bank on one thread each (ticket 13 slice 4).
+    os.environ["DENOISIFIER_THREADS"] = "1"
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=["tune", "info"])
     parser.add_argument("--set", action="append", default=[], metavar="NAME=VALUE")

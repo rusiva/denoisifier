@@ -340,6 +340,31 @@ def analyse(
     pass re-measures under 2.5 frame pixels gets neither Forks nor a warning
     (rare; not measured).
     """
+    return _analyse(
+        frame,
+        false_alarm_rate=false_alarm_rate,
+        calibration=calibration,
+        threshold=threshold,
+        clip_level=clip_level,
+        bin_factors=bin_factors,
+        break_fork_false_alarm_rate=break_fork_false_alarm_rate,
+        threads=None,
+    )
+
+
+def _analyse(
+    frame: np.ndarray,
+    *,
+    false_alarm_rate: float | None = None,
+    calibration: Calibration | None = None,
+    threshold: float | None = None,
+    clip_level: float | None = None,
+    bin_factors: BinFactors | None = None,
+    break_fork_false_alarm_rate: float | None = None,
+    threads: int | None = None,
+) -> Report:
+    """``analyse`` with the bank's thread count (``_local_stripes.bank_threads``;
+    None: the shipped default). The result is the same at any count."""
     break_fork = _resolve_break_fork_thresholds(break_fork_false_alarm_rate)
     front = _front_half(
         frame,
@@ -348,6 +373,7 @@ def analyse(
         threshold=threshold,
         clip_level=clip_level,
         bin_factors=bin_factors,
+        threads=threads,
     )
     bins, reported, refused = front.bins, front.reported, front.refused
     threshold, score, clipped = front.threshold, front.score, front.clipped
@@ -439,8 +465,10 @@ def _front_half(
     threshold: float | None,
     clip_level: float | None,
     bin_factors: BinFactors | None,
+    threads: int | None = None,
 ) -> _FrontHalf:
-    """``analyse`` up to the Phase Break pass (its arguments as there)."""
+    """``analyse`` up to the Phase Break pass (its arguments as there; ``threads``
+    as ``_analyse``'s)."""
     frame = np.asarray(frame, dtype=float)
     if frame.ndim != 2:
         raise ValueError(f"frame must be 2D, got {frame.ndim}D")
@@ -469,7 +497,7 @@ def _front_half(
     clipped = find_clipped(frame, clip_level) & ~spikes
     light = _light(work)
     spec = _Spectrum(work, bins)  # one forward FFT for the bank and the region steps
-    local = estimate_local_stripes(work, light, bins, spec)
+    local = estimate_local_stripes(work, light, bins, spec, threads)
     survivors, filters = _qualifying_regions(work, light, local, clipped, spec)
     score = max((g.peak_ratio for g in survivors), default=0.0)
     reported = [g for g in survivors if g.peak_ratio > threshold]

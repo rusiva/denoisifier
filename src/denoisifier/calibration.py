@@ -212,10 +212,23 @@ def stripe_free_score(
     """The Stripe Score of ``frame`` as ``analyse`` gives it (spike rejection,
     clip detection, regions), independent of any Threshold: the one scoring
     rule of every calibration path."""
-    # Imported here: analysis imports this module for its defaults.
-    from denoisifier.analysis import analyse
+    return _stripe_free_score(frame, clip_level=clip_level, bin_factors=bin_factors, threads=None)
 
-    return analyse(frame, threshold=np.inf, clip_level=clip_level, bin_factors=bin_factors).score
+
+def _stripe_free_score(
+    frame: np.ndarray,
+    *,
+    clip_level: float | None,
+    bin_factors: BinFactors | None,
+    threads: int | None,
+) -> float:
+    """``stripe_free_score`` with the bank's thread count (``analysis._analyse``)."""
+    # Imported here: analysis imports this module for its defaults.
+    from denoisifier.analysis import _analyse
+
+    return _analyse(
+        frame, threshold=np.inf, clip_level=clip_level, bin_factors=bin_factors, threads=threads
+    ).score
 
 
 def _with_bin_factors(settings: Mapping[str, object] | None, bins: BinFactors) -> dict[str, object]:
@@ -309,7 +322,9 @@ def calibrate_folder(
     if not paths:
         raise ValueError(f"no .csv or .asc files in {root}")
     t0 = time.perf_counter()
-    jobs = [(p, drop_axis_column, transpose, clip_level, bins) for p in paths]
+    # Pool workers run the bank on one thread each, so the pool never oversubscribes the CPUs.
+    threads = 1 if workers > 1 else None
+    jobs = [(p, drop_axis_column, transpose, clip_level, bins, threads) for p in paths]
     if workers > 1:
         # Lazy imports keep the analyse / CLI start light (ticket 13).
         import multiprocessing
@@ -355,13 +370,13 @@ def calibrate_folder(
 
 
 def _score_file(
-    job: tuple[Path, bool, bool, float | None, BinFactors],
+    job: tuple[Path, bool, bool, float | None, BinFactors, int | None],
 ) -> tuple[tuple[int, int], float]:
-    path, drop_axis_column, transpose, clip_level, bin_factors = job
+    path, drop_axis_column, transpose, clip_level, bin_factors, threads = job
     try:
         frame = read_frame(path, drop_axis_column=drop_axis_column, transpose=transpose).frame
-        return (int(frame.shape[0]), int(frame.shape[1])), stripe_free_score(
-            frame, clip_level=clip_level, bin_factors=bin_factors
+        return (int(frame.shape[0]), int(frame.shape[1])), _stripe_free_score(
+            frame, clip_level=clip_level, bin_factors=bin_factors, threads=threads
         )
     except (OSError, ValueError) as e:
         raise ValueError(f"{path.name}: {e}") from e

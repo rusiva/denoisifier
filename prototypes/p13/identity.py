@@ -176,7 +176,9 @@ def _one(item: tuple[str, Any, tuple[int, int]]) -> tuple[str, dict[str, Any]]:
         tie["gap"][better] = gap[better]
         return m
 
-    _local_stripes._match_period = match
+    if _THREADS is None:
+        # The capture keeps shared state in Period order: serial bank only (slice 4).
+        _local_stripes._match_period = match
     try:
         bins = BinFactors(horizontal=h, vertical=v)
         if _THREADS is not None:
@@ -188,6 +190,8 @@ def _one(item: tuple[str, Any, tuple[int, int]]) -> tuple[str, dict[str, Any]]:
         analysis.estimate_local_stripes = original
         _local_stripes._match_period = original_match
     (local,) = captured
+    if not tie:  # threaded run: no tie capture
+        tie["gap"] = np.full(local.ratio.shape, np.inf)
     near = np.nonzero(tie["gap"] < TIE_GAP_KEPT)
     rec = {
         "report": dataclasses.asdict(report),
@@ -247,7 +251,12 @@ def _equal(a: Any, b: Any, path: str, diffs: list[str]) -> None:
 
 def compare_exact(ref: dict[str, Any], new: dict[str, Any]) -> bool:
     diffs: list[str] = []
-    _equal(ref, new, "", diffs)
+
+    # The tie-gap capture is a diagnostic (serial runs only), not an output.
+    def strip(d: dict[str, Any]) -> dict[str, Any]:
+        return {k: {f: v for f, v in r.items() if f != "tie_gap"} for k, r in d.items()}
+
+    _equal(strip(ref), strip(new), "", diffs)
     for d in diffs[:40]:
         print("DIFF", d)
     print(

@@ -7,7 +7,8 @@ the Fork ``SPEED_FORK_POINT``. Found on it: 2 breaks, 1 Fork, 1 region.
 
 - ``time_speed_pipeline``: seconds of ``read_frame(csv) -> analyse -> Report.to_json``,
   the CSV written beforehand and not timed, after one untimed warm-up at
-  ``GATE_SHAPE``;
+  ``GATE_SHAPE``; ``threads`` sets the bank's thread count (``analysis._analyse``;
+  None: the shipped default);
 - ``time_cold_cli``: wall seconds of a fresh ``python -m denoisifier f.csv -o r.json``.
 
 ``make bench`` gates both medians at ``TARGET_TIMING_S``; the slow tier asserts
@@ -24,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-from denoisifier import analyse
+from denoisifier.analysis import _analyse
 from denoisifier.frame_io import read_frame, write_frame_csv
 from denoisifier.synthetic import Emccd, ForkPoint, PhaseBreakLine, generate
 from protected import (
@@ -66,11 +67,11 @@ def speed_frame(shape: tuple[int, int] = PROBE_SHAPE) -> np.ndarray:
     ).frame
 
 
-def _pipeline(csv: Path) -> str:
-    return analyse(read_frame(csv).frame).to_json()
+def _pipeline(csv: Path, threads: int | None) -> str:
+    return _analyse(read_frame(csv).frame, threads=threads).to_json()
 
 
-def time_speed_pipeline(repeats: int) -> tuple[list[float], str]:
+def time_speed_pipeline(repeats: int, threads: int | None = None) -> tuple[list[float], str]:
     """Seconds of ``read_frame -> analyse -> to_json`` on the speed frame, ``repeats``
     times, in this process, and the last run's JSON report. Writing the CSVs and one
     warm-up at ``GATE_SHAPE`` are not timed."""
@@ -78,11 +79,11 @@ def time_speed_pipeline(repeats: int) -> tuple[list[float], str]:
         warm, csv = Path(d) / "warm.csv", Path(d) / "speed.csv"
         write_frame_csv(speed_frame(GATE_SHAPE), warm)
         write_frame_csv(speed_frame(), csv)
-        _pipeline(warm)
+        _pipeline(warm, threads)
         times, report = [], ""
         for _ in range(repeats):
             t0 = time.perf_counter()
-            report = _pipeline(csv)
+            report = _pipeline(csv, threads)
             times.append(time.perf_counter() - t0)
         return times, report
 

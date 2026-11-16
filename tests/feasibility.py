@@ -11,6 +11,7 @@ uses for its own verdict. The detector is measured as it is (no tuning).
 from __future__ import annotations
 
 import os
+from functools import partial
 from typing import Literal, NamedTuple, TypeVar
 
 # Imports no NumPy (seed_guard.py), so it can come before the thread variables.
@@ -205,13 +206,20 @@ def run_pool(fn: Callable[[J], R], jobs: Sequence[J], workers: int | None = None
     picklable (``fn`` a module-level function)."""
     # Spawned workers import NumPy fresh, so the thread variables set above apply.
     # Each worker installs the seed guard with this process's allowed ranges.
+    # Each worker runs the bank on one thread (ticket 13 slice 4): the pool fills the CPUs.
     with ProcessPoolExecutor(
         resolve_workers(workers),
         mp_context=multiprocessing.get_context("spawn"),
         initializer=seed_guard.install_worker,
         initargs=(seed_guard.worker_allowance(),),
     ) as ex:
-        return list(ex.map(fn, jobs, chunksize=4))
+        return list(ex.map(partial(_on_one_bank_thread, fn), jobs, chunksize=4))
+
+
+def _on_one_bank_thread(fn: Callable[[J], R], job: J) -> R:
+    """``fn(job)`` with the bank on one thread (``DENOISIFIER_THREADS``, this process)."""
+    os.environ["DENOISIFIER_THREADS"] = "1"
+    return fn(job)
 
 
 def score_batch(
@@ -387,6 +395,8 @@ def run_info(workers: int) -> dict:
         "cpu": cpu,
         "logical_cpus": os.cpu_count(),
         "workers": workers,
+        # The bank's threads: in this process (timed frames), and in each pool worker.
+        "bank_threads": {"in_process": _bank_threads(), "pool_workers": 1},
         "python": platform.python_version(),
         "numpy": np.__version__,
         "scipy": scipy.__version__,
@@ -463,9 +473,21 @@ REGRESSION = RegressionPlan(
 )
 
 
-def thread_settings() -> dict[str, str | None]:
-    """The BLAS/OpenMP thread variables as this process sees them."""
-    return {v: os.environ.get(v) for v in THREAD_VARS}
+def thread_settings() -> dict[str, object]:
+    """The BLAS/OpenMP thread variables and ``DENOISIFIER_THREADS`` as this process
+    sees them, and the bank's effective thread count here (``bank_threads``)."""
+    return {
+        **{v: os.environ.get(v) for v in THREAD_VARS},
+        "DENOISIFIER_THREADS": os.environ.get("DENOISIFIER_THREADS"),
+        "bank_threads": _bank_threads(),
+    }
+
+
+def _bank_threads() -> int:
+    """The bank's effective thread count in this process."""
+    from denoisifier._local_stripes import bank_threads
+
+    return bank_threads()
 
 
 def regression_check(plan: RegressionPlan = REGRESSION, workers: int | None = None) -> dict:
