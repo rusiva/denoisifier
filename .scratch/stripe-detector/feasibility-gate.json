@@ -1,9 +1,13 @@
 {
   "run_info": {
-    "commit": "fd59d0c",
+    "commit": "b928464",
     "cpu": "AMD Ryzen AI 7 PRO 360 w/ Radeon 880M",
     "logical_cpus": 16,
     "workers": 12,
+    "bank_threads": {
+      "in_process": 4,
+      "pool_workers": 1
+    },
     "python": "3.11.15",
     "numpy": "2.4.6",
     "scipy": "1.17.1",
@@ -103,11 +107,11 @@
       1600
     ],
     "seconds": [
-      5.505653960979544,
-      5.40574869903503,
-      5.329494404955767
+      2.7008693079988007,
+      2.700284182006726,
+      2.765291720017558
     ],
-    "median_s": 5.40574869903503,
+    "median_s": 2.7008693079988007,
     "limit_s": 10.0
   },
   "gate": {
@@ -115,7 +119,7 @@
       256,
       256
     ],
-    "threshold": 49.7159577445053,
+    "threshold": 49.71595774450364,
     "k": 20,
     "calibration_n": 2000,
     "calibration_above": 19,
@@ -141,80 +145,80 @@
         "angle_deg": 10,
         "detected": 50,
         "n": 50,
-        "min_score": 66.37995940975306,
-        "min_over_threshold": 1.3351841626160665
+        "min_score": 66.37995940975286,
+        "min_over_threshold": 1.3351841626161072
       },
       {
         "period": 5,
         "angle_deg": 0,
         "detected": 50,
         "n": 50,
-        "min_score": 102.44075208377627,
-        "min_over_threshold": 2.0605205397073583
+        "min_score": 102.44075208377583,
+        "min_over_threshold": 2.060520539707418
       },
       {
         "period": 8,
         "angle_deg": 6,
         "detected": 50,
         "n": 50,
-        "min_score": 96.76100550935493,
-        "min_over_threshold": 1.9462766061275192
+        "min_score": 96.76100550935521,
+        "min_over_threshold": 1.94627660612759
       },
       {
         "period": 12,
         "angle_deg": -8,
         "detected": 50,
         "n": 50,
-        "min_score": 104.93240462789036,
-        "min_over_threshold": 2.110638301833533
+        "min_score": 104.93240462789088,
+        "min_over_threshold": 2.110638301833614
       },
       {
         "period": 20,
         "angle_deg": -10,
         "detected": 50,
         "n": 50,
-        "min_score": 67.41087967080198,
-        "min_over_threshold": 1.3559203670023303
+        "min_score": 67.41087967080183,
+        "min_over_threshold": 1.3559203670023727
       },
       {
         "period": 4,
         "angle_deg": -4,
         "detected": 50,
         "n": 50,
-        "min_score": 77.54722860341587,
-        "min_over_threshold": 1.5598055860039532
+        "min_score": 77.54722860341569,
+        "min_over_threshold": 1.5598055860040017
       },
       {
         "period": 16,
         "angle_deg": 10,
         "detected": 50,
         "n": 50,
-        "min_score": 116.71868966478759,
-        "min_over_threshold": 2.347710774568907
+        "min_score": 116.71868966478847,
+        "min_over_threshold": 2.347710774569003
       },
       {
         "period": 6,
         "angle_deg": -10,
         "detected": 50,
         "n": 50,
-        "min_score": 108.86911031195874,
-        "min_over_threshold": 2.1898222472439675
+        "min_score": 108.86911031195939,
+        "min_over_threshold": 2.189822247244054
       },
       {
         "period": 10,
         "angle_deg": 3,
         "detected": 50,
         "n": 50,
-        "min_score": 112.48436562151079,
-        "min_over_threshold": 2.2625404543059973
+        "min_score": 112.48436562151096,
+        "min_over_threshold": 2.2625404543060763
       },
       {
         "period": 14,
         "angle_deg": -6,
         "detected": 50,
         "n": 50,
-        "min_score": 105.65207814287729,
-        "min_over_threshold": 2.125114006368592
+        "min_score": 105.65207814287693,
+        "min_over_threshold": 2.1251140063686558
       }
     ],
     "false_alarm_rate": 0.012,
@@ -225,7 +229,7 @@
       400,
       1600
     ],
-    "threshold": 85.17105365821853,
+    "threshold": 85.17105365821811,
     "k": 3,
     "calibration_n": 300,
     "calibration_above": 2,
@@ -251,31 +255,31 @@
         "angle_deg": 10,
         "detected": 10,
         "n": 10,
-        "min_score": 116.14515690566715,
-        "min_over_threshold": 1.3636693679021992
+        "min_score": 116.14515690566701,
+        "min_over_threshold": 1.363669367902204
       },
       {
         "period": 5,
         "angle_deg": 0,
         "detected": 10,
         "n": 10,
-        "min_score": 185.80298035976122,
-        "min_over_threshold": 2.18152731919188
+        "min_score": 185.80298035976156,
+        "min_over_threshold": 2.1815273191918947
       },
       {
         "period": 8,
         "angle_deg": 6,
         "detected": 10,
         "n": 10,
-        "min_score": 254.22432800018848,
-        "min_over_threshold": 2.9848677112808883
+        "min_score": 254.22432800018854,
+        "min_over_threshold": 2.9848677112809034
       },
       {
         "period": 12,
         "angle_deg": -8,
         "detected": 10,
         "n": 10,
-        "min_score": 232.2482647849084,
+        "min_score": 232.24826478490726,
         "min_over_threshold": 2.726845034897578
       },
       {
@@ -283,48 +287,48 @@
         "angle_deg": -10,
         "detected": 10,
         "n": 10,
-        "min_score": 308.4043833213355,
-        "min_over_threshold": 3.6209999768105043
+        "min_score": 308.4043833213374,
+        "min_over_threshold": 3.620999976810544
       },
       {
         "period": 4,
         "angle_deg": -4,
         "detected": 10,
         "n": 10,
-        "min_score": 151.62390822221565,
-        "min_over_threshold": 1.7802281609743218
+        "min_score": 151.62390822221545,
+        "min_over_threshold": 1.780228160974328
       },
       {
         "period": 16,
         "angle_deg": 10,
         "detected": 10,
         "n": 10,
-        "min_score": 303.7009403700416,
-        "min_over_threshold": 3.5657764853861966
+        "min_score": 303.70094037004577,
+        "min_over_threshold": 3.565776485386263
       },
       {
         "period": 6,
         "angle_deg": -10,
         "detected": 10,
         "n": 10,
-        "min_score": 191.40935811680404,
-        "min_over_threshold": 2.2473522387653837
+        "min_score": 191.40935811680328,
+        "min_over_threshold": 2.247352238765386
       },
       {
         "period": 10,
         "angle_deg": 3,
         "detected": 10,
         "n": 10,
-        "min_score": 264.6835753881761,
-        "min_over_threshold": 3.1076705526072312
+        "min_score": 264.6835753881797,
+        "min_over_threshold": 3.1076705526072885
       },
       {
         "period": 14,
         "angle_deg": -6,
         "detected": 10,
         "n": 10,
-        "min_score": 297.646248078245,
-        "min_over_threshold": 3.4946878698092023
+        "min_score": 297.64624807824646,
+        "min_over_threshold": 3.4946878698092365
       }
     ],
     "false_alarm_rate": 0.01,
