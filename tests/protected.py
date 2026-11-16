@@ -79,7 +79,7 @@ REGRESSION_BAD_FALSE_ALARM_RATE = 0.04
 REGRESSION_PROBE_BAD_DETECTION_RATE = 0.70
 SLOW_TIMING_LIMIT_S = 30.0  # check-slow: real slowdowns only (owner, 2026-11-10)
 BENCH_REPEATS = 5  # make bench: median of this many runs, asserted against TIMING_LIMIT_S
-TARGET_TIMING_S = 5.0  # ticket 13's target; make bench reports it without failing
+TARGET_TIMING_S = 5.0  # ticket 13's AC 1: make bench fails above it (warm pipeline and cold CLI)
 BENCH_IDLE_LOAD = 1.0  # bench, check-slow, measure warn, without failing, above this 1-min load
 # False-alarm baseline of the operating rule (owner approval, ticket
 # stripe-detector/05 Comments): the upper quantile of the stored threshold's
@@ -120,6 +120,14 @@ DEPTH_REGRESSION_CASES = ((93_024, 20, -10, "scorched"), (93_048, 10, 3, "multis
 DARK_REGRESSION_CASES = ((93_130, "full-frame-typical"),)
 # Seeds of the non-slow tests: every *_TEST_SEED(S) lies in here.
 TEST_SEED_BLOCK = range(10, 100)
+# Ticket 13's speed frame (tests/speed.py; plan section 1, orchestrator approval
+# 2026-11-16): the profile's worst frame, P 3 at Angle 3 (Period, Angle), two Phase
+# Breaks ((row, col), tilt from the Angle in deg, jump in rad) and one Fork (row, col).
+SPEED_TEST_SEED = 38  # only tests/speed.py and stage_timings.py (its typical P 6 frame) use it
+SPEED_CASE = (3.0, 3.0)
+SPEED_BREAK_LINES = (((130.0, 500.0), 4.0, math.pi), ((280.0, 1100.0), -3.0, -2.0))
+SPEED_FORK_POINT = (200.5, 800.5)
+SPEED_SPIKES = 30
 # make test-fast (ticket agent-gates/07): the first this-many seeds of a seed range run in the
 # inner loop; the rest are pytest.mark.wide (tests/inner_loop.py) and run in make check only.
 INNER_LOOP_SEED_COUNT = 2

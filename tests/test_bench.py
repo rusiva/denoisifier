@@ -6,6 +6,7 @@ import json
 import bench
 import feasibility
 import slow_stamp
+import speed
 from protected import BENCH_REPEATS, TARGET_TIMING_S, TIMING_LIMIT_S
 
 
@@ -17,6 +18,24 @@ def _times(monkeypatch, seconds: list[float]) -> list[int]:
         return seconds
 
     monkeypatch.setattr(feasibility, "time_full_frame", fake)
+    _speed(monkeypatch, [3.0, 3.1, 2.9], [3.5, 3.6, 3.4])
+    return calls
+
+
+def _speed(monkeypatch, warm: list[float], cold: list[float]) -> list[tuple[str, int]]:
+    """Stub ticket 13's two speed timers (tests/speed.py)."""
+    calls: list[tuple[str, int]] = []
+
+    def fake_warm(repeats: int) -> tuple[list[float], str]:
+        calls.append(("warm", repeats))
+        return warm, "{}"
+
+    def fake_cold(repeats: int) -> list[float]:
+        calls.append(("cold", repeats))
+        return cold
+
+    monkeypatch.setattr(speed, "time_speed_pipeline", fake_warm)
+    monkeypatch.setattr(speed, "time_cold_cli", fake_cold)
     return calls
 
 
@@ -75,3 +94,38 @@ def test_bench_warns_at_start_on_a_busy_machine(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(slow_stamp, "loadavg", lambda: "3.50 2.00 1.00 2/900 4242")
     assert bench.main(["--out", str(tmp_path / "bench.json")]) == 0
     assert "make bench: warning: load average 3.50" in capsys.readouterr().out
+
+
+def test_bench_records_the_speed_frame_and_passes_under_the_target(monkeypatch, tmp_path):
+    _times(monkeypatch, [4.0, 4.0, 4.0])
+    calls = _speed(monkeypatch, [3.0, 3.2, 2.8], [3.6, 3.4, 3.5])
+    out = tmp_path / "bench.json"
+    assert bench.main(["--out", str(out)]) == 0
+    assert sorted(calls) == [("cold", BENCH_REPEATS), ("warm", BENCH_REPEATS)]
+    record = json.loads(out.read_text())
+    assert record["speed_seconds"] == [3.0, 3.2, 2.8]
+    assert record["speed_median_s"] == 3.0
+    assert record["cold_cli_seconds"] == [3.6, 3.4, 3.5]
+    assert record["cold_cli_s"] == 3.5
+    assert record["speed_meets_target"] is True
+    assert record["cold_cli_meets_target"] is True
+
+
+def test_bench_fails_when_the_speed_pipeline_misses_the_target(monkeypatch, tmp_path, capsys):
+    _times(monkeypatch, [4.0, 4.0, 4.0])
+    _speed(monkeypatch, [5.2, 5.1, 5.3], [3.0, 3.0, 3.0])
+    out = tmp_path / "bench.json"
+    assert bench.main(["--out", str(out)]) == 1
+    assert json.loads(out.read_text())["speed_meets_target"] is False
+    assert "speed pipeline median 5.20 s exceeds the 5.0 s target" in capsys.readouterr().out
+
+
+def test_bench_fails_when_the_cold_cli_misses_the_target(monkeypatch, tmp_path, capsys):
+    _times(monkeypatch, [4.0, 4.0, 4.0])
+    _speed(monkeypatch, [4.0, 4.1, 3.9], [5.4, 5.5, 5.6])
+    out = tmp_path / "bench.json"
+    assert bench.main(["--out", str(out)]) == 1
+    record = json.loads(out.read_text())
+    assert record["speed_meets_target"] is True
+    assert record["cold_cli_meets_target"] is False
+    assert "cold CLI median 5.50 s exceeds the 5.0 s target" in capsys.readouterr().out

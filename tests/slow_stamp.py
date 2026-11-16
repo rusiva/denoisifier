@@ -74,6 +74,8 @@ STAMPED_FILES: tuple[str, ...] = tuple(
             "tests/shared_cache.py",
             "tests/binning.py",
             "tests/feasibility.py",
+            "tests/speed.py",
+            "tests/test_speed.py",
             "tests/cases.py",
             "tests/protected.py",
             "tests/seed_guard.py",
