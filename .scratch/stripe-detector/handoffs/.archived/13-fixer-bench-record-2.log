@@ -1,0 +1,8 @@
+ 13:48:22 up 2 days,  1:52,  4 users,  load average: 0.29, 0.30, 0.91
+0750b7c
+analyse on one full frame: [2.71, 2.35, 2.39, 2.65, 2.59] s, median 2.59 s
+timing frame vs the 5.0 s target: met
+speed frame: pipeline [4.44, 3.97, 4.11, 4.0, 4.03] s, median 4.03 s; cold CLI [5.37, 5.22, 4.91, 5.24, 5.01] s, median 5.22 s
+wrote .scratch/stripe-detector/bench.json
+make bench: cold CLI median 5.22 s exceeds the 5.0 s target
+EXIT=1

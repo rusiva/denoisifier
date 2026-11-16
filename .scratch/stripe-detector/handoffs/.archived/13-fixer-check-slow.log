@@ -1,0 +1,25 @@
+ 12:12:50 up 2 days, 16 min,  3 users,  load average: 1.68, 7.54, 9.31
+c723810
+uv lock --check
+Resolved 25 packages in 5ms
+uv run --locked python tests/slow_stamp.py run -- uv run --locked pytest -m "slow and not held_out"
+make check-slow: warning: load average 1.68 7.54 9.31 1/999 871587 at start; the machine is not idle
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 1647 items / 1640 deselected / 7 selected
+
+tests/test_slow_break_fork_calibration.py .                              [ 14%]
+tests/test_slow_calibration.py .                                         [ 28%]
+tests/test_slow_regression.py ....                                       [ 85%]
+tests/test_speed.py .                                                    [100%]
+
+================ 7 passed, 1640 deselected in 793.96s (0:13:13) ================
+make check-slow: green; wrote .gate/check-slow-stamp.json
+EXIT=0

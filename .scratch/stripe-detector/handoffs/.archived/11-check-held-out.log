@@ -1,0 +1,19 @@
+uv lock --check
+Resolved 25 packages in 2ms
+uv run --locked pytest -m held_out
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 1614 items / 1607 deselected / 7 selected
+
+tests/test_held_out_break_fork.py ....                                   [ 57%]
+tests/test_held_out_calibration.py ...                                   [100%]
+
+=============== 7 passed, 1607 deselected in 3560.53s (0:59:20) ================
+EXIT=0

@@ -1,0 +1,31 @@
+Plan: .scratch/stripe-detector/handoffs/02-plan.md @ uncommitted (base 1d07977)
+
+Verification: I re-ran the plan's reference method (proto `v.py` `measure`, A0 = 3e-3, THR = 150) with a generator reordered to the plan's draw order (profile → phase0 → mottle → noise) on the **test** seeds. Scripts and outputs: `/tmp/claude-1000/-home-rusiva-dev-denoisifier/e3eed7db-ace9-4511-bbf2-7585279f9fa6/scratchpad/review/` (`chk.py`, `emc.py`, `out_*.txt`). Results:
+- scorched m = 0, seeds 0–19: max 60.9; multiscale m = 0, seeds 0–9: max 54.4 (threshold 150: holds).
+- §7.2 m = 0.5 batch, seeds 0–19 with the plan's case cycle: all striped, min score 425, worst errors period 0.1%, angle 0.5° (20 px / −10°), depth 0.02 (holds).
+- ticket 01 m = 0.6 cases, noise 0 and 0.01: scores 3.5e4–4.3e4, period/angle in tolerance, depth 0.586–0.600 (holds).
+- ticket 01 profile-only, seeds 0–9: max **72.1** (seed 9, noise 0.01), not "≤ 53" as §7.2/§9 say (seeds 0–4 only). Still ~2× under 150. (40, 64) frame: score 25.9, no crash.
+
+## Findings
+
+- [x] B1 break: measurement has no path for an empty or degenerate measured area. §4.3 sums neighbour products over pixel pairs with both pixels in `A`; when `score` is just above `THRESHOLD`, `A = ratio > THRESHOLD` is the tiny cap of a smooth maximum, and can be a single pixel or have no horizontally/vertically adjacent pairs. Then `cx` and/or `cy` = 0, so `fx = fy = 0`, `period_px = 1/0 = inf`, `angle_deg` meaningless, `gabor_at(frame, inf, ...)` is undefined, and `Report.to_json` raises (`allow_nan=False`, `src/denoisifier/report.py:247`), so the CLI fails on a borderline frame. Borderline frames are exactly what 07's calibration batches and real data produce. The plan says nothing about this case (§4.3, §10). → Plan change: define the fallback. For example, if `A` has fewer than N valid pairs (or `|cx|`, `|cy|` both 0), measure over the connected component of `ratio > THRESHOLD/2` around the argmax, or fall back to the bank's `p_star` and the best stripe angle at the argmax pixel. Add an `analyse` test that forces it: a frame whose score is just over threshold, e.g. a weak m on a crop, with `json.loads(report.to_json())` and finite period/angle asserted.
+
+- [x] B2 break: `test_emccd_noise_statistics` CIC case is not "many σ wide" (§7.1 last bullet). With `photons_peak = 100`, `mottle="none"`, 256×256, seed-0 profile: mean(clean) = 38.3, so the standard error of `mean(r)` = √((38.3+0.5)/65536) = 0.0243, against a tolerance of 5% × 0.5 = 0.025, about 1σ. Over 200 RNG seeds the check fails **30.5%** of the time (`emc.py`). Whether seed 0 passes is luck, and any change to the draw order flips it. (The gain-on/off and read-noise cases are fine: 0/50 failures for gain on.) → Plan change: run the CIC case at `photons_peak = 1` (SE ≈ 0.004, so the 5% tolerance is ≈ 7σ), or set its tolerance to 5·SE computed from `clean`. Same real path (the `generate` seam).
+
+- [x] O1–O4: as listed in plan §11. No new owner items found. Threshold/A0 are provisional, as the ticket allows; DEPTH_TOL = 0.1 is the spec's tolerance; spikes deferred to 06 matches the ticket's AC list.
+
+- N1 note: the bright/dim crop test (§7.2) rests on "dim flank ≈ 0.2 of peak", which does not hold on test seeds. The flank `frame[64:192, 0:128]` of the 256×640 frame has mean profile **0.09 / 0.15 / 0.17** on seeds 0/1/2. With EMCCD, seed 0's flank scores 254 (1.7× threshold, measured area 1.5% of the crop). It passes in the prototype (depths 0.473–0.501, core/flank diff ≤ 0.02), but with little margin against implementation drift. Also, the plan's quoted crop numbers came from `q.py`'s `measure` (single best period, no floor), not the §4.3 method. Suggest flank columns ~`64:192`, or picking the crop from `Synthetic.clean` at ~0.2–0.3 of peak.
+- N2 note: §4.3 `|ln(period/p_star)|` evaluates `log(0)` where `period = 0` (outside light, §4.2), which emits `RuntimeWarning: divide by zero` (seen in every run). Compute it only where `ratio > THRESHOLD`, or under `np.errstate`, consistent with §4.2's "no warnings".
+- N3 note: the ticket says the detector estimates local **angle**. `LocalStripes` has no angle map; angle exists only as the frame-level neighbour-product sum. 05 needs a per-region angle; the same sum per region works, so this is not blocking, but say so in the `LocalStripes` docstring so 05 does not add a second angle estimator.
+- N4 note: the prototype `gen` draws mottle *before* phase0 (`proto/p.py:26–32`); the plan draws it after. The §9 calibration numbers therefore will not reproduce bit-for-bit. The plan already tells the implementer to re-measure with real code (§4.4); the reordered numbers above confirm the margins survive.
+- N5 note: §3.1 says no `TYPICAL` constant is added, then §7 defines `TYPICAL` in `test_analyse.py`. This is fine (module vs test), but word §3.1 as "no module constant in `synthetic.py`". `test_period_and_angle_extremes_are_detected` (§7.2) is ambiguous between 8 frames (one seed per case) and 64 (8 seeds × 8 cases); state which.
+- N6 note: `analyse` can report a period or angle outside the search range (3–20 px, ±10°) on a borderline/mottle frame, because the neighbour-product estimate is unconstrained. This is harmless for 02's tests; consider clamping or flagging it in 05.
+
+## Closing check (plan revision 2)
+
+- B1 closed: 02-plan.md:150 (fallback to bank `p_star`/`a_star` when < MIN_PAIRS=8 pairs or hypot==0; `A` always holds the peak, :148), with `a_star` from the new `LocalStripes.angle_deg` map (:126, :147). Proven on the seam by `test_borderline_striped_frame_has_finite_measurements` (:218) and `test_cli_reports_borderline_frame` (:230).
+- B2 closed: 02-plan.md:196 (CIC case at `photons_peak=1`: SE ≈ 0.0037, tolerance ≈ 7σ; mean(clean) 38.25/100 = 0.38 matches the review's measurement).
+- O1–O4 closed: owner answers recorded at 02-plan.md:275–278.
+- N1 folded at :211–216 (dim crop chosen from `Synthetic.clean` at level 0.2–0.3, with an asserted precondition; such a window exists, since fixed flanks measured 0.09–0.17 and the core 0.81). N2 folded at :148, N3 at :126/:131, N5 at :78 and :210. N4 and N6 are left as the plan states (:10, :280).
+- New items: none.
+- Still open: none.

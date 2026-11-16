@@ -1,0 +1,44 @@
+.............................................................F.......... [ 31%]
+........................................................................ [ 63%]
+........................................................................ [ 95%]
+..........                                                               [100%]
+=================================== FAILURES ===================================
+____________________ test_spike_count_ignores_the_baseline _____________________
+
+    def test_spike_count_ignores_the_baseline():
+        """A bias offset or a constant dark subtraction (negative pixels) changes nothing."""
+        s = _case_frame(SPIKE_TEST_SEEDS[0], spikes=SPIKE_TEST_COUNT, **SPIKE_FRAMES["typical-m0.5"])
+        frame = s.frame
+        shifted = frame - s.clean.max() / 2  # the spike-free light peak (B2/B3), not a Spike
+        assert (shifted < 0).any()
+>       counts = [analyse(f).spike_pixels for f in (frame, frame + BASELINE_OFFSET, shifted)]
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_analyse.py:744: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_analyse.py:744: in <listcomp>
+    counts = [analyse(f).spike_pixels for f in (frame, frame + BASELINE_OFFSET, shifted)]
+              ^^^^^^^^^^
+src/denoisifier/analysis.py:218: in analyse
+    light = _light(work)
+            ^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+frame = array([[-49.8939188 , -50.18171898, -49.87381997, ..., -49.77220062,
+        -50.09841217, -50.07261783],
+       [-49....  [-50.02708743, -50.04780101, -49.80254812, ..., -44.37454829,
+        -48.43558591, -50.03567132]], shape=(256, 256))
+
+    def _light(frame: np.ndarray) -> np.ndarray:
+        """The lit part of the frame; only keeps the dark surround out of the
+        regions (see _LIGHT_PEAK_SIGMA)."""
+        env = gaussian_filter(frame, sigma=_ENVELOPE_SIGMA)
+        if env.max() <= 0:
+>           raise ValueError("envelope max <= 0: frame has no positive light")
+E           ValueError: envelope max <= 0: frame has no positive light
+
+src/denoisifier/analysis.py:255: ValueError
+=========================== short test summary info ============================
+FAILED tests/test_analyse.py::test_spike_count_ignores_the_baseline - ValueEr...
+1 failed, 225 passed, 486 deselected in 290.41s (0:04:50)
+EXIT=1

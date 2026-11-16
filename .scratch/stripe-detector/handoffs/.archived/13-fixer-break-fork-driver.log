@@ -1,0 +1,5 @@
+ 12:03:50 up 2 days, 7 min,  3 users,  load average: 2.93, 8.27, 9.60
+4b6f3de
+break_fork_calibration: warning: load average 2.93 8.27 9.60 1/980 869907 at start; the machine is not idle
+break and Fork calibration: n = 300, thresholds at 0.05: _BreakForkThresholds(breaks=0.1, forks=0.3), S_b max 0.0, S_f max 0.0, S_b > 0 on 0, S_f > 0 on 0, digest e36c419ca916d9647fa584d4ddb554b4670c71e8c5d20ac9189efd9fbc2dae7e, 1.42 s/frame; wrote src/denoisifier/break_fork_free_calibration.json
+EXIT=0

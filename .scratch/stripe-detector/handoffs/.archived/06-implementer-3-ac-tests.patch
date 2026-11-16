@@ -1,0 +1,403 @@
+diff --git a/tests/test_analyse.py b/tests/test_analyse.py
+index 14fc01a..df5d3fd 100644
+--- a/tests/test_analyse.py
++++ b/tests/test_analyse.py
+@@ -12,31 +12,50 @@ from borderline import BORDERLINE, borderline_frame
+ from cases import CASES
+ from denoisifier import Report, analyse, analysis
+ from denoisifier.analysis import THRESHOLD
+-from denoisifier.synthetic import Emccd, StripedRegion, generate
++from denoisifier.synthetic import _SPIKE_BRIGHTNESS, Emccd, StripedRegion, generate
+ from protected import (
++    AC4_MIN_CLIPPED_PIXELS,
++    BASELINE_OFFSET,
+     BBOX_TOL_PERIODS,
+     BORDERLINE_SCORE_WINDOW,
+     CANDIDATE_CAP_HEADROOM,
++    CLIP_DEPTH_EPS,
++    CLIP_LEVEL_FRACTION,
++    CLIP_MIN_SHARE,
++    CLIP_TEST_SEEDS,
+     DARK_FRACTION,
+     DARK_REGRESSION_CASES,
+     DEPTH_REGRESSION_CASES,
+     ENVELOPE_TEST_SEEDS,
+     EXTREMES_TEST_SEEDS,
+     FULL_FRAME_TEST_SEEDS,
++    GATE_STORED_THRESHOLD,
+     INPUT_NOT_MODIFIED_TEST_SEED,
+     MASK_IOU_MIN,
++    MILD_CLIP_LEVEL_FRACTION,
+     MIN_SIZE_ABOVE_FACTOR,
+     MIN_SIZE_BELOW_FACTOR,
+     MIN_SIZE_TEST_SEEDS,
+     MOTTLED_TEST_SEEDS,
+     MULTISCALE_TEST_SEEDS,
++    OVERRIDE_LEVEL_FRACTION,
+     PERIOD_REL_TOL,
++    PHASE_BREAK_TEST_SEED,
+     PROFILE_ONLY_TEST_SEEDS,
+     REGION_FRAME_SHAPE,
+     REGION_TEST_SEEDS,
+     REPORT_TO_JSON_TEST_SEED,
++    SATURATING_CLIP_FACTOR,
+     SCORE_AND_THRESHOLD_TEST_SEED,
+     SINGLE_FRAME_TEST_SEED,
++    SPIKE_BOUNDARY_TEST_SEED,
++    SPIKE_PASS_MARK_PHOTONS,
++    SPIKE_PIXELS_ABS_TOL,
++    SPIKE_PIXELS_REL_TOL,
++    SPIKE_SCORE_MEDIAN_TOL,
++    SPIKE_STRESS_COUNT,
++    SPIKE_TEST_COUNT,
++    SPIKE_TEST_SEEDS,
+     STRONG_TEST_SEEDS,
+     TWO_REGION_PAIRS,
+     TWO_REGION_SHAPE,
+@@ -91,17 +110,13 @@ def assert_every_region_matches(report, truth, depth=True):
+             assert_depth_matches(region.modulation_depth, truth)
+ 
+ 
++FULL_FRAME_CASES = [(5, 0), (8, 6), (12, -8), (18, 3), (4, -4), (3, 10), (20, -10)]
++
++
+ @pytest.mark.parametrize("noise", [0.0, 0.01])
+ @pytest.mark.parametrize(
+     ("seed", "period", "angle_deg"),
+-    [
+-        (seed, *case)
+-        for seed, case in zip(
+-            FULL_FRAME_TEST_SEEDS,
+-            [(5, 0), (8, 6), (12, -8), (18, 3), (4, -4), (3, 10), (20, -10)],
+-            strict=True,
+-        )
+-    ],
++    [(seed, *case) for seed, case in zip(FULL_FRAME_TEST_SEEDS, FULL_FRAME_CASES, strict=True)],
+ )
+ def test_clear_full_frame_stripes_are_found_and_measured(seed, period, angle_deg, noise):
+     s = generate(
+@@ -141,6 +156,8 @@ def test_constant_frame_is_not_striped_and_has_finite_score():
+     assert report.score == 0.0
+     assert report.regions == ()
+     assert report.score < report.threshold
++    assert report.spike_pixels == 0
++    assert report.clipped_pixels == 0
+     json.loads(report.to_json())
+ 
+ 
+@@ -654,6 +671,315 @@ def test_rejects_nan_clip_level():
+         analyse(np.ones((64, 64)), clip_level=np.nan)
+ 
+ 
++# Ticket 06: Spikes and Clipped Pixels (plan .scratch/stripe-detector/handoffs/06-plan.md,
++# section 3). "Typical" frames: TYPICAL, SHAPE, CASES[seed % 10] for Period and Angle.
++# C(f) = f x the same frame's clean maximum. The spike-count seeds pass the out-of-model
++# stimulus check (no hit run taller than _SPIKE_MAX_LENGTH; ticket Comments, step 5a).
++
++SPIKE_FRAMES = {
++    "typical-m0": dict(modulation_depth=0.0, **TYPICAL),
++    "typical-m0.5": dict(modulation_depth=0.5, **TYPICAL),
++    "gaussian-m0.5": dict(modulation_depth=0.5, mottle="scorched", noise=0.01),
++    "pass-mark-m0.5": dict(
++        modulation_depth=0.5, mottle="scorched", noise=Emccd(photons_peak=SPIKE_PASS_MARK_PHOTONS)
++    ),
++}
++
++
++def _case_frame(seed, shape=SHAPE, **kwargs):
++    period, angle_deg = CASES[seed % len(CASES)]
++    return generate(seed=seed, shape=shape, period=period, angle_deg=angle_deg, **kwargs)
++
++
++def _clip_level(fraction, seed, **kwargs):
++    """C(fraction): fraction x the clean maximum of the frame generate(seed, **kwargs) gives."""
++    return fraction * _case_frame(seed, **kwargs).clean.max()
++
++
++def assert_spike_count(reported, true):
++    assert abs(reported - true) <= max(SPIKE_PIXELS_ABS_TOL, SPIKE_PIXELS_REL_TOL * true)
++
++
++def _verdicts_and_region_counts(frame):
++    """(striped, number of regions) at THRESHOLD and at GATE_STORED_THRESHOLD."""
++    reports = (analyse(frame), analyse(frame, threshold=GATE_STORED_THRESHOLD))
++    return [(r.striped, len(r.regions)) for r in reports]
++
++
++@pytest.mark.parametrize("seed", SPIKE_TEST_SEEDS)
++@pytest.mark.parametrize("kind", list(SPIKE_FRAMES))
++def test_report_counts_spike_pixels(kind, seed):
++    """AC 2 is about the count. On striped frames the detection is paired with the same
++    seed without Spikes (verdict and region count at both thresholds), not asserted
++    against the truth: stripes at the 30-photon pass mark are outside ticket 06 (ticket
++    06 Comments, orchestrator ruling on the 5c acceptance)."""
++    s = _case_frame(seed, spikes=SPIKE_TEST_COUNT, **SPIKE_FRAMES[kind])
++    report = analyse(s.frame)
++    assert_spike_count(report.spike_pixels, s.truth.spike_pixels)
++    assert report.clipped_pixels == 0
++    if SPIKE_FRAMES[kind]["modulation_depth"] > 0:
++        free = _case_frame(seed, **SPIKE_FRAMES[kind])
++        assert _verdicts_and_region_counts(s.frame) == _verdicts_and_region_counts(free.frame)
++
++
++@pytest.mark.parametrize("seed", SPIKE_TEST_SEEDS)
++@pytest.mark.parametrize("kind", ["typical-m0", "typical-m0.5"])
++def test_saturated_spikes_are_counted_as_spikes(kind, seed):
++    """A clip at SATURATING_CLIP_FACTOR x the clean maximum saturates the bright Spikes; on a
++    dim column a saturated Spike is still a Spike, and the rest of the plateau is clipped."""
++    kwargs = dict(spikes=SPIKE_TEST_COUNT, **SPIKE_FRAMES[kind])
++    level = _clip_level(SATURATING_CLIP_FACTOR, seed, **kwargs)
++    s = _case_frame(seed, clip_level=level, **kwargs)
++    report = analyse(s.frame)
++    assert_spike_count(report.spike_pixels, s.truth.spike_pixels)
++    assert report.clipped_pixels == s.truth.clipped_pixels
++
++
++def test_spike_count_ignores_the_baseline():
++    """A bias offset or a constant dark subtraction (negative pixels) changes nothing."""
++    s = _case_frame(SPIKE_TEST_SEEDS[0], spikes=SPIKE_TEST_COUNT, **SPIKE_FRAMES["typical-m0.5"])
++    frame = s.frame
++    shifted = frame - s.clean.max() / 2  # the spike-free light peak (B2/B3), not a Spike
++    assert (shifted < 0).any()
++    counts = [analyse(f).spike_pixels for f in (frame, frame + BASELINE_OFFSET, shifted)]
++    assert counts[0] == counts[1] == counts[2]
++    assert_spike_count(counts[0], s.truth.spike_pixels)
++
++
++def test_dimmest_spikes_are_found():
++    """Single pixels at exactly the dimmest generated Spike brightness, spread apart."""
++    s = _case_frame(SPIKE_BOUNDARY_TEST_SEED, **SPIKE_FRAMES["typical-m0.5"])
++    frame = s.frame.copy()
++    rows = np.linspace(20, SHAPE[0] - 21, 5).round().astype(int)
++    cols = np.linspace(20, SHAPE[1] - 21, 6).round().astype(int)
++    hits = [(r, c) for r in rows for c in cols]
++    assert len(hits) == SPIKE_TEST_COUNT
++    for r, c in hits:
++        frame[r, c] += _SPIKE_BRIGHTNESS[0] * s.clean.max()
++    assert_spike_count(analyse(frame).spike_pixels, len(hits))
++
++
++def _phase_break_frame(period):
++    """Stripes whose lower half is shifted sideways by half a Period (noise 0, m 1)."""
++    s = generate(
++        seed=PHASE_BREAK_TEST_SEED, shape=SHAPE, period=period, modulation_depth=1.0, noise=0.0
++    )
++    frame = s.frame.copy()
++    half = SHAPE[0] // 2
++    frame[half:] = np.roll(frame[half:], round(period / 2), axis=1)
++    return frame
++
++
++SPIKE_FREE_FRAMES = [
++    *[
++        pytest.param(
++            lambda seed=seed, m=m: _case_frame(seed, modulation_depth=m, **TYPICAL).frame,
++            id=f"mottled-{seed}-m{m}",
++        )
++        for seed in MOTTLED_TEST_SEEDS
++        for m in (0.0, 0.5)
++    ],
++    *[
++        pytest.param(
++            lambda seed=seed, case=case, noise=noise: (
++                generate(
++                    seed=seed,
++                    shape=SHAPE,
++                    period=case[0],
++                    angle_deg=case[1],
++                    modulation_depth=0.6,
++                    noise=noise,
++                ).frame
++            ),
++            id=f"full-frame-{seed}-P{case[0]}-{case[1]}deg-noise{noise}",
++        )
++        for seed, case in zip(FULL_FRAME_TEST_SEEDS, FULL_FRAME_CASES, strict=True)
++        for noise in (0.0, 0.01)
++    ],
++    *[
++        pytest.param(
++            lambda seed=seed: (
++                generate(seed=seed, shape=SHAPE, modulation_depth=0.0, noise=0.0).frame
++            ),
++            id=f"profile-only-{seed}",
++        )
++        for seed in PROFILE_ONLY_TEST_SEEDS
++    ],
++    *[pytest.param(lambda p=p: _phase_break_frame(p), id=f"phase-break-P{p}") for p in (3, 20)],
++]
++
++
++@pytest.mark.parametrize("make_frame", SPIKE_FREE_FRAMES)
++def test_spike_free_frames_report_no_spikes(make_frame):
++    report = analyse(make_frame())
++    assert report.spike_pixels <= SPIKE_PIXELS_ABS_TOL
++    assert report.clipped_pixels == 0
++
++
++@cache
++def _clipped_full_frame(seed, spikes=0):
++    """Typical m 0.5, clipped at C(CLIP_LEVEL_FRACTION): (synthetic, auto report, inf report)."""
++    kwargs = dict(spikes=spikes, **SPIKE_FRAMES["typical-m0.5"])
++    s = _case_frame(seed, clip_level=_clip_level(CLIP_LEVEL_FRACTION, seed, **kwargs), **kwargs)
++    return s, analyse(s.frame), analyse(s.frame, clip_level=np.inf)
++
++
++@pytest.mark.parametrize("seed", CLIP_TEST_SEEDS)
++def test_report_counts_clipped_pixels(seed):
++    s, report, _ = _clipped_full_frame(seed)
++    assert report.clipped_pixels == s.truth.clipped_pixels
++    assert report.spike_pixels <= SPIKE_PIXELS_ABS_TOL
++
++
++@pytest.mark.parametrize("seed", CLIP_TEST_SEEDS)
++def test_clipped_and_spike_totals_match_at_a_peak_level_clip(seed):
++    """A Spike saturated inside the clip plateau is counted as clipped, so only the total
++    of the two counts is compared with the truth's."""
++    kwargs = dict(spikes=SPIKE_TEST_COUNT, **SPIKE_FRAMES["typical-m0.5"])
++    s = _case_frame(seed, clip_level=_clip_level(CLIP_LEVEL_FRACTION, seed, **kwargs), **kwargs)
++    report = analyse(s.frame)
++    assert_spike_count(
++        report.spike_pixels + report.clipped_pixels,
++        s.truth.spike_pixels + s.truth.clipped_pixels,
++    )
++
++
++@cache
++def _spike_pair_scores(seed, clip):
++    """Paired per seed: the scores of the same stripe-free frame without and with
++    SPIKE_STRESS_COUNT Spikes (with ``clip``, the spiked frame is also clipped at
++    SATURATING_CLIP_FACTOR x the clean maximum, auto detection)."""
++    kwargs = dict(modulation_depth=0.0, **TYPICAL)
++    free = generate(seed=seed, shape=SHAPE, **kwargs)
++    level = SATURATING_CLIP_FACTOR * free.clean.max() if clip else None
++    spiked = generate(seed=seed, shape=SHAPE, spikes=SPIKE_STRESS_COUNT, clip_level=level, **kwargs)
++    return analyse(free.frame).score, analyse(spiked.frame).score
++
++
++SPIKE_PAIRS = [(seed, clip) for clip in (False, True) for seed in SEEDS]
++
++
++@pytest.mark.parametrize("clip", [False, True], ids=["spikes", "spikes-clipped"])
++@pytest.mark.parametrize("seed", SEEDS)
++def test_spikes_do_not_change_the_verdict_on_stripe_free_frames(seed, clip):
++    """The verdict at a threshold T is ``score > T`` (pinned by
++    test_verdict_is_striped_exactly_when_a_region_is_reported), so one analysis gives the
++    verdict at THRESHOLD and at GATE_STORED_THRESHOLD. No per-seed score tolerance: the
++    score jumps when a sub-threshold group appears or vanishes under the hard group gating
++    (ticket 06 Comments, ruling after critic 3; ticket 07)."""
++    free, spiked = _spike_pair_scores(seed, clip)
++    assert (spiked > THRESHOLD) == (free > THRESHOLD)
++    assert (spiked > GATE_STORED_THRESHOLD) == (free > GATE_STORED_THRESHOLD)
++
++
++def test_spikes_leave_the_typical_stripe_free_score_unchanged():
++    """The median paired |score change| over every pair of the verdict test is at most
++    SPIKE_SCORE_MEDIAN_TOL: it ignores the gating jumps while fewer than half the pairs
++    jump, and has teeth (P3 block medians 0.18-1.35; 58.5 with rejection off)."""
++    scores = [_spike_pair_scores(seed, clip) for seed, clip in SPIKE_PAIRS]
++    changes = [abs(spiked - free) for free, spiked in scores]
++    assert np.median(changes) <= SPIKE_SCORE_MEDIAN_TOL
++
++
++@pytest.mark.parametrize("seed", SEEDS)
++def test_clipped_stripe_free_frames_are_not_striped(seed):
++    kwargs = dict(modulation_depth=0.0, **TYPICAL)
++    level = CLIP_LEVEL_FRACTION * generate(seed=seed, shape=SHAPE, **kwargs).clean.max()
++    report = analyse(generate(seed=seed, shape=SHAPE, clip_level=level, **kwargs).frame)
++    assert report.striped is False
++    assert report.regions == ()
++
++
++def _depth_error(report, truth):
++    return max(abs(r.modulation_depth - truth.modulation_depth) for r in report.regions)
++
++
++def test_clipped_stripe_peaks_keep_the_modulation_depth():
++    """Full frames clipped at CLIP_LEVEL_FRACTION of the clean maximum: every region within
++    DEPTH_TOL on every seed. Teeth: against no exclusion (clip_level=inf) the error is never
++    worse by more than CLIP_DEPTH_EPS and is lower on average."""
++    errors, errors_inf = [], []
++    for seed in CLIP_TEST_SEEDS:
++        s, report, no_exclusion = _clipped_full_frame(seed)
++        assert s.truth.clipped_pixels >= CLIP_MIN_SHARE * s.frame.size
++        assert_every_region_matches(report, s.truth)
++        assert no_exclusion.regions
++        err, err_inf = _depth_error(report, s.truth), _depth_error(no_exclusion, s.truth)
++        assert err <= err_inf + CLIP_DEPTH_EPS
++        errors.append(err)
++        errors_inf.append(err_inf)
++    assert np.mean(errors) < np.mean(errors_inf)
++
++
++def _clipped_partial_frame(seed, fraction):
++    period, angle_deg = CASES[seed % len(CASES)]
++    kwargs = dict(
++        seed=seed,
++        shape=REGION_FRAME_SHAPE,
++        mottle="scorched",
++        regions=[single_region(period, angle_deg)],
++        noise=Emccd(),
++    )
++    level = fraction * generate(**kwargs).clean.max()
++    s = generate(**kwargs, clip_level=level)
++    truth = s.truth.regions[0]
++    assert (s.truth.clipped_mask & truth_pixels(truth)).sum() >= AC4_MIN_CLIPPED_PIXELS
++    return s, truth
++
++
++@pytest.mark.parametrize("seed", CLIP_TEST_SEEDS[:5])
++def test_clipping_does_not_harm_a_partial_region(seed):
++    """A mild clip (MILD_CLIP_LEVEL_FRACTION) on a partial region: a no-harm guard. It has no
++    teeth against flattening (without the exclusion the depth also stays within tolerance)."""
++    s, truth = _clipped_partial_frame(seed, MILD_CLIP_LEVEL_FRACTION)
++    report = analyse(s.frame)
++    assert len(report.regions) == 1
++    region = report.regions[0]
++    assert_matches_truth(region.period_px, region.angle_deg, truth)
++    assert_depth_matches(region.modulation_depth, truth)
++
++
++@pytest.mark.parametrize("seed", CLIP_TEST_SEEDS[:5])
++def test_heavily_clipped_partial_region_is_no_worse_than_no_exclusion(seed):
++    """At CLIP_LEVEL_FRACTION about a fifth or more of a partial region is clipped; the
++    depth then drifts toward the flattened value, and AC 4 is met only in part there (ticket
++    06 Comments): the error is only asserted not worse than with no exclusion."""
++    s, truth = _clipped_partial_frame(seed, CLIP_LEVEL_FRACTION)
++    report = analyse(s.frame)
++    no_exclusion = analyse(s.frame, clip_level=np.inf)
++    ((region, _),) = match(report.regions, report.labels, [truth])
++    ((region_inf, _),) = match(no_exclusion.regions, no_exclusion.labels, [truth])
++    err = abs(region.modulation_depth - truth.modulation_depth)
++    err_inf = abs(region_inf.modulation_depth - truth.modulation_depth)
++    assert err <= err_inf + CLIP_DEPTH_EPS
++
++
++@pytest.mark.parametrize("override", ["level", "below", "inf", "nan"])
++def test_clip_level_override(override):
++    seed = CLIP_TEST_SEEDS[0]
++    s, report, _ = _clipped_full_frame(seed)
++    level = _clip_level(CLIP_LEVEL_FRACTION, seed, **SPIKE_FRAMES["typical-m0.5"])
++    frame = s.frame
++    if override == "level":
++        assert analyse(frame, clip_level=level) == report
++    elif override == "below":
++        below = OVERRIDE_LEVEL_FRACTION * level
++        assert analyse(frame, clip_level=below).clipped_pixels == (frame >= below).sum()
++    elif override == "inf":
++        assert analyse(frame, clip_level=np.inf).clipped_pixels == 0
++    else:
++        with pytest.raises(ValueError, match=r"^clip_level must be a number or inf, got nan"):
++            analyse(frame, clip_level=np.nan)
++
++
++def test_clipping_is_detected_after_a_constant_dark_subtraction():
++    s, report, _ = _clipped_full_frame(CLIP_TEST_SEEDS[0])
++    shifted = s.frame - s.frame.max() / 2
++    assert (shifted < 0).any()
++    assert report.clipped_pixels > 0
++    assert analyse(shifted).clipped_pixels == report.clipped_pixels
++
++
+ REGION_CALIBRATION = Path(__file__).parents[1] / ".scratch/stripe-detector/region-calibration.json"
+ 
+ 

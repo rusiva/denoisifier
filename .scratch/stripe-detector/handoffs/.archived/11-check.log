@@ -1,0 +1,63 @@
+uv lock --check
+Resolved 25 packages in 1ms
+uv run --locked ruff format --check
+61 files already formatted
+uv run --locked ruff check
+All checks passed!
+uv run --locked mypy
+Success: no issues found in 13 source files
+uv run --locked pytest
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 1614 items / 13 deselected / 1601 selected
+
+tests/test_analyse.py .................................................. [  3%]
+........................................................................ [  7%]
+........................................................................ [ 12%]
+........................................................................ [ 16%]
+........................................................................ [ 21%]
+........................................................................ [ 25%]
+........................................................................ [ 30%]
+........................................................................ [ 34%]
+........................................................................ [ 39%]
+........................................................................ [ 43%]
+........................................................................ [ 48%]
+........................................................................ [ 52%]
+........................................................................ [ 57%]
+........................................................................ [ 61%]
+................................................                         [ 64%]
+tests/test_bench.py .....                                                [ 64%]
+tests/test_break_fork_calibration.py ................................    [ 66%]
+tests/test_break_helpers.py .............                                [ 67%]
+tests/test_calibration.py ...........................................    [ 70%]
+tests/test_cli.py ..................................................     [ 73%]
+tests/test_data_quality.py ................                              [ 74%]
+tests/test_feasibility_gate.py ..............                            [ 75%]
+tests/test_fork_helpers.py .......                                       [ 75%]
+tests/test_glossary_terms.py ......                                      [ 76%]
+tests/test_inner_loop.py .......................                         [ 77%]
+tests/test_local_phase.py .............................................. [ 80%]
+.......................                                                  [ 81%]
+tests/test_phase_break_pass.py .....                                     [ 82%]
+tests/test_protected_numbers.py ..........                               [ 82%]
+tests/test_read_frame.py ............................................... [ 85%]
+.....                                                                    [ 86%]
+tests/test_require_background_gate.py ...........................        [ 87%]
+tests/test_seed_guard.py ..............                                  [ 88%]
+tests/test_slow_regression_plan.py ........                              [ 89%]
+tests/test_slow_stamp.py ..................................              [ 91%]
+tests/test_synthetic.py ................................................ [ 94%]
+........................................................................ [ 98%]
+.......                                                                  [ 99%]
+tests/test_threshold_calibration.py ............                         [100%]
+
+=============== 1601 passed, 13 deselected in 1964.25s (0:32:44) ===============
+uv run --locked python tests/slow_stamp.py check
+EXIT=0

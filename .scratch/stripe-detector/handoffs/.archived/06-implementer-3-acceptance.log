@@ -1,0 +1,75 @@
+......................................F......................F.......... [ 31%]
+........................................................................ [ 63%]
+........................................................................ [ 95%]
+..........                                                               [100%]
+=================================== FAILURES ===================================
+______________ test_report_counts_spike_pixels[pass-mark-m0.5-90] ______________
+
+kind = 'pass-mark-m0.5', seed = 90
+
+    @pytest.mark.parametrize("seed", SPIKE_TEST_SEEDS)
+    @pytest.mark.parametrize("kind", list(SPIKE_FRAMES))
+    def test_report_counts_spike_pixels(kind, seed):
+        s = _case_frame(seed, spikes=SPIKE_TEST_COUNT, **SPIKE_FRAMES[kind])
+        report = analyse(s.frame)
+        assert_spike_count(report.spike_pixels, s.truth.spike_pixels)
+        assert report.clipped_pixels == 0
+        if SPIKE_FRAMES[kind]["modulation_depth"] > 0:
+>           assert_every_region_matches(report, s.truth)
+
+tests/test_analyse.py:711: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+report = Report(striped=False, score=149.70165223138102, threshold=154.0, regions=(), spike_pixels=62, clipped_pixels=0, transposed=False, reader_notes=None)
+truth = GroundTruth(regions=(RegionTruth(period=3.0, angle_deg=10.0, modulation_depth=0.5, mask=array([[1., 1., 1., ..., 1., 1...e, False, False, ..., False, False, False],
+       [False, False, False, ..., False, False, False]], shape=(256, 256)))
+depth = True
+
+    def assert_every_region_matches(report, truth, depth=True):
+        """Full-frame stripes: Striped, and every reported region (fragments are
+        merged, ruling O3) has the true Period, Angle and depth."""
+>       assert report.striped is True
+E       assert False is True
+E        +  where False = Report(striped=False, score=149.70165223138102, threshold=154.0, regions=(), spike_pixels=62, clipped_pixels=0, transposed=False, reader_notes=None).striped
+
+tests/test_analyse.py:105: AssertionError
+____________________ test_spike_count_ignores_the_baseline _____________________
+
+    def test_spike_count_ignores_the_baseline():
+        """A bias offset or a constant dark subtraction (negative pixels) changes nothing."""
+        s = _case_frame(SPIKE_TEST_SEEDS[0], spikes=SPIKE_TEST_COUNT, **SPIKE_FRAMES["typical-m0.5"])
+        frame = s.frame
+        shifted = frame - frame.max() / 2
+        assert (shifted < 0).any()
+>       counts = [analyse(f).spike_pixels for f in (frame, frame + BASELINE_OFFSET, shifted)]
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_analyse.py:733: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_analyse.py:733: in <listcomp>
+    counts = [analyse(f).spike_pixels for f in (frame, frame + BASELINE_OFFSET, shifted)]
+              ^^^^^^^^^^
+src/denoisifier/analysis.py:218: in analyse
+    light = _light(work)
+            ^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+frame = array([[-496.68568399, -496.97348417, -496.66558516, ..., -496.5639658 ,
+        -496.89017735, -496.86438301],
+      ...6.81885261, -496.8395662 , -496.5943133 , ..., -491.16631347,
+        -495.2273511 , -496.8274365 ]], shape=(256, 256))
+
+    def _light(frame: np.ndarray) -> np.ndarray:
+        """The lit part of the frame; only keeps the dark surround out of the
+        regions (see _LIGHT_PEAK_SIGMA)."""
+        env = gaussian_filter(frame, sigma=_ENVELOPE_SIGMA)
+        if env.max() <= 0:
+>           raise ValueError("envelope max <= 0: frame has no positive light")
+E           ValueError: envelope max <= 0: frame has no positive light
+
+src/denoisifier/analysis.py:255: ValueError
+=========================== short test summary info ============================
+FAILED tests/test_analyse.py::test_report_counts_spike_pixels[pass-mark-m0.5-90]
+FAILED tests/test_analyse.py::test_spike_count_ignores_the_baseline - ValueEr...
+2 failed, 224 passed, 486 deselected in 206.31s (0:03:26)
+EXIT=1

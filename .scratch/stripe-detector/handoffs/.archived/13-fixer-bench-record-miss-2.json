@@ -1,0 +1,58 @@
+{
+  "commit": "0750b7c",
+  "cpu": "AMD Ryzen AI 7 PRO 360 w/ Radeon 880M",
+  "logical_cpus": 16,
+  "python": "3.11.15",
+  "numpy": "2.4.6",
+  "scipy": "1.17.1",
+  "threads": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "DENOISIFIER_THREADS": null,
+    "bank_threads": 4
+  },
+  "loadavg": {
+    "start": "0.29 0.30 0.91 3/1190 892083",
+    "end": "1.05 0.52 0.95 1/1169 892599"
+  },
+  "shape": [
+    400,
+    1600
+  ],
+  "seed": 40000,
+  "case": [
+    8,
+    0
+  ],
+  "seconds": [
+    2.707463332975749,
+    2.3522154520032927,
+    2.38858710299246,
+    2.6515253790130373,
+    2.5855807540065143
+  ],
+  "median_s": 2.5855807540065143,
+  "limit_s": 10.0,
+  "target_s": 5.0,
+  "meets_limit": true,
+  "meets_target": true,
+  "speed_seconds": [
+    4.439122820011107,
+    3.970020150009077,
+    4.1060025629994925,
+    3.999349755991716,
+    4.03064478901797
+  ],
+  "speed_median_s": 4.03064478901797,
+  "cold_cli_seconds": [
+    5.3717624789860565,
+    5.221602064004401,
+    4.909665857994696,
+    5.242176180996466,
+    5.013323802006198
+  ],
+  "cold_cli_s": 5.221602064004401,
+  "speed_meets_target": true,
+  "cold_cli_meets_target": false
+}
