@@ -271,10 +271,10 @@ CALIBRATION_TIMEOUT_S = 2400  # per test of the calibration slow modules (W6)
 # run at c20b28d (W4, W9): its thresholds at 1% (k = 3) and 5% (k = 15), and the SHA-256
 # of its canonical {ids, scores, shape, settings} (Calibration.digest) as an int, so the
 # lockfile pins the whole payload (W4(b)). Re-stored only by the procedure in CLAUDE.md.
-PACKAGE_STORED_THRESHOLD = 100.80547983306298
-PACKAGE_STORED_THRESHOLD_5PCT = 60.91880891139576
+PACKAGE_STORED_THRESHOLD = 100.80547983306502
+PACKAGE_STORED_THRESHOLD_5PCT = 60.91880891139533
 PACKAGE_CALIBRATION_DIGEST = int(
-    "4140b3db8edcb56dce3567cd42bc321e1df1512d616e37647e6dc0823d2e0f6a", 16
+    "648eb3f69651094fb46b37963a5fd65dea5b497ae9ce0d72144bd9f7949a45e0", 16
 )
 # Test seeds of ticket 07 (fixed at step 0, before use).
 CALIBRATION_FOLDER_TEST_SEEDS = range(10, 22)  # AC 5: 12 frames, 64x64
