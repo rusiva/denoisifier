@@ -55,3 +55,7 @@
     - AC 7 (`tests/test_slow_calibration.py`) is red;
     - `make check-held-out` is red;
     - `make bench` misses `TARGET_TIMING_S`.
+- 2026-11-16, orchestrator ruling on the tracked bench record's miss. At `c723810`, `tests/bench.py --out .scratch/stripe-detector/bench.json` gave a cold CLI median of 5.28 s, above the 5.0 s target; warm was 4.49 s. The run is kept as `handoffs/13-fixer-bench-record-miss.json`.
+  - **Why the run doesn't count:** `bench.py` flagged its own start as not idle (load 2.25; CLAUDE.md requires heavy gates to start on an idle machine), and it overlapped an orchestrator commit (`7a2c7bd`). `make bench` on an idle machine two minutes earlier, on the same code, gave a cold median of 4.59 s and a warm median of 4.23 s.
+  - **Ruling:** one rerun of the record, with load under 1.0 at start and nothing else running (the orchestrator commits nothing meanwhile). Its result stands either way. If it misses again, stop and report to the owner; there is no third run.
+  - **Note on margin:** the cold CLI sits about 8 % under the target, and the dropped slices 6 and 7 cost the plan's projected margin. Follow-up tickets 19, 20 and 22 are the way to widen it.
