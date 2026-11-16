@@ -24,7 +24,7 @@
 - Fable approvals reviewer `a67c705d20141a52c`: reviews handoff Next-steps item 2 (_GAUSS_TRUNC_SIGMAS=8.0, FULL_GRID_REL_TOL=1e-12 → protected.py, speed-test protected numbers, STAMPED_FILES += tests/speed.py, tests/test_speed.py). Status: done — all 4 approved with conditions; recorded in ticket Comments; sent to implementer-2.
 - Fable critic #2 `ae189c257233c8c82` (fable, fresh): verdicts on re-plan O1-O3 + top risks. Status: done.
 
-- implementer-5 `a8849d518fe70b8e3` (opus): continue from 13-implementer-4.md; land slice 4 with _MAX_BANK_THREADS=4 (rebase t13-s4 on 8e15c03, make test-fast, ff main), then plan step 9 `pytest -m wide`; no heavy gates; handoff 13-implementer-5.md. Status: running.
+- implementer-5 `a8849d518fe70b8e3` (opus): continue from 13-implementer-4.md; land slice 4 with _MAX_BANK_THREADS=4 (rebase t13-s4 on 8e15c03, make test-fast, ff main), then plan step 9 `pytest -m wide`; no heavy gates; handoff 13-implementer-5.md. Status: done. Slice 4 = 231aabb (make test-fast 991 passed; pytest -m wide 639 passed), handoff 1a3f864. Implementation complete.
 
 ## Decisions
 
@@ -76,3 +76,25 @@ Next (on resume): re-arm self watcher; check implementer-4 via `fill-watch.py --
 - Spawned implementer-5 (see Workers).
 
 Next: on implementer-5's report → code-review from BASE aae4084 → sort fix/owner/pass → fixer (fixes, then make measure → both re-stores → make check-slow → make check-held-out → make bench + tracked bench.json → make check) → close and clean up (handoff cleanup lists; keep ~/.cache/denoisifier/p13-c1 and .scratch/stripe-detector/p13-c1-ref for ticket 22).
+
+- implementer-5 done (231aabb slice 4, 1a3f864 handoff). Starting code-review from BASE aae4084.
+- code-review running: Standards a85cc1da5b5371fd5, Spec a61ec8caeed5afd7c (opus, read-only).
+- Standards review done: no hard violations; judgement calls S1 speed-frame locals (_DEPTH, _FORK_DIRECTION, _SLOW_REPEATS) not in protected.py; S2 sigma formula x4 + response/local-mean pair; S3 gaussian(period=None) switch; S4 truncate test hook; S5 threads knob two mechanisms + delegators; S6 "DENOISIFIER_THREADS" literal x4 in tests; S7 terse names in _matches; S8 stage_timings uses feasibility._frame. Waiting for Spec.
+- Spec review done: P1 AC 3 driver partial (no BASE column, no threads-1 column, no adopted/dropped list); P2 SPEED_TEST_SEED also used by the stage timer's P6 frame, against approval 3's condition "used nowhere else" (I OK'd this earlier but never recorded it in Comments); P3 "wrap" wording/ids still in tests/test_spectrum_filters.py. Seams all checked correct; nothing blocks AC 1/AC 2.
+
+### Code review sort
+
+Fix:
+- F1 (P1): tests/stage_timings.py gives plan §4's table: BASE (P1's table, quoted), final HEAD at threads 1 and at the default, plus the adopted and dropped slices.
+- F2 (P2): own seed for the P6 typical frame, `SPEED_TYPICAL_TEST_SEED` (free in TEST_SEED_BLOCK). Approved here (adds a protected number, makes nothing weaker).
+- F3 (P3): "wrap" → Nyquist-clipped wording and ids in test_spectrum_filters.py.
+- F4 (S1): speed-frame depth, Fork direction and _SLOW_REPEATS into protected.py. Approved (they only add numbers).
+- F5 (S2): one sigma helper for the 3 src sites, and the test imports it rather than copying it; exact harness at threads 1 vs HEAD must show 0 differences.
+- F6 (S6): tests import _local_stripes._THREADS_ENV instead of the literal.
+- F7 (S7): clearer names in _matches; make the two-phase use of _BankBuffers.energy obvious.
+Pass:
+- S3 (gaussian(period=None) switch): the seam was just proven bit-identical and documents the None case; splitting it re-opens that proof for a cosmetic gain.
+- S4 (truncate=False): it is the reference oracle that approval 2's condition requires.
+- S5 (private twins, threads=1 vs env var): by design (rulings B1, N9). Pools that call public functions can only be reached through the env var.
+- S8 (stage_timings uses feasibility._frame): a test-side measurement script.
+Owner: none.
