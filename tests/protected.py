@@ -462,6 +462,11 @@ USED_SEEDS = [
     BREAK_FORK_PROTOTYPE_SEEDS,
     BREAK_FORK_FREE_HELD_OUT_2_SEEDS,
     BREAK_FORK_DETECTION_HELD_OUT_2_SEEDS,
+    # Ticket 13: the equality harness (prototypes/p13/identity.py), the null screen
+    # (prototypes/p13/null_screen.py) and the finder's fresh frames (slice 7, C1).
+    range(601_000, 601_100),
+    range(602_000, 602_160),
+    range(603_000, 603_100),
 ]
 
 # Calibration seed ranges, by name. tests/seed_guard.py refuses any of these
