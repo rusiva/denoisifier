@@ -1,7 +1,7 @@
 # Ticket 13 fixer handoff
 
 - Continues `13-implementer-5.md`; fix list F1-F7 from `13-orchestrator.md` ("Code review sort"). Branch `main`.
-- **Status: STOPPED at end-sequence step 4, by the "make bench misses the target" stop rule; the ruled idle rerun also missed (cold CLI 5.22 s).** The tracked bench record run (`tests/bench.py --out .scratch/stripe-detector/bench.json`, the same rule as `make bench`) measured a cold CLI median of 5.28 s, above `TARGET_TIMING_S` = 5.0, EXIT=1. Nothing was rerun to get a green, and nothing was loosened. `make check` and the AC 3 stage-timing driver have not been run.
+- **Status: CLOSED per the owner ruling (`d4ea2f2`): cold-CLI bench miss accepted; see "Close". The history below records the stop.** The tracked bench record run (`tests/bench.py --out .scratch/stripe-detector/bench.json`, the same rule as `make bench`) measured a cold CLI median of 5.28 s, above `TARGET_TIMING_S` = 5.0, EXIT=1. Nothing was rerun to get a green, and nothing was loosened. `make check` and the AC 3 stage-timing driver have not been run.
 - Logs: `.scratch/stripe-detector/handoffs/13-fixer-*.log` (untracked). Every gate ran alone, in the background, and each log starts with `uptime` and `git rev-parse --short HEAD`. During all gates, the only tracked change outside `src`/`tests` was the orchestrator's own uncommitted edit to `13-orchestrator.md`.
 
 ## Commits
@@ -53,6 +53,13 @@
   - Warm median **4.03 s** (4.44, 3.97, 4.11, 4.0, 4.03). Cold CLI 5.37, 5.22, 4.91, 5.24, 5.01. The timing frame took 2.59 s.
   - The written file is kept at `handoffs/13-fixer-bench-record-miss-2.json` (untracked), and the tracked `bench.json` is restored to HEAD. Per the ruling: stop, no third run.
   - Log: `13-fixer-bench-record-2.log`. My first rerun attempt never started: its idle-wait loop matched its own command line, and the orchestrator killed it.
+
+## Close (owner ruling at `d4ea2f2`: accept the cold-CLI miss, no target changed; ticket 23)
+
+- Tracked `bench.json` = `handoffs/13-fixer-bench-record-miss-2.json` exactly as measured (warm 4.03 s, cold CLI 5.22 s, EXIT=1 at `0750b7c`), no rerun: commit `c8095cb`. `make bench` stays red on the cold median by design (ticket 23).
+- **`make check`**, `c8095cb` (src/tests clean), load 1.89 at start: EXIT=0, `1633 passed, 14 deselected in 1321.61s (0:22:01)`, slow-tier stamp check passed (`13-fixer-check.log`).
+- **Stage-timing driver** `uv run --locked python tests/stage_timings.py`, `c8095cb`, load 1.87 at start (trailing `make check`; nothing else running): EXIT=0 → `.scratch/stripe-detector/stage-timings.md`. Speed frame warm pipeline 6.39 s at threads 1, 4.73 s at 4 (BASE 8.68); bank 3.25 / 1.63 s (BASE 5.63); break pass 1.80 s (BASE 1.61); cold CLI 4.52 s (BASE 9.46); import 0.30 s wall.
+- Spec pointer under user story 39 (`spec.md`).
 
 ## Finding (for the orchestrator)
 

@@ -75,6 +75,7 @@ It only measures: it never changes or "cleans" the frame. A **synthetic generato
 37. As an experimenter, I want the CLI to write the striped-region mask as a CSV laid out like the input, so that it lines up pixel for pixel with my frame.
 38. As an experimenter, I want an optional diagnostic PNG showing the frame with the mask, breaks and forks drawn over it, so that I can check the result by eye.
 39. As an experimenter, I want one frame analysed in under about 5 seconds on a laptop CPU, so that I can analyse frames while the experiment is running.
+    - Per-stage timings (ticket 13, AC 3): [stage-timings.md](stage-timings.md).
 40. As a scripting user, I want to call the analysis as a library function on an in-memory array, so that I can build it into my own pipelines without going through files.
 41. As a scripting user, I want the library to return a structured report object rather than text, so that I can use the results directly in code.
 
