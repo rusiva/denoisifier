@@ -45,6 +45,14 @@ _ALONG = 1.5
 # so reflect padding is always valid.
 _PAD = 32
 
+# Stripe Angles whose energies lie within this fraction of the largest count as tied, and the
+# first of them (in _STRIPE_ANGLES_DEG order) wins (ticket 13 slice 4b; orchestrator approval
+# 2026-11-16). Mirror-symmetric places, such as the reflect-padded edge columns, tie +theta and
+# -theta up to rounding; without it the Angle and response there follow the rounding. 1e-9 is
+# the largest decade that changed no Angle off the mirror columns on ticket 13's harness frames
+# (prototypes/p13/tie_bound.py).
+_BANK_TIE_REL = 1e-9
+
 # Ratio floor, in Modulation Depth units: the reference energy is never taken
 # below that of a depth-A0 modulation, so noise-free frames (both energies
 # tiny) cannot score on deterministic leakage. With A0 = 3e-3, ticket 01's
@@ -231,8 +239,8 @@ def _match_period(
         stripe[i] = spec.gabor(p, a)
     np.abs(stripe, out=energy)
     energy **= 2
-    angle_index = np.argmax(energy, axis=0)
     e_stripe = energy.max(axis=0)
+    angle_index = np.argmax(energy >= e_stripe * (1.0 - _BANK_TIE_REL), axis=0)
     for i, a in enumerate(_STRIPE_ANGLES_DEG):
         np.abs(spec.gabor(p, a + 90.0), out=energy[i])
     energy **= 2

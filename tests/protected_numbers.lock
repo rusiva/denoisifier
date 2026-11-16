@@ -16,6 +16,7 @@ denoisifier._local_stripes :: _STRIPE_ANGLES_DEG :: (-10.0, -5.0, 0.0, 5.0, 10.0
 denoisifier._local_stripes :: _ACROSS :: 1.0
 denoisifier._local_stripes :: _ALONG :: 1.5
 denoisifier._local_stripes :: _PAD :: 32
+denoisifier._local_stripes :: _BANK_TIE_REL :: 1e-09
 denoisifier._local_stripes :: _A0 :: 0.003
 denoisifier._local_stripes :: MIN_FRAME_PERIOD_PX :: 2.0
 

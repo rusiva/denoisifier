@@ -1,8 +1,9 @@
 """PROTOTYPE (ticket 13): the equality harness's ``tol`` mode (plan section 2).
 
 One pass/fail row per pre-stated criterion of a Group II slice, with the max differences.
-Profiles: ``slice5`` (FFT engine and support box), ``slice6`` (single-precision bank;
-O3 ruling), ``slice7`` (the finder: exact outside the breaks).
+Profiles: ``slice4b`` (deterministic Angle tie-break), ``slice5`` (FFT engine and support
+box), ``slice6`` (single-precision bank; O3 ruling), ``slice7``
+(the finder: exact outside the breaks).
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from typing import Any
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
+TIE_REL = 1e-9  # _local_stripes._BANK_TIE_REL (slice 4b), fixed here so any tree's pickles compare
 
 
 class _Table:
@@ -58,6 +60,7 @@ def compare(ref: dict[str, Any], new: dict[str, Any], profile: str) -> bool:
     # identically" covers their side of those thresholds; the null screen checks S_b and S_f.
 
     t = _Table()
+    n_changed = n_tied = n_exempt = 0
     for name, a in ref.items():
         b = new[name]
         ra, rb = a["report"], b["report"]
@@ -76,9 +79,34 @@ def compare(ref: dict[str, Any], new: dict[str, Any], profile: str) -> bool:
             and ra["warnings"] == rb["warnings"]
         )
         t.flag("found identically (counts, labels, warnings)", same_found, name)
+        if profile == "slice4b":
+            # Slice 4b changes only which tied Angle wins: ratio and Period stay bit-identical,
+            # and the Angle may change only where the reference's top-two gap is within eps.
+            t.flag("ratio map array_equal", np.array_equal(la["ratio"], lb["ratio"]), name)
+            t.flag("Period map array_equal", np.array_equal(la["period"], lb["period"]), name)
+            changed = la["angle_deg"] != lb["angle_deg"]
+            tied = _gap_mask(a, changed.shape, 0.0, TIE_REL)
+            t.flag("Angle changes only at ref eps-tied px", not np.any(changed & ~tied), name)
+            n_changed += int(changed.sum())
+            n_tied += int(tied.sum())
+            t.check("score rel diff", _rel(ra["score"], rb["score"]), 1e-9, name)
+            if same_found:
+                t.check("report fields rel diff", _fields_rel(ra, rb), 1e-9, name)
+            continue
         if profile == "slice5":
             t.check("ratio rel diff on light px", float(ratio_rel.max(initial=0)), 1e-11, name)
-            t.flag("Period and Angle maps array_equal", maps_equal, name)
+            if "tie_gap" in a:
+                # Ruling 2026-11-16: exempt only px whose ref (4b) top-two gap lies within
+                # eps(1 +- 1e-3); there the ratio row above still applies.
+                exempt = _gap_mask(a, light.shape, TIE_REL * (1 - 1e-3), TIE_REL * (1 + 1e-3))
+                n_exempt += int(exempt.sum())
+                keep = ~exempt
+                maps_equal = np.array_equal(la["period"][keep], lb["period"][keep]) and (
+                    np.array_equal(la["angle_deg"][keep], lb["angle_deg"][keep])
+                )
+                t.flag("Period and Angle maps array_equal (outside the eps band)", maps_equal, name)
+            else:
+                t.flag("Period and Angle maps array_equal", maps_equal, name)
             t.check("score rel diff", _rel(ra["score"], rb["score"]), 1e-9, name)
             if same_found:
                 t.check("report fields rel diff", _fields_rel(ra, rb), 1e-9, name)
@@ -119,7 +147,20 @@ def compare(ref: dict[str, Any], new: dict[str, Any], profile: str) -> bool:
             )
             t.flag("Fork direction equal", fa["direction"] == fb["direction"], name)
     print(f"tol {profile}: {len(ref)} frames")
+    if profile == "slice4b":
+        print(f"Angle px changed: {n_changed}; ref eps-tied px: {n_tied}")
+    if profile == "slice5":
+        print(f"exempt px (ref gap in eps(1 +- 1e-3)): {n_exempt}")
     return t.print()
+
+
+def _gap_mask(rec: dict[str, Any], shape: tuple[int, ...], lo: float, hi: float) -> Any:
+    """Pixels whose recorded top-two stripe energy gap lies in [lo, hi]."""
+    (rows, cols), gap = rec["tie_gap"]
+    mask = np.zeros(shape, bool)
+    sel = (gap >= lo) & (gap <= hi)
+    mask[rows[sel], cols[sel]] = True
+    return mask
 
 
 def _fields_rel(ra: dict[str, Any], rb: dict[str, Any]) -> float:

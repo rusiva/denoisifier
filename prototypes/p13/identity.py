@@ -134,6 +134,7 @@ def write_frames(directory: Path) -> None:
 
 
 _THREADS: int | None = None
+TIE_GAP_KEPT = 1e-6
 
 
 def _one(item: tuple[str, Any, tuple[int, int]]) -> tuple[str, dict[str, Any]]:
@@ -154,6 +155,28 @@ def _one(item: tuple[str, Any, tuple[int, int]]) -> tuple[str, dict[str, Any]]:
         return local
 
     analysis.estimate_local_stripes = capture
+    from denoisifier import _local_stripes
+
+    original_match = _local_stripes._match_period
+    tie: dict[str, Any] = {}
+
+    def match(spec: Any, p: float, light: Any, buffers: Any) -> Any:
+        # The top-two stripe energy gap (e1 - e2) / e1 at the winning Period, recomputed from the
+        # stripe responses left in the buffers (np.abs then square, as the bank does).
+        m = original_match(spec, p, light, buffers)
+        e = np.abs(buffers.stripe) ** 2
+        top2 = np.sort(e, axis=0)[-2:]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            gap = (top2[1] - top2[0]) / top2[1]
+        if "best" not in tie:
+            tie["best"] = np.zeros(light.shape)
+            tie["gap"] = np.full(light.shape, np.inf)
+        better = m.ratio > tie["best"]
+        tie["best"][better] = m.ratio[better]
+        tie["gap"][better] = gap[better]
+        return m
+
+    _local_stripes._match_period = match
     try:
         bins = BinFactors(horizontal=h, vertical=v)
         if _THREADS is not None:
@@ -163,10 +186,14 @@ def _one(item: tuple[str, Any, tuple[int, int]]) -> tuple[str, dict[str, Any]]:
             report = analysis.analyse(frame, bin_factors=bins)
     finally:
         analysis.estimate_local_stripes = original
+        _local_stripes._match_period = original_match
     (local,) = captured
+    near = np.nonzero(tie["gap"] < TIE_GAP_KEPT)
     rec = {
         "report": dataclasses.asdict(report),
         "local": {k: np.asarray(getattr(local, k)) for k in dataclasses.asdict(local)},
+        # Pixels whose top-two stripe energy gap at the winning Period is below TIE_GAP_KEPT.
+        "tie_gap": (near, tie["gap"][near]),
     }
     return name, rec
 

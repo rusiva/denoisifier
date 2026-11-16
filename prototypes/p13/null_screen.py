@@ -12,7 +12,8 @@ Group II commit and compared with G1's outputs (computed once and cached):
     uv run --locked python prototypes/p13/null_screen.py run <src> <dir> <out.pkl> [workers]
     uv run --locked python prototypes/p13/null_screen.py compare <g1.pkl> <new.pkl> <slice>
 
-``slice`` sets the stripe-free score bound: slice5 1e-9, slice6 1e-5, slice7 0 (relative).
+``slice`` sets the stripe-free score bound (relative): slice4b and slice5 1e-9, slice6 1e-5,
+slice7 0.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FREE = range(602_000, 602_100)
 STRIPED = range(602_100, 602_130)
 TAGGED = range(602_130, 602_160)
-SCORE_BOUND = {"slice5": 1e-9, "slice6": 1e-5, "slice7": 0.0}
+SCORE_BOUND = {"slice4b": 1e-9, "slice5": 1e-9, "slice6": 1e-5, "slice7": 0.0}
 
 
 def _frames() -> list[tuple[str, str, Any]]:
