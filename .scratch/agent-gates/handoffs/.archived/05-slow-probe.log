@@ -1,0 +1,19 @@
+loadavg start: 19.44 15.80 16.16 2/986 918173
+1794394763
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 294 items / 293 deselected / 1 selected
+
+tests/test_slow_regression.py .                                          [100%]
+
+================ 1 passed, 293 deselected in 334.57s (0:05:34) =================
+EXIT=0
+1794395099
+loadavg end: 13.74 13.79 15.00 2/1073 929606

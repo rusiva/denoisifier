@@ -1,0 +1,12 @@
+workers before: 12
+sent TERM to runner 969094
+t+1s workers=12
+t+2s workers=12
+t+3s workers=12
+t+4s workers=12
+t+5s workers=12
+t+6s workers=12
+t+7s workers=12
+t+8s workers=12
+t+9s workers=12
+t+10s workers=0

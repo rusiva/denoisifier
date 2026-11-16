@@ -1,0 +1,21 @@
+uv lock --check
+Resolved 25 packages in 1ms
+uv run --locked python tests/slow_stamp.py run -- uv run --locked pytest -m slow
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 295 items / 291 deselected / 4 selected
+
+tests/test_slow_regression.py ....                                       [100%]
+
+================ 4 passed, 291 deselected in 305.46s (0:05:05) =================
+make check-slow: green; wrote .gate/check-slow-stamp.json
+EXIT=0
+bd30751
+14.33 9.81 7.40 4/1092 996654

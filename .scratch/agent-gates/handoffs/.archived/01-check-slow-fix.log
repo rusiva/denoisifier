@@ -1,0 +1,19 @@
+uv lock --check
+Resolved 12 packages in 1ms
+uv run --locked pytest -m slow
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 212 items / 208 deselected / 4 selected
+
+tests/test_feasibility_gate.py ....                                      [100%]
+
+================ 4 passed, 208 deselected in 2235.22s (0:37:15) ================
+EXIT 0
+16:47:24

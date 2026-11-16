@@ -1,0 +1,24 @@
+stamp before: 9f8da77346a506ac7f80b909dfd08ee70c4d821290d0528a628f974afd5d0045  .gate/check-slow-stamp.json
+uv lock --check
+Resolved 25 packages in 1ms
+uv run --locked python tests/slow_stamp.py run -- uv run --locked pytest -m slow
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 294 items / 290 deselected / 4 selected
+
+tests/test_slow_regression.py 
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/home/rusiva/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/threading.py:1139: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+====================== 290 deselected in 67.73s (0:01:07) ======================
+make check-slow: red (exit 2); no stamp written
+make: *** [Makefile:14: check-slow] Error 2
+EXIT=2

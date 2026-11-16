@@ -1,0 +1,12 @@
+uv run --locked python tests/bench.py
+analyse on one full frame: [7.41, 7.6, 7.14, 7.12, 7.32] s, median 7.32 s
+ticket 13 target 5.0 s: not met
+make bench: warning: load average 3.11 8.73 12.26 3/1124 945809 at start; the machine is not idle
+wrote /home/rusiva/dev/denoisifier/.gate/bench.json
+EXIT=0
+--- tracked record
+analyse on one full frame: [7.6, 7.3, 7.35, 7.35, 7.86] s, median 7.35 s
+ticket 13 target 5.0 s: not met
+make bench: warning: load average 3.40 8.18 11.94 2/1093 946955 at start; the machine is not idle
+wrote .scratch/stripe-detector/bench.json
+EXIT=0

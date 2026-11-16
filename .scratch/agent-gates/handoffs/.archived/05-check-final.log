@@ -1,0 +1,38 @@
+uv lock --check
+Resolved 25 packages in 1ms
+uv run --locked ruff format --check
+34 files already formatted
+uv run --locked ruff check
+All checks passed!
+uv run --locked mypy
+Success: no issues found in 9 source files
+uv run --locked pytest
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 294 items / 4 deselected / 290 selected
+
+tests/test_analyse.py .................................................. [ 17%]
+........................................................................ [ 42%]
+...........                                                              [ 45%]
+tests/test_bench.py ...                                                  [ 46%]
+tests/test_calibration.py ........                                       [ 49%]
+tests/test_cli.py ........                                               [ 52%]
+tests/test_feasibility_gate.py ..............                            [ 57%]
+tests/test_protected_numbers.py ..........                               [ 60%]
+tests/test_read_frame.py ....                                            [ 62%]
+tests/test_require_background_gate.py ..........................         [ 71%]
+tests/test_seed_guard.py ...........                                     [ 74%]
+tests/test_slow_regression_plan.py .....                                 [ 76%]
+tests/test_slow_stamp.py ..........................                      [ 85%]
+tests/test_synthetic.py ..........................................       [100%]
+
+================ 290 passed, 4 deselected in 105.31s (0:01:45) =================
+uv run --locked python tests/slow_stamp.py check
+EXIT=0

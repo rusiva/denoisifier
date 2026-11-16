@@ -1,0 +1,21 @@
+HEAD d21e659
+start 2026-11-11T10:07:26+01:00 loadavg 1.32 1.16 0.86 5/1062 810796
+uv lock --check
+Resolved 25 packages in 1ms
+uv run --locked pytest -m slow
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 233 items / 229 deselected / 4 selected
+
+tests/test_feasibility_gate.py ....                                      [100%]
+
+================ 4 passed, 229 deselected in 2464.59s (0:41:04) ================
+exit 0
+end 2026-11-11T10:45:04+01:00 loadavg 8.02 11.43 11.71 3/1077 821789

@@ -1,0 +1,247 @@
+=== P1: plant in src/denoisifier/analysis.py; HEAD cbe4163
+ M src/denoisifier/analysis.py
+uv lock --check
+Resolved 25 packages in 2ms
+uv run --locked ruff format --check
+unformatted: File would be reformatted
+   --> src/denoisifier/analysis.py:126:1
+    |
+125 |     return period_px, angle_deg, float(np.median(depth))
+126 +
+127 +
+128 | # plant
+    |
+
+1 file would be reformatted, 33 files already formatted
+make: *** [Makefile:30: lint] Error 1
+EXIT=2
+=== P1 revert
+uv lock --check
+Resolved 25 packages in 2ms
+uv run --locked ruff format --check
+34 files already formatted
+uv run --locked ruff check
+All checks passed!
+uv run --locked mypy
+Success: no issues found in 9 source files
+uv run --locked pytest
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 294 items / 4 deselected / 290 selected
+
+tests/test_analyse.py .................................................. [ 17%]
+........................................................................ [ 42%]
+...........                                                              [ 45%]
+tests/test_bench.py ...                                                  [ 46%]
+tests/test_calibration.py ........                                       [ 49%]
+tests/test_cli.py ........                                               [ 52%]
+tests/test_feasibility_gate.py ..............                            [ 57%]
+tests/test_protected_numbers.py ..........                               [ 60%]
+tests/test_read_frame.py ....                                            [ 62%]
+tests/test_require_background_gate.py ..........................         [ 71%]
+tests/test_seed_guard.py ...........                                     [ 74%]
+tests/test_slow_regression_plan.py .....                                 [ 76%]
+tests/test_slow_stamp.py ..........................                      [ 85%]
+tests/test_synthetic.py ..........................................       [100%]
+
+================ 290 passed, 4 deselected in 114.78s (0:01:54) =================
+uv run --locked python tests/slow_stamp.py check
+EXIT=0
+=== P1 (retry): format-clean plant (two blank lines + '# plant') in src/denoisifier/analysis.py; HEAD cbe4163
+ M src/denoisifier/analysis.py
+uv lock --check
+Resolved 25 packages in 1ms
+uv run --locked ruff format --check
+34 files already formatted
+uv run --locked ruff check
+All checks passed!
+uv run --locked mypy
+Success: no issues found in 9 source files
+uv run --locked pytest
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 294 items / 4 deselected / 290 selected
+
+tests/test_analyse.py .................................................. [ 17%]
+........................................................................ [ 42%]
+...........                                                              [ 45%]
+tests/test_bench.py ...                                                  [ 46%]
+tests/test_calibration.py ........                                       [ 49%]
+tests/test_cli.py ........                                               [ 52%]
+tests/test_feasibility_gate.py ..............                            [ 57%]
+tests/test_protected_numbers.py ..........                               [ 60%]
+tests/test_read_frame.py ....                                            [ 62%]
+tests/test_require_background_gate.py ..........................         [ 71%]
+tests/test_seed_guard.py ...........                                     [ 74%]
+tests/test_slow_regression_plan.py .....                                 [ 76%]
+tests/test_slow_stamp.py ..........................                      [ 85%]
+tests/test_synthetic.py ..........................................       [100%]
+
+================ 290 passed, 4 deselected in 116.45s (0:01:56) =================
+uv run --locked python tests/slow_stamp.py check
+make check: the slow tier is stale. Changed since the last green make check-slow: src/denoisifier/analysis.py. Run make check-slow in the background (Bash run_in_background, output to a log; about 6 min) and run no other gate meanwhile. The stamp is per working tree: a fresh clone or worktree needs its own run. Stamped files: tests/slow_stamp.py STAMPED_FILES (ticket agent-gates/05).
+make: *** [Makefile:11: check] Error 1
+EXIT=2
+=== P1 retry revert (no check-slow re-run)
+uv lock --check
+Resolved 25 packages in 2ms
+uv run --locked ruff format --check
+34 files already formatted
+uv run --locked ruff check
+All checks passed!
+uv run --locked mypy
+Success: no issues found in 9 source files
+uv run --locked pytest
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 294 items / 4 deselected / 290 selected
+
+tests/test_analyse.py .................................................. [ 17%]
+........................................................................ [ 42%]
+...........                                                              [ 45%]
+tests/test_bench.py ...                                                  [ 46%]
+tests/test_calibration.py ........                                       [ 49%]
+tests/test_cli.py ........                                               [ 52%]
+tests/test_feasibility_gate.py ..............                            [ 57%]
+tests/test_protected_numbers.py ..........                               [ 60%]
+tests/test_read_frame.py ....                                            [ 62%]
+tests/test_require_background_gate.py ..........................         [ 71%]
+tests/test_seed_guard.py ...........                                     [ 74%]
+tests/test_slow_regression_plan.py .....                                 [ 76%]
+tests/test_slow_stamp.py ..........................                      [ 85%]
+tests/test_synthetic.py ..........................................       [100%]
+
+================ 290 passed, 4 deselected in 114.13s (0:01:54) =================
+uv run --locked python tests/slow_stamp.py check
+EXIT=0
+=== P3: new src/denoisifier/_plant.py
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____________________ test_stamped_files_cover_the_slow_tier ____________________
+
+    def test_stamped_files_cover_the_slow_tier():
+        package = {
+            p.relative_to(ROOT).as_posix() for p in (ROOT / "src/denoisifier").iterdir() if p.is_file()
+        }
+        stamped = set(STAMPED_FILES)
+        not_stamped = set(slow_stamp.NOT_STAMPED_SRC)
+        assert not stamped & not_stamped
+        unclassified = package - stamped - not_stamped
+>       assert not unclassified, (
+            f"classify {sorted(unclassified)} in tests/slow_stamp.py: STAMPED_FILES if it can "
+            "affect detector output, else NOT_STAMPED_SRC"
+        )
+E       AssertionError: classify ['src/denoisifier/_plant.py'] in tests/slow_stamp.py: STAMPED_FILES if it can affect detector output, else NOT_STAMPED_SRC
+E       assert not {'src/denoisifier/_plant.py'}
+
+tests/test_slow_stamp.py:231: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_slow_stamp.py::test_stamped_files_cover_the_slow_tier - Ass...
+1 failed, 25 deselected in 0.03s
+EXIT=1
+=== P3 removed: 
+=== P2: plants in src/denoisifier/cli.py and README.md
+ M README.md
+ M src/denoisifier/cli.py
+uv lock --check
+Resolved 25 packages in 1ms
+uv run --locked ruff format --check
+34 files already formatted
+uv run --locked ruff check
+All checks passed!
+uv run --locked mypy
+Success: no issues found in 9 source files
+uv run --locked pytest
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 294 items / 4 deselected / 290 selected
+
+tests/test_analyse.py .................................................. [ 17%]
+........................................................................ [ 42%]
+...........                                                              [ 45%]
+tests/test_bench.py ...                                                  [ 46%]
+tests/test_calibration.py ........                                       [ 49%]
+tests/test_cli.py ........                                               [ 52%]
+tests/test_feasibility_gate.py ..............                            [ 57%]
+tests/test_protected_numbers.py ..........                               [ 60%]
+tests/test_read_frame.py ....                                            [ 62%]
+tests/test_require_background_gate.py ..........................         [ 71%]
+tests/test_seed_guard.py ...........                                     [ 74%]
+tests/test_slow_regression_plan.py .....                                 [ 76%]
+tests/test_slow_stamp.py ..........................                      [ 85%]
+tests/test_synthetic.py ..........................................       [100%]
+
+================ 290 passed, 4 deselected in 105.84s (0:01:45) =================
+uv run --locked python tests/slow_stamp.py check
+EXIT=0
+=== P2 reverted: []
+=== P0: stamp moved aside (missing stamp); HEAD cbe4163
+uv lock --check
+Resolved 25 packages in 1ms
+uv run --locked ruff format --check
+34 files already formatted
+uv run --locked ruff check
+All checks passed!
+uv run --locked mypy
+Success: no issues found in 9 source files
+uv run --locked pytest
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 294 items / 4 deselected / 290 selected
+
+tests/test_analyse.py .................................................. [ 17%]
+........................................................................ [ 42%]
+...........                                                              [ 45%]
+tests/test_bench.py ...                                                  [ 46%]
+tests/test_calibration.py ........                                       [ 49%]
+tests/test_cli.py ........                                               [ 52%]
+tests/test_feasibility_gate.py ..............                            [ 57%]
+tests/test_protected_numbers.py ..........                               [ 60%]
+tests/test_read_frame.py ....                                            [ 62%]
+tests/test_require_background_gate.py ..........................         [ 71%]
+tests/test_seed_guard.py ...........                                     [ 74%]
+tests/test_slow_regression_plan.py .....                                 [ 76%]
+tests/test_slow_stamp.py ..........................                      [ 85%]
+tests/test_synthetic.py ..........................................       [100%]
+
+================= 290 passed, 4 deselected in 81.69s (0:01:21) =================
+uv run --locked python tests/slow_stamp.py check
+make check: the slow tier is stale. No green make check-slow is recorded in this tree (.gate/check-slow-stamp.json is missing or unreadable). Run make check-slow in the background (Bash run_in_background, output to a log; about 6 min) and run no other gate meanwhile. The stamp is per working tree: a fresh clone or worktree needs its own run. Stamped files: tests/slow_stamp.py STAMPED_FILES (ticket agent-gates/05).
+make: *** [Makefile:11: check] Error 1
+EXIT=2
+=== P0 stamp restored: 9f8da77346a506ac7f80b909dfd08ee70c4d821290d0528a628f974afd5d0045  .gate/check-slow-stamp.json

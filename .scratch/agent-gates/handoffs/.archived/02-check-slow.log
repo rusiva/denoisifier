@@ -1,0 +1,26 @@
+HEAD cf338f3
+start 2026-11-10T17:54:23+01:00 loadavg 2.32 2.54 2.21 5/1277 622604 nproc 16
+other load at start:
+ 154 /home/rusiva/miniconda3/envs/raytracing/bin/python -m tests.mitsuba._mutant_child backward-bin-
+23.3 python /tmp/claude-1000/-home-rusiva-dev-raytracing/1923ff2d-30e7-4fcc-8abb-adc5db7f79f6/scratc
+$ make check-slow
+uv lock --check
+Resolved 25 packages in 2ms
+uv run --locked pytest -m slow
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 212 items / 208 deselected / 4 selected
+
+tests/test_feasibility_gate.py ....                                      [100%]
+
+================ 4 passed, 208 deselected in 2257.86s (0:37:37) ================
+wall 2155.25 s
+exit=0
+end 2026-11-10T18:30:19+01:00 loadavg 9.35 11.98 12.20 2/1129 647669

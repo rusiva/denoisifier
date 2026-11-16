@@ -1,0 +1,75 @@
+uv lock --check
+Resolved 25 packages in 2ms
+uv run --locked ruff format --check
+unformatted: File would be reformatted
+  --> tests/test_require_background_gate.py:48:9
+   |
+47 |         'bash -c "cd x && make check-slow"',
+   -         "make check-slow > log 2>&1; echo \"EXIT=$?\" >> log",
+48 +         'make check-slow > log 2>&1; echo "EXIT=$?" >> log',
+49 |         'make check-slow; echo "# hook-allow-foreground"',
+   |
+
+1 file would be reformatted, 33 files already formatted
+make: *** [Makefile:30: lint] Error 1
+EXIT=2
+--- rerun after format fix
+uv lock --check
+Resolved 25 packages in 2ms
+uv run --locked ruff format --check
+34 files already formatted
+uv run --locked ruff check
+All checks passed!
+uv run --locked mypy
+Success: no issues found in 9 source files
+uv run --locked pytest
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/rusiva/dev/denoisifier
+configfile: pyproject.toml
+testpaths: tests
+plugins: timeout-2.4.0
+timeout: 60.0s
+timeout method: thread
+timeout func_only: False
+collected 294 items / 4 deselected / 290 selected
+
+tests/test_analyse.py .................................................. [ 17%]
+........................................................................ [ 42%]
+...........                                                              [ 45%]
+tests/test_bench.py ...                                                  [ 46%]
+tests/test_calibration.py ........                                       [ 49%]
+tests/test_cli.py ........                                               [ 52%]
+tests/test_feasibility_gate.py ..............                            [ 57%]
+tests/test_protected_numbers.py ..........                               [ 60%]
+tests/test_read_frame.py ....                                            [ 62%]
+tests/test_require_background_gate.py ..........................         [ 71%]
+tests/test_seed_guard.py ...........                                     [ 74%]
+tests/test_slow_regression_plan.py .....                                 [ 76%]
+tests/test_slow_stamp.py ......................FF..                      [ 85%]
+tests/test_synthetic.py ..........................................       [100%]
+
+=================================== FAILURES ===================================
+_____________________ test_check_ends_with_the_stamp_check _____________________
+
+    def test_check_ends_with_the_stamp_check():
+>       assert _dry_run("check").strip().splitlines()[-1].endswith("python tests/slow_stamp.py check")
+E       assert False
+E        +  where False = <built-in method endswith of str object at 0x739c1449e480>('python tests/slow_stamp.py check')
+E        +    where <built-in method endswith of str object at 0x739c1449e480> = "make[1]: Leaving directory '/home/rusiva/dev/denoisifier'".endswith
+
+tests/test_slow_stamp.py:276: AssertionError
+_____________ test_check_slow_runs_the_slow_tier_under_the_runner ______________
+
+    def test_check_slow_runs_the_slow_tier_under_the_runner():
+        last = _dry_run("check-slow").strip().splitlines()[-1]
+>       assert "python tests/slow_stamp.py run -- " in last
+E       assert 'python tests/slow_stamp.py run -- ' in "make[1]: Leaving directory '/home/rusiva/dev/denoisifier'"
+
+tests/test_slow_stamp.py:281: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_slow_stamp.py::test_check_ends_with_the_stamp_check - asser...
+FAILED tests/test_slow_stamp.py::test_check_slow_runs_the_slow_tier_under_the_runner
+=========== 2 failed, 288 passed, 4 deselected in 300.79s (0:05:00) ============
+make: *** [Makefile:10: check] Error 1
+EXIT=2
