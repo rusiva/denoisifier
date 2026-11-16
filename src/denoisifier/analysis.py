@@ -468,8 +468,9 @@ def _front_half(
     work, spikes = reject_spikes(frame)
     clipped = find_clipped(frame, clip_level) & ~spikes
     light = _light(work)
-    local = estimate_local_stripes(work, light, bins)
-    survivors, filters = _qualifying_regions(work, light, local, clipped, bins)
+    spec = _Spectrum(work, bins)  # one forward FFT for the bank and the region steps
+    local = estimate_local_stripes(work, light, bins, spec)
+    survivors, filters = _qualifying_regions(work, light, local, clipped, spec)
     score = max((g.peak_ratio for g in survivors), default=0.0)
     reported = [g for g in survivors if g.peak_ratio > threshold]
     # Forks and Phase Breaks: after the score and the threshold, never read back by them.
@@ -811,15 +812,15 @@ def _qualifying_regions(
     light: np.ndarray,
     local: LocalStripes,
     clipped: np.ndarray,
-    bins: BinFactors,
+    spec: _Spectrum,
 ) -> tuple[list[_Survivor], _Filters | None]:
     """Every size-qualifying group after overlaps are settled (threshold-free),
     and the filters they were measured with (None when there was nothing to
     measure). ``clipped`` (bool, frame shape) is left out of each region's
-    depth only."""
+    depth only. ``spec`` is ``frame``'s spectrum, shared with the bank."""
     if not light.any() or not local.ratio.max() > 0:
         return [], None
-    filters = _Filters(_Spectrum(frame, bins), light)
+    filters = _Filters(spec, light)
     candidates = _grow_candidates(local, light, filters)
     groups = _merge(candidates, local, filters)
     # A group shallower than the ratio floor's depth _A0 is not stripes (it
