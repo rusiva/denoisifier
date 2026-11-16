@@ -15,6 +15,7 @@ denoisifier._local_stripes :: _PERIODS :: ndarray[float64, (18,)]([3.0, 3.354180
 denoisifier._local_stripes :: _STRIPE_ANGLES_DEG :: (-10.0, -5.0, 0.0, 5.0, 10.0)
 denoisifier._local_stripes :: _ACROSS :: 1.0
 denoisifier._local_stripes :: _ALONG :: 1.5
+denoisifier._local_stripes :: _GAUSS_TRUNC_SIGMAS :: 8.0
 denoisifier._local_stripes :: _PAD :: 32
 denoisifier._local_stripes :: _BANK_TIE_REL :: 1e-09
 denoisifier._local_stripes :: _A0 :: 0.003
@@ -82,6 +83,7 @@ denoisifier.synthetic :: Emccd.cic :: 0.005
 protected :: PERIOD_REL_TOL :: 0.05
 protected :: ANGLE_TOL_DEG :: 1.0
 protected :: DEPTH_TOL :: 0.1
+protected :: FULL_GRID_REL_TOL :: 1e-12
 protected :: SPECTRAL_BAND_DEG :: 12.0
 protected :: BORDERLINE_SCORE_WINDOW :: 1.5
 protected :: FALSE_ALARM_RATE :: 0.01

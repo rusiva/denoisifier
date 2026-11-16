@@ -17,6 +17,10 @@ from cases import Case
 PERIOD_REL_TOL = 0.05
 ANGLE_TOL_DEG = 1.0
 DEPTH_TOL = 0.1
+# Ticket 13 slice 5 (orchestrator approval 2026-11-16): max-norm relative difference allowed
+# between a Gaussian filter on its support box (pruned inverse) and the full grid
+# (tests/test_spectrum_filters.py).
+FULL_GRID_REL_TOL = 1e-12
 
 # Spectral oracle (spectrum.py): the vertical band is Angles within +-10 deg
 # plus a 2 deg margin, so a peak at exactly +-10 deg is not cut off by the

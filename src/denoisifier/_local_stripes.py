@@ -23,10 +23,12 @@ a frequency, here and in analysis.py, goes through the helpers below
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Literal, TypeVar, cast
 
 import numpy as np
+import scipy.fft
 from numpy.typing import NDArray
 from scipy.ndimage import uniform_filter
 
@@ -40,6 +42,10 @@ _STRIPE_ANGLES_DEG = (-10.0, -5.0, 0.0, 5.0, 10.0)
 # Spatial window sigma, in Periods: across and along the stripes.
 _ACROSS = 1.0
 _ALONG = 1.5
+
+# Every Gaussian filter is evaluated only where it exceeds exp(-K^2 / 2) of
+# its peak, K = _GAUSS_TRUNC_SIGMAS (1.3e-14 at 8; ticket 13 slice 5).
+_GAUSS_TRUNC_SIGMAS = 8.0
 
 # Reflect padding before the FFT. analysis.py asserts it is below MIN_SIDE,
 # so reflect padding is always valid.
@@ -164,39 +170,93 @@ class LocalStripes:
 
 
 class _Spectrum:
-    """The padded frame's FFT and its frequency grid (x = columns, y = rows),
-    in cycles per sensor pixel: each axis's frame frequency over its bin factor."""
+    """The padded frame's FFT and its frequency axes (x = columns, y = rows),
+    in cycles per sensor pixel: each axis's frame frequency over its bin factor.
+
+    Every filter is a Gaussian in frequency (``gaussian``), applied on its
+    support box only and inverted by a pruned 2D inverse FFT (ticket 13)."""
 
     def __init__(self, frame: np.ndarray, bins: BinFactors):
         self.bins = bins
+        self.shape = (int(frame.shape[0]), int(frame.shape[1]))
         padded = np.pad(frame, _PAD, mode="reflect")
-        self.f = np.fft.fft2(padded)
+        self.f = scipy.fft.fft2(padded)
         # fftfreq is float64 at runtime; numpy's stub says floating[Any].
-        fy = cast(NDArray[np.float64], np.fft.fftfreq(padded.shape[0])[:, None])
-        fx = cast(NDArray[np.float64], np.fft.fftfreq(padded.shape[1])[None, :])
+        fy = cast(NDArray[np.float64], np.fft.fftfreq(padded.shape[0]))
+        fx = cast(NDArray[np.float64], np.fft.fftfreq(padded.shape[1]))
         self.fy, self.fx = sensor_frequency(bins, fy, fx)
 
-    def filtered(self, kernel: np.ndarray) -> np.ndarray:
-        return np.fft.ifft2(self.f * kernel)[_PAD:-_PAD, _PAD:-_PAD]
+    def gaussian(
+        self,
+        period: float | None,
+        angle_deg: float,
+        sigma_across: float,
+        sigma_along: float,
+        *,
+        truncate: bool = True,
+    ) -> np.ndarray:
+        """The frame filtered by a Gaussian of frequency sigmas ``sigma_across``
+        and ``sigma_along`` (cycles per sensor px), complex, frame shape.
+
+        With a ``period`` it is centred on the stripe frequency ``1 / period``
+        at ``angle_deg``, its sigmas across and along the stripes (a Gabor,
+        peak gain 1). With ``None`` it is centred on DC with ``sigma_across``
+        along x and ``sigma_along`` along y (the local mean, gain 1 at DC;
+        ``angle_deg`` is not used). It is evaluated where it exceeds
+        ``exp(-_GAUSS_TRUNC_SIGMAS**2 / 2)`` of its peak: the box of the
+        frequency rows and columns holding that ellipse, picked by their
+        ``fftfreq`` value as the full grid evaluates them: a box around DC is
+        the two index runs at both ends of the axis, and a box that reaches
+        past Nyquist (P3) is clipped there, as the full-grid kernel is, never
+        wrapped; ``truncate=False`` evaluates the whole grid."""
+        if period is None:
+            c, s, cx, cy = 1.0, 0.0, 0.0, 0.0
+        else:
+            t = math.radians(angle_deg)
+            c, s = math.cos(t), math.sin(t)
+            cx, cy = c / period, s / period
+        if truncate:
+            k = _GAUSS_TRUNC_SIGMAS
+            half_x = k * math.hypot(sigma_across * c, sigma_along * s)
+            half_y = k * math.hypot(sigma_across * s, sigma_along * c)
+            cols = np.flatnonzero(np.abs(self.fx - cx) <= half_x)
+            rows = np.flatnonzero(np.abs(self.fy - cy) <= half_y)
+        else:
+            cols, rows = np.arange(self.fx.size), np.arange(self.fy.size)
+        fx, fy = self.fx[cols][None, :], self.fy[rows][:, None]
+        if period is None:
+            across, along = fx, fy
+        else:
+            across = fx * c + fy * s - 1.0 / period
+            along = -fx * s + fy * c
+        kernel = np.exp(-0.5 * ((across / sigma_across) ** 2 + (along / sigma_along) ** 2))
+        return self._inverse(rows, cols, kernel)
+
+    def _inverse(self, rows: np.ndarray, cols: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+        """The frame-shaped crop of the inverse FFT of the spectrum times ``kernel``
+        on ``rows`` x ``cols`` (zero elsewhere): the x pass on those rows only,
+        cropped to the frame's columns, then the y pass on those columns."""
+        height, width = self.f.shape
+        h, w = self.shape
+        x = np.zeros((rows.size, width), dtype=complex)
+        x[:, cols] = self.f[np.ix_(rows, cols)] * kernel
+        x = scipy.fft.ifft(x, axis=1, overwrite_x=True)[:, _PAD : _PAD + w]
+        y = np.zeros((height, w), dtype=complex)
+        y[rows] = x
+        return np.asarray(scipy.fft.ifft(y, axis=0, overwrite_x=True)[_PAD : _PAD + h])
 
     def gabor(self, period: float, angle_deg: float) -> np.ndarray:
         """Complex Gabor, peak gain 1, tuned to ``period`` and ``angle_deg``."""
-        t = np.deg2rad(angle_deg)
-        across = self.fx * np.cos(t) + self.fy * np.sin(t) - 1.0 / period
-        along = -self.fx * np.sin(t) + self.fy * np.cos(t)
-        return self.filtered(_window(across, along, period))
+        return self.gaussian(period, angle_deg, *_bank_sigmas(period))
 
     def local_mean(self, period: float) -> np.ndarray:
         """The Gabor window at f = 0 (gain 1 at DC)."""
-        return np.real(self.filtered(_window(self.fx, self.fy, period)))
+        return np.real(self.gaussian(None, 0.0, *_bank_sigmas(period)))
 
 
-def _window(
-    across: NDArray[np.float64], along: NDArray[np.float64], period: float
-) -> NDArray[np.float64]:
-    sigma_across = 1.0 / (2 * np.pi * _ACROSS * period)
-    sigma_along = 1.0 / (2 * np.pi * _ALONG * period)
-    return np.exp(-0.5 * ((across / sigma_across) ** 2 + (along / sigma_along) ** 2))
+def _bank_sigmas(period: float) -> tuple[float, float]:
+    """The bank window's frequency sigmas (across, along the stripes) at ``period``."""
+    return 1.0 / (2 * np.pi * _ACROSS * period), 1.0 / (2 * np.pi * _ALONG * period)
 
 
 def gabor_at(

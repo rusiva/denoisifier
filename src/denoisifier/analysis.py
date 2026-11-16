@@ -867,19 +867,11 @@ class _Filters:
 
     def size_depth(self, period: float, angle_deg: float) -> np.ndarray:
         """The same with the along window of SIZE_ALONG_PERIODS (size rule only)."""
-        t = np.deg2rad(angle_deg)
-        spec = self.spec
-        across = spec.fx * np.cos(t) + spec.fy * np.sin(t) - 1.0 / period
-        along = -spec.fx * np.sin(t) + spec.fy * np.cos(t)
-        response = spec.filtered(_size_window(across, along, period))
-        mean = np.real(spec.filtered(_size_window(spec.fx, spec.fy, period)))
+        sigma_across = 1.0 / (2 * np.pi * _ACROSS * period)
+        sigma_along = 1.0 / (2 * np.pi * SIZE_ALONG_PERIODS * period)
+        response = self.spec.gaussian(period, angle_deg, sigma_across, sigma_along)
+        mean = np.real(self.spec.gaussian(None, 0.0, sigma_across, sigma_along))
         return _depth(response, mean, self.light)
-
-
-def _size_window(across: np.ndarray, along: np.ndarray, period: float) -> np.ndarray:
-    sigma_across = 1.0 / (2 * np.pi * _ACROSS * period)
-    sigma_along = 1.0 / (2 * np.pi * SIZE_ALONG_PERIODS * period)
-    return np.asarray(np.exp(-0.5 * ((across / sigma_across) ** 2 + (along / sigma_along) ** 2)))
 
 
 def _depth(response: np.ndarray, mean: np.ndarray, light: np.ndarray) -> np.ndarray:

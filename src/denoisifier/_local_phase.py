@@ -211,14 +211,10 @@ def break_response(spectrum: _Spectrum, period: float, angle_deg: float) -> np.n
     frame shape: the finder's narrow response at the sensor ``period`` and
     ``angle_deg`` on the shared spectrum; 0 where the local mean is not
     positive."""
-    t = np.deg2rad(angle_deg)
-    fx, fy = spectrum.fx, spectrum.fy
-    sa = 2 * np.pi * _BREAK_SIGMA_ACROSS_PERIODS * period
-    sl = 2 * np.pi * _BREAK_SIGMA_ALONG_PERIODS * period
-    across = fx * np.cos(t) + fy * np.sin(t) - 1.0 / period
-    along = -fx * np.sin(t) + fy * np.cos(t)
-    response = spectrum.filtered(np.exp(-0.5 * ((across * sa) ** 2 + (along * sl) ** 2)))
-    mean = np.real(spectrum.filtered(np.exp(-0.5 * ((fx * sa) ** 2 + (fy * sl) ** 2))))
+    sigma_across = 1.0 / (2 * np.pi * _BREAK_SIGMA_ACROSS_PERIODS * period)
+    sigma_along = 1.0 / (2 * np.pi * _BREAK_SIGMA_ALONG_PERIODS * period)
+    response = spectrum.gaussian(period, angle_deg, sigma_across, sigma_along)
+    mean = np.real(spectrum.gaussian(None, 0.0, sigma_across, sigma_along))
     z = np.zeros(response.shape, dtype=complex)
     np.divide(2 * response, mean, out=z, where=mean > 0)
     return z
