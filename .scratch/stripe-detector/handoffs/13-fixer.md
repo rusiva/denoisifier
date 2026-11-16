@@ -1,7 +1,7 @@
 # Ticket 13 fixer handoff
 
 - Continues `13-implementer-5.md`; fix list F1-F7 from `13-orchestrator.md` ("Code review sort"). Branch `main`.
-- **Status: STOPPED at end-sequence step 4, by the "make bench misses the target" stop rule.** The tracked bench record run (`tests/bench.py --out .scratch/stripe-detector/bench.json`, the same rule as `make bench`) measured a cold CLI median of 5.28 s, above `TARGET_TIMING_S` = 5.0, EXIT=1. Nothing was rerun to get a green, and nothing was loosened. `make check` and the AC 3 stage-timing driver have not been run.
+- **Status: STOPPED at end-sequence step 4, by the "make bench misses the target" stop rule; the ruled idle rerun also missed (cold CLI 5.22 s).** The tracked bench record run (`tests/bench.py --out .scratch/stripe-detector/bench.json`, the same rule as `make bench`) measured a cold CLI median of 5.28 s, above `TARGET_TIMING_S` = 5.0, EXIT=1. Nothing was rerun to get a green, and nothing was loosened. `make check` and the AC 3 stage-timing driver have not been run.
 - Logs: `.scratch/stripe-detector/handoffs/13-fixer-*.log` (untracked). Every gate ran alone, in the background, and each log starts with `uptime` and `git rev-parse --short HEAD`. During all gates, the only tracked change outside `src`/`tests` was the orchestrator's own uncommitted edit to `13-orchestrator.md`.
 
 ## Commits
@@ -48,7 +48,15 @@
   - Warm median 4.49 s (4.75, 4.61, 4.41, 4.34, 4.49); cold CLI 5.22, 5.54, 5.28, 5.06, 5.54.
   - The written file is kept at `handoffs/13-fixer-bench-record-miss.json` (untracked). The tracked `bench.json` was restored to HEAD, not committed.
 
+- **Tracked record, the one idle rerun the orchestrator ruled** (ticket Comments, `0750b7c`): `uv run --locked python tests/bench.py --out .scratch/stripe-detector/bench.json`, HEAD `0750b7c` (src/tests clean), started directly after the orchestrator checked the machine was idle. `uptime` at start: load 0.29, 0.30, 0.91; the script printed no load warning.
+  - **EXIT=1**: `make bench: cold CLI median 5.22 s exceeds the 5.0 s target`.
+  - Warm median **4.03 s** (4.44, 3.97, 4.11, 4.0, 4.03). Cold CLI 5.37, 5.22, 4.91, 5.24, 5.01. The timing frame took 2.59 s.
+  - The written file is kept at `handoffs/13-fixer-bench-record-miss-2.json` (untracked), and the tracked `bench.json` is restored to HEAD. Per the ruling: stop, no third run.
+  - Log: `13-fixer-bench-record-2.log`. My first rerun attempt never started: its idle-wait loop matched its own command line, and the orchestrator killed it.
+
 ## Finding (for the orchestrator)
+
+- **Idle, the cold CLI misses 5 s.** It was 5.22 s against a warm pipeline of 4.03 s, so cold start costs about 1.2 s on top (interpreter, imports, CSV read and JSON write in a fresh process). `make bench`'s green 4.59 s was the low end of the spread.
 
 - AC 1's cold CLI sits right at the target on this box: 4.59 s in one run, 5.28 s in the next, 2 minutes later.
 - The warm speed pipeline, 4.23-4.49 s at the default 4 threads, is well above slice 4's go/no-go (3.39 s at 4 threads, load 0.91) and the plan's projection (~3.4 s warm, ~3.9 s cold without slices 6 and 7).
